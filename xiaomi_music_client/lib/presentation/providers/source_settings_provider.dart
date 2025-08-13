@@ -167,10 +167,10 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
     print('  - jsOnlyNoFallback: ${s.jsOnlyNoFallback}');
     print('  - useUnifiedApi: ${s.useUnifiedApi}');
     print('  - useYouTubeProxy: ${s.useYouTubeProxy}');
-          print('  - youTubeDownloadSource: ${s.youTubeDownloadSource}');
-      print('  - youTubeAudioQuality: ${s.youTubeAudioQuality}');
-      print('  - enableTts: ${s.enableTts}');
-      print('  - ttsTestText: ${s.ttsTestText}');
+    print('  - youTubeDownloadSource: ${s.youTubeDownloadSource}');
+    print('  - youTubeAudioQuality: ${s.youTubeAudioQuality}');
+    print('  - enableTts: ${s.enableTts}');
+    print('  - ttsTestText: ${s.ttsTestText}');
     print('  - scriptUrl长度: ${s.scriptUrl.length}');
     print('  - unifiedApiBase: ${s.unifiedApiBase}');
 

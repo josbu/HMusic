@@ -15,7 +15,8 @@ class ControlPanelPage extends ConsumerStatefulWidget {
   const ControlPanelPage({super.key, this.showAppBar = true});
 
   @override
-  ConsumerState<ControlPanelPage> createState() => _ControlPanelPageState();}
+  ConsumerState<ControlPanelPage> createState() => _ControlPanelPageState();
+}
 
 class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     with TickerProviderStateMixin {

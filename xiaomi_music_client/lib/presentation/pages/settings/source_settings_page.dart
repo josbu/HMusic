@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/source_settings_provider.dart';
+import '../../providers/device_provider.dart';
+import '../../providers/dio_provider.dart';
+import '../../../data/models/device.dart';
 import '../../../data/services/local_js_source_service.dart';
 import '../../../data/services/webview_js_source_service.dart';
 import '../../../data/services/youtube_proxy_service.dart';
@@ -505,9 +508,9 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
           ListTile(
             title: Text(
               'TTS 文字转语音',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             subtitle: Text(
               '配置文字转语音功能相关选项',
@@ -830,6 +833,45 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
     }
 
     try {
+      // 获取设备状态
+      final deviceState = ref.read(deviceProvider);
+      if (deviceState.devices.isEmpty) {
+        if (mounted) {
+          AppSnackBar.show(
+            context,
+            const SnackBar(
+              content: Text('未找到可用设备，请先在控制页检查设备连接'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // 如果没有选中设备，提示用户选择
+      if (deviceState.selectedDeviceId == null) {
+        if (mounted) {
+          final shouldSelectDevice = await _showDeviceSelectionDialog(
+            deviceState.devices,
+          );
+          if (!shouldSelectDevice) return; // 用户取消选择
+        }
+      }
+
+      final selectedDeviceId = deviceState.selectedDeviceId;
+      if (selectedDeviceId == null) {
+        if (mounted) {
+          AppSnackBar.show(
+            context,
+            const SnackBar(
+              content: Text('请先选择播放设备'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
       // 显示测试状态
       if (mounted) {
         AppSnackBar.show(
@@ -841,18 +883,25 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
         );
       }
 
-      // 这里需要调用TTS API，但需要先获取设备ID
-      // 暂时显示成功提示，后续可以集成设备选择
-      await Future.delayed(const Duration(seconds: 2));
-
-      if (mounted) {
-        AppSnackBar.show(
-          context,
-          SnackBar(
-            content: Text('TTS测试成功: "$_ttsTestText"'),
-            backgroundColor: Colors.green,
-          ),
+      // 调用真正的TTS API
+      final apiService = ref.read(apiServiceProvider);
+      if (apiService != null) {
+        await apiService.playTts(
+          did: selectedDeviceId,
+          text: _ttsTestText.trim(),
         );
+
+        if (mounted) {
+          AppSnackBar.show(
+            context,
+            SnackBar(
+              content: Text('TTS测试成功: "$_ttsTestText"'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        throw Exception('API服务不可用');
       }
     } catch (e) {
       if (mounted) {
@@ -865,5 +914,52 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
         );
       }
     }
+  }
+
+  // 🎯 新增：显示设备选择对话框
+  Future<bool> _showDeviceSelectionDialog(List<Device> devices) async {
+    final selectedDevice = await showDialog<Device>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('选择播放设备'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: devices.length,
+            itemBuilder: (context, index) {
+              final device = devices[index];
+              return ListTile(
+                leading: Icon(
+                  device.isOnline ?? false ? Icons.speaker : Icons.speaker,
+                  color: device.isOnline ?? false ? Colors.green : Colors.grey,
+                ),
+                title: Text(device.name),
+                subtitle: Text(
+                  device.isOnline ?? false ? '在线' : '离线',
+                  style: TextStyle(
+                    color: device.isOnline ?? false ? Colors.green : Colors.grey,
+                  ),
+                ),
+                onTap: () => Navigator.of(context).pop(device),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedDevice != null) {
+      // 设置选中的设备
+      ref.read(deviceProvider.notifier).selectDevice(selectedDevice.id);
+      return true;
+    }
+    return false;
   }
 }
