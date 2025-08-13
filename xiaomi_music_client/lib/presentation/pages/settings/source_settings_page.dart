@@ -497,8 +497,6 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
             const Divider(),
           ],
 
-
-
           // JS 音源相关设置（仅在选择JS源时显示）
           if (!_useUnifiedApi && !_useYouTubeProxy) ...[
             ListTile(
@@ -760,6 +758,4 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
       ),
     );
   }
-
-
 }

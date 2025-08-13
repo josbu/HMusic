@@ -15,7 +15,6 @@ class TtsSettingsPage extends ConsumerStatefulWidget {
 
 class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
   late TextEditingController _ttsTestTextCtrl;
-  bool _enableTts = false;
   String _ttsTestText = '你好，这是TTS测试';
   bool _initialized = false;
 
@@ -35,7 +34,6 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
     if (_initialized) return;
 
     setState(() {
-      _enableTts = s.enableTts;
       _ttsTestText = s.ttsTestText;
       _ttsTestTextCtrl.text = s.ttsTestText;
     });
@@ -47,8 +45,6 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
   Widget build(BuildContext context) {
     final settings = ref.watch(sourceSettingsProvider);
     _initializeFromProvider(settings);
-
-    final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
       appBar: AppBar(
@@ -107,77 +103,66 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
             ),
             const SizedBox(height: 24),
 
-            // TTS 功能开关
-            SwitchListTile(
-              title: const Text('启用TTS文字转语音'),
-              subtitle: const Text('开启后可以使用文字转语音功能'),
-              value: _enableTts,
-              onChanged: (v) => setState(() => _enableTts = v),
-            ),
-            const SizedBox(height: 16),
-
             // TTS 测试区域
-            if (_enableTts) ...[
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.record_voice_over_rounded,
-                          color: Colors.green,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'TTS 测试',
-                          style: TextStyle(
-                            color: Colors.green,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _ttsTestTextCtrl,
-                      decoration: const InputDecoration(
-                        labelText: '测试文字',
-                        hintText: '输入要播放的文字内容',
-                        border: OutlineInputBorder(),
-                        helperText: '支持中文、英文等多种语言',
-                      ),
-                      maxLines: 3,
-                      onChanged: (value) => _ttsTestText = value,
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () => _testTts(),
-                        icon: const Icon(Icons.play_arrow_rounded),
-                        label: const Text('播放TTS'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                      ),
-                    ),
-                  ],
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                  width: 1,
                 ),
               ),
-              const SizedBox(height: 16),
-            ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.record_voice_over_rounded,
+                        color: Colors.green,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'TTS 测试',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _ttsTestTextCtrl,
+                    decoration: const InputDecoration(
+                      labelText: '测试文字',
+                      hintText: '输入要播放的文字内容',
+                      border: OutlineInputBorder(),
+                      helperText: '支持中文、英文等多种语言',
+                    ),
+                    maxLines: 3,
+                    onChanged: (value) => _ttsTestText = value,
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _testTts(),
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      label: const Text('播放TTS'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
 
             // 保存按钮
             SizedBox(
@@ -201,7 +186,6 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
     try {
       final currentSettings = ref.read(sourceSettingsProvider);
       final newSettings = currentSettings.copyWith(
-        enableTts: _enableTts,
         ttsTestText: _ttsTestText,
       );
 
@@ -220,10 +204,7 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
       if (mounted) {
         AppSnackBar.show(
           context,
-          SnackBar(
-            content: Text('保存失败: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('保存失败: $e'), backgroundColor: Colors.red),
         );
       }
     }
