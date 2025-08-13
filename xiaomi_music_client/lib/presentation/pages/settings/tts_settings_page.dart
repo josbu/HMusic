@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/source_settings_provider.dart';
 import '../../providers/device_provider.dart';
 import '../../providers/dio_provider.dart';
 import '../../../data/models/device.dart';
@@ -16,7 +15,6 @@ class TtsSettingsPage extends ConsumerStatefulWidget {
 class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
   late TextEditingController _ttsTestTextCtrl;
   String _ttsTestText = '你好，这是TTS测试';
-  bool _initialized = false;
 
   @override
   void initState() {
@@ -30,22 +28,10 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
     super.dispose();
   }
 
-  void _initializeFromProvider(SourceSettings s) {
-    if (_initialized) return;
 
-    setState(() {
-      _ttsTestText = s.ttsTestText;
-      _ttsTestTextCtrl.text = s.ttsTestText;
-    });
-
-    _initialized = true;
-  }
 
   @override
   Widget build(BuildContext context) {
-    final settings = ref.watch(sourceSettingsProvider);
-    _initializeFromProvider(settings);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('TTS 文字转语音'),
@@ -162,53 +148,14 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
 
-            // 保存按钮
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _saveSettings,
-                icon: const Icon(Icons.save_rounded),
-                label: const Text('保存设置'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-              ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  Future<void> _saveSettings() async {
-    try {
-      final currentSettings = ref.read(sourceSettingsProvider);
-      final newSettings = currentSettings.copyWith(
-        ttsTestText: _ttsTestText,
-      );
 
-      await ref.read(sourceSettingsNotifierProvider).save(newSettings);
-
-      if (mounted) {
-        AppSnackBar.show(
-          context,
-          const SnackBar(
-            content: Text('TTS设置已保存'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        AppSnackBar.show(
-          context,
-          SnackBar(content: Text('保存失败: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
 
   // 🎯 TTS测试功能
   Future<void> _testTts() async {
@@ -300,10 +247,7 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
       if (mounted) {
         AppSnackBar.show(
           context,
-          SnackBar(
-            content: Text('TTS播放失败: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('TTS播放失败: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -313,39 +257,44 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
   Future<bool> _showDeviceSelectionDialog(List<Device> devices) async {
     final selectedDevice = await showDialog<Device>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('选择播放设备'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: devices.length,
-            itemBuilder: (context, index) {
-              final device = devices[index];
-              return ListTile(
-                leading: Icon(
-                  device.isOnline ?? false ? Icons.speaker : Icons.speaker,
-                  color: device.isOnline ?? false ? Colors.green : Colors.grey,
-                ),
-                title: Text(device.name),
-                subtitle: Text(
-                  device.isOnline ?? false ? '在线' : '离线',
-                  style: TextStyle(
-                    color: device.isOnline ?? false ? Colors.green : Colors.grey,
-                  ),
-                ),
-                onTap: () => Navigator.of(context).pop(device),
-              );
-            },
+      builder:
+          (context) => AlertDialog(
+            title: const Text('选择播放设备'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: devices.length,
+                itemBuilder: (context, index) {
+                  final device = devices[index];
+                  return ListTile(
+                    leading: Icon(
+                      device.isOnline ?? false ? Icons.speaker : Icons.speaker,
+                      color:
+                          device.isOnline ?? false ? Colors.green : Colors.grey,
+                    ),
+                    title: Text(device.name),
+                    subtitle: Text(
+                      device.isOnline ?? false ? '在线' : '离线',
+                      style: TextStyle(
+                        color:
+                            device.isOnline ?? false
+                                ? Colors.green
+                                : Colors.grey,
+                      ),
+                    ),
+                    onTap: () => Navigator.of(context).pop(device),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-        ],
-      ),
     );
 
     if (selectedDevice != null) {
