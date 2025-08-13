@@ -184,6 +184,9 @@ class _MainPageState extends ConsumerState<MainPage> {
                   case 'source_settings':
                     context.push('/settings/source');
                     break;
+                  case 'tts_settings':
+                    context.push('/settings/tts');
+                    break;
                   case 'logout':
                     ref.read(authProvider.notifier).logout();
                     break;
@@ -220,6 +223,23 @@ class _MainPageState extends ConsumerState<MainPage> {
                           const SizedBox(width: 12),
                           Text(
                             '音源设置',
+                            style: TextStyle(color: onSurface.withOpacity(0.9)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'tts_settings',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.record_voice_over_rounded,
+                            color: onSurface.withOpacity(0.8),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'TTS文字转语音',
                             style: TextStyle(color: onSurface.withOpacity(0.9)),
                           ),
                         ],

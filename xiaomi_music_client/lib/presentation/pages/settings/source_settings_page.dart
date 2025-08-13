@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/source_settings_provider.dart';
-import '../../providers/device_provider.dart';
-import '../../providers/dio_provider.dart';
-import '../../../data/models/device.dart';
 import '../../../data/services/local_js_source_service.dart';
 import '../../../data/services/webview_js_source_service.dart';
 import '../../../data/services/youtube_proxy_service.dart';
@@ -30,8 +27,6 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
   bool _useYouTubeProxy = false;
   String _youTubeDownloadSource = 'oceansaver';
   String _youTubeAudioQuality = '320k';
-  bool _enableTts = false;
-  String _ttsTestText = '你好，这是TTS测试';
   final WebViewController _hiddenCtrl = WebViewController();
 
   bool _initialized = false;
@@ -71,8 +66,6 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
       _useYouTubeProxy = s.useYouTubeProxy;
       _youTubeDownloadSource = s.youTubeDownloadSource;
       _youTubeAudioQuality = s.youTubeAudioQuality;
-      _enableTts = s.enableTts;
-      _ttsTestText = s.ttsTestText;
     });
 
     print('🔧 [SourceSettingsPage] UI变量设置完成:');
@@ -504,48 +497,7 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
             const Divider(),
           ],
 
-          // TTS 文字转语音设置
-          ListTile(
-            title: Text(
-              'TTS 文字转语音',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Text(
-              '配置文字转语音功能相关选项',
-              style: TextStyle(color: onSurface.withOpacity(0.6)),
-            ),
-          ),
-          SwitchListTile(
-            title: const Text('启用TTS文字转语音'),
-            subtitle: const Text('开启后可以使用文字转语音功能'),
-            value: _enableTts,
-            onChanged: (v) => setState(() => _enableTts = v),
-          ),
-          if (_enableTts) ...[
-            const SizedBox(height: 12),
-            TextField(
-              decoration: const InputDecoration(
-                labelText: 'TTS测试文字',
-                hintText: '输入要测试的文字内容',
-                border: OutlineInputBorder(),
-              ),
-              controller: TextEditingController(text: _ttsTestText),
-              onChanged: (value) => _ttsTestText = value,
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _testTts(),
-                icon: const Icon(Icons.record_voice_over),
-                label: const Text('测试TTS播放'),
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-          const Divider(),
+
 
           // JS 音源相关设置（仅在选择JS源时显示）
           if (!_useUnifiedApi && !_useYouTubeProxy) ...[
@@ -658,8 +610,6 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                         '  - _youTubeDownloadSource: $_youTubeDownloadSource',
                       );
                       print('  - _youTubeAudioQuality: $_youTubeAudioQuality');
-                      print('  - _enableTts: $_enableTts');
-                      print('  - _ttsTestText: $_ttsTestText');
                       print('  - scriptUrl: ${_urlCtrl.text.trim()}');
 
                       final s = SourceSettings(
@@ -674,8 +624,6 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                         useYouTubeProxy: _useYouTubeProxy,
                         youTubeDownloadSource: _youTubeDownloadSource,
                         youTubeAudioQuality: _youTubeAudioQuality,
-                        enableTts: _enableTts,
-                        ttsTestText: _ttsTestText,
                       );
 
                       print('🔧 [SourceSettingsPage] 创建的SourceSettings对象:');
@@ -690,8 +638,6 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                       print(
                         '  - youTubeAudioQuality: ${s.youTubeAudioQuality}',
                       );
-                      print('  - enableTts: ${s.enableTts}');
-                      print('  - ttsTestText: ${s.ttsTestText}');
 
                       await ref.read(sourceSettingsNotifierProvider).save(s);
 
@@ -717,8 +663,6 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                       print(
                         '  - youTubeAudioQuality: ${savedSettings.youTubeAudioQuality}',
                       );
-                      print('  - enableTts: ${savedSettings.enableTts}');
-                      print('  - ttsTestText: ${savedSettings.ttsTestText}');
                       if (!mounted) return;
                       AppSnackBar.show(
                         context,
@@ -817,149 +761,5 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
     );
   }
 
-  // 🎯 新增：测试TTS功能
-  Future<void> _testTts() async {
-    if (_ttsTestText.trim().isEmpty) {
-      if (mounted) {
-        AppSnackBar.show(
-          context,
-          const SnackBar(
-            content: Text('请输入要测试的文字'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      return;
-    }
 
-    try {
-      // 获取设备状态
-      final deviceState = ref.read(deviceProvider);
-      if (deviceState.devices.isEmpty) {
-        if (mounted) {
-          AppSnackBar.show(
-            context,
-            const SnackBar(
-              content: Text('未找到可用设备，请先在控制页检查设备连接'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-
-      // 如果没有选中设备，提示用户选择
-      if (deviceState.selectedDeviceId == null) {
-        if (mounted) {
-          final shouldSelectDevice = await _showDeviceSelectionDialog(
-            deviceState.devices,
-          );
-          if (!shouldSelectDevice) return; // 用户取消选择
-        }
-      }
-
-      final selectedDeviceId = deviceState.selectedDeviceId;
-      if (selectedDeviceId == null) {
-        if (mounted) {
-          AppSnackBar.show(
-            context,
-            const SnackBar(
-              content: Text('请先选择播放设备'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-        return;
-      }
-
-      // 显示测试状态
-      if (mounted) {
-        AppSnackBar.show(
-          context,
-          SnackBar(
-            content: Text('正在测试TTS: "$_ttsTestText"'),
-            backgroundColor: Colors.blue,
-          ),
-        );
-      }
-
-      // 调用真正的TTS API
-      final apiService = ref.read(apiServiceProvider);
-      if (apiService != null) {
-        await apiService.playTts(
-          did: selectedDeviceId,
-          text: _ttsTestText.trim(),
-        );
-
-        if (mounted) {
-          AppSnackBar.show(
-            context,
-            SnackBar(
-              content: Text('TTS测试成功: "$_ttsTestText"'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } else {
-        throw Exception('API服务不可用');
-      }
-    } catch (e) {
-      if (mounted) {
-        AppSnackBar.show(
-          context,
-          SnackBar(
-            content: Text('TTS测试失败: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  // 🎯 新增：显示设备选择对话框
-  Future<bool> _showDeviceSelectionDialog(List<Device> devices) async {
-    final selectedDevice = await showDialog<Device>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('选择播放设备'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: devices.length,
-            itemBuilder: (context, index) {
-              final device = devices[index];
-              return ListTile(
-                leading: Icon(
-                  device.isOnline ?? false ? Icons.speaker : Icons.speaker,
-                  color: device.isOnline ?? false ? Colors.green : Colors.grey,
-                ),
-                title: Text(device.name),
-                subtitle: Text(
-                  device.isOnline ?? false ? '在线' : '离线',
-                  style: TextStyle(
-                    color: device.isOnline ?? false ? Colors.green : Colors.grey,
-                  ),
-                ),
-                onTap: () => Navigator.of(context).pop(device),
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-        ],
-      ),
-    );
-
-    if (selectedDevice != null) {
-      // 设置选中的设备
-      ref.read(deviceProvider.notifier).selectDevice(selectedDevice.id);
-      return true;
-    }
-    return false;
-  }
 }
