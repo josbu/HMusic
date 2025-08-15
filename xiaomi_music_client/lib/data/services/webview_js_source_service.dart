@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../presentation/providers/source_settings_provider.dart';
 import 'grass_source_decoder.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// A minimal transformer that always treats responses as plain text and
 /// never attempts to parse JSON based on Content-Type. This avoids
@@ -52,6 +53,9 @@ class WebViewJsSourceService {
   Completer<List<Map<String, dynamic>>>? _pendingSearchCompleter;
   Completer<String>? _pendingUrlCompleter;
   String? _activeSearchId;
+  SourceSettings? _currentSettings;
+  String? _loadedScriptUrlFromJs;
+  Map<String, dynamic> _strategyCache = <String, dynamic>{};
 
   WebViewJsSourceService(this.controller);
 
@@ -134,6 +138,8 @@ class WebViewJsSourceService {
   }
 
   Future<void> init(SourceSettings settings) async {
+    _currentSettings = settings;
+    await _loadStrategyCache();
     print('🔧 [WebViewJsSource] 开始初始化WebView音源');
     print('🔧 [WebViewJsSource] 启用状态: ${settings.enabled}');
     print('🔧 [WebViewJsSource] 使用内置脚本: ${settings.useBuiltinScript}');
@@ -181,6 +187,23 @@ class WebViewJsSourceService {
       onMessageReceived: (msg) {
         print('📨 [SixyinBridge] 收到消息: ${msg.message}');
         // 检查适配器状态
+        if (msg.message.startsWith('loaded:')) {
+          _loadedScriptUrlFromJs = msg.message.substring('loaded:'.length);
+          print('📦 [WebViewJsSource] 实际加载脚本URL: $_loadedScriptUrlFromJs');
+          // 若预置为 xiaoqiu，则预先绑定策略为 S1
+          if ((_currentSettings?.scriptPreset ?? '') == 'xiaoqiu') {
+            final key =
+                _loadedScriptUrlFromJs ?? _currentSettings?.scriptUrl ?? '';
+            if (key.isNotEmpty && (_strategyCache[key] == null)) {
+              _strategyCache[key] = {
+                'strategyId': 'S1',
+                'lastSuccess': DateTime.now().millisecondsSinceEpoch,
+              };
+              _saveStrategyCache();
+              print('🧠 [Strategy] 预置 xiaoqiu → 绑定策略 S1 到 $key');
+            }
+          }
+        }
         if (msg.message.startsWith('adapter_found:')) {
           final adapter = msg.message.substring('adapter_found:'.length);
           _hasValidAdapter = adapter.isNotEmpty;
@@ -195,6 +218,18 @@ class WebViewJsSourceService {
           );
           if (_pendingProbe != null && !(_pendingProbe!.isCompleted)) {
             _pendingProbe!.complete(_lastFoundFunctions);
+          }
+        }
+        if (msg.message.startsWith('strategy_selected:')) {
+          final strategy = msg.message.substring('strategy_selected:'.length);
+          final key = _computeScriptKey();
+          if (key.isNotEmpty) {
+            print('🧠 [Strategy] 记录策略: 脚本=$key, 策略=$strategy');
+            _strategyCache[key] = {
+              'strategyId': strategy,
+              'lastSuccess': DateTime.now().millisecondsSinceEpoch,
+            };
+            _saveStrategyCache();
           }
         }
         if (msg.message.startsWith('ready_state:')) {
@@ -1368,57 +1403,64 @@ class WebViewJsSourceService {
                 
                 // 尝试不同的参数组合适配不同的函数签名
                 let result = null;
-                let paramCombos = [];
+                let __selectedId = null;
                 
-                // 根据函数名选择不同的参数组合策略
+                // 根据函数名选择不同的参数组合策略，并支持偏好策略优先
+                let paramEntries = [];
+                const __pref = (typeof window !== 'undefined' && window.__preferredStrategy) ? window.__preferredStrategy : '';
                 if(fnName.includes('module.exports')) {
                   console.log('[Adapter] 使用module.exports专用参数组合');
-                  paramCombos = [
-                    // 草莓源可能的格式: module.exports(keyword, page, type)
-                    [keyword, page||1, 'music'],
-                    [keyword, page||1],
-                    [keyword, page||1, 'song'],
-                    // 可能需要平台参数
-                    [platform, keyword, page||1],
-                    ['qq', keyword, page||1],
-                    ['netease', keyword, page||1],
-                    // 对象格式
-                    [{query: keyword, page: page||1, type: 'music'}],
-                    [{keyword: keyword, page: page||1, platform: platform}],
-                    // 简单格式
-                    [keyword],
-                    // 数字索引格式（混淆后可能的模式）
-                    [1, keyword, page||1],
-                    [0, keyword, page||1]
+                  paramEntries = [
+                    { id: 'S1', params: [keyword, page||1, 'music'] },
+                    { id: 'S2', params: [keyword, page||1] },
+                    { id: 'S3', params: [{ text: keyword, page: page||1, type: 'music' }] },
+                    { id: 'S4', params: [platform, keyword, page||1] },
+                    // 其他备选（无固定策略编号）
+                    { id: '', params: [keyword, page||1, 'song'] },
+                    { id: '', params: ['qq', keyword, page||1] },
+                    { id: '', params: ['netease', keyword, page||1] },
+                    { id: '', params: [{ query: keyword, page: page||1, type: 'music' }] },
+                    { id: '', params: [{ keyword: keyword, page: page||1, platform: platform }] },
+                    { id: '', params: [keyword] },
+                    { id: '', params: [1, keyword, page||1] },
+                    { id: '', params: [0, keyword, page||1] },
                   ];
                 } else {
-                  // 标准函数的参数组合
-                  paramCombos = [
-                    // xiaoqiu.js/MusicFree 格式: searchMusic(query, page)
-                    [keyword, page||1],
-                    // 标准格式: searchMusic(platform, keyword, page) 
-                    [platform, keyword, page||1],
-                    // 简化格式: searchMusic(keyword)
-                    [keyword],
-                    // 对象格式: searchMusic({query, page, platform})
-                    [{query: keyword, page: page||1, platform: platform}]
+                  // 标准函数的参数组合（S5）
+                  paramEntries = [
+                    { id: 'S5', params: [keyword, page||1] },
+                    { id: '', params: [platform, keyword, page||1] },
+                    { id: '', params: [keyword] },
+                    { id: '', params: [{ query: keyword, page: page||1, platform: platform }] },
                   ];
                 }
+                // 偏好策略优先
+                if (__pref) {
+                  const idx = paramEntries.findIndex(e => e.id && e.id === __pref);
+                  if (idx > 0) {
+                    const p = paramEntries.splice(idx, 1)[0];
+                    paramEntries.unshift(p);
+                    console.log('[Adapter] 使用偏好策略优先:', __pref);
+                  }
+                }
                 
-                for(let i = 0; i < paramCombos.length; i++) {
-                  const params = paramCombos[i];
+                for(let i = 0; i < paramEntries.length; i++) {
+                  const entry = paramEntries[i];
+                  const params = entry.params;
                   try {
-                    console.log('[Adapter] 尝试参数组合', i+1, ':', JSON.stringify(params));
+                    console.log('[Adapter] 尝试参数组合', (entry.id||('#'+(i+1))), ':', JSON.stringify(params));
                     result = await fn(...params);
-                    console.log('[Adapter] 参数组合', i+1, '成功，结果:', result);
+                    console.log('[Adapter] 参数组合', (entry.id||('#'+(i+1))), '成功，结果:', result);
                     
                     // 检查结果是否有效
                     if(result && (Array.isArray(result) || (result.data && Array.isArray(result.data)))) {
-                      console.log('[Adapter] 找到有效结果，使用参数组合', i+1);
+                      console.log('[Adapter] 找到有效结果，使用参数组合', (entry.id||('#'+(i+1))));
+                      if (entry.id) { try{ SixyinBridge.postMessage('strategy_selected:' + entry.id); }catch(_){} }
+                      __selectedId = entry.id || __selectedId;
                       break;
                     }
                   } catch(e) {
-                    console.log('[Adapter] 参数组合', i+1, '失败:', e.toString());
+                    console.log('[Adapter] 参数组合', (entry.id||('#'+(i+1))), '失败:', e.toString());
                     continue;
                   }
                 }
@@ -1432,6 +1474,13 @@ class WebViewJsSourceService {
                     const promiseResult = await result;
                     console.log('[Adapter] Promise解析结果:', promiseResult);
                     result = promiseResult;
+                    if(result && (Array.isArray(result) || (result.data && Array.isArray(result.data)))) {
+                      if (!__selectedId) {
+                        // 若之前未确认策略，但Promise解析后有效，则按S5或未知处理
+                        if(!fnName.includes('module.exports')) { __selectedId = 'S5'; }
+                      }
+                      if (__selectedId) { try{ SixyinBridge.postMessage('strategy_selected:' + __selectedId); }catch(_){} }
+                    }
                   } catch (promiseError) {
                     console.warn('[Adapter] Promise失败:', promiseError);
                     continue;
@@ -1442,14 +1491,17 @@ class WebViewJsSourceService {
                 if (result) {
                   if (Array.isArray(result)) {
                     console.log('[Adapter] 返回数组，长度:', result.length);
+                    if (__selectedId) { try{ SixyinBridge.postMessage('strategy_selected:' + __selectedId); }catch(_){} }
                     return result;
                   }
                   if (result.data && Array.isArray(result.data)) {
                     console.log('[Adapter] 返回result.data，长度:', result.data.length);
+                    if (__selectedId) { try{ SixyinBridge.postMessage('strategy_selected:' + __selectedId); }catch(_){} }
                     return result.data;
                   }
                   if (result.list && Array.isArray(result.list)) {
                     console.log('[Adapter] 返回result.list，长度:', result.list.length);
+                    if (__selectedId) { try{ SixyinBridge.postMessage('strategy_selected:' + __selectedId); }catch(_){} }
                     return result.list;
                   }
                   // 如果是对象但不是数组，尝试转换
@@ -2045,6 +2097,40 @@ class WebViewJsSourceService {
     if (!_ready.isCompleted) _ready.complete();
   }
 
+  String _computeScriptKey() {
+    final url = _loadedScriptUrlFromJs ?? _currentSettings?.scriptUrl ?? '';
+    return url;
+  }
+
+  Future<void> _loadStrategyCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final text = prefs.getString('webview_script_strategy_cache_v1');
+      if (text != null && text.isNotEmpty) {
+        final data = jsonDecode(text);
+        if (data is Map<String, dynamic>) {
+          _strategyCache = data;
+        }
+      }
+      print('🧠 [Strategy] 已加载策略缓存，条目数: ${_strategyCache.length}');
+    } catch (e) {
+      print('⚠️ [Strategy] 加载策略缓存失败: $e');
+      _strategyCache = <String, dynamic>{};
+    }
+  }
+
+  Future<void> _saveStrategyCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'webview_script_strategy_cache_v1',
+        jsonEncode(_strategyCache),
+      );
+    } catch (e) {
+      print('⚠️ [Strategy] 保存策略缓存失败: $e');
+    }
+  }
+
   /// 轻量探测：在 WebView 中重新扫描可用搜索函数
   Future<Map<String, dynamic>> detectAdapterFunctions() async {
     await _ready.future;
@@ -2096,6 +2182,28 @@ class WebViewJsSourceService {
 
     final escaped = keyword.replaceAll("'", " ");
     print('🔍 [WebViewJsSource] 转义后关键词: "$escaped"');
+
+    // 在JS环境中设置当前脚本Key与偏好策略（若有）
+    try {
+      final String key = _computeScriptKey();
+      final dynamic entry = key.isNotEmpty ? _strategyCache[key] : null;
+      final String pref =
+          (entry is Map && entry['strategyId'] is String)
+              ? (entry['strategyId'] as String)
+              : '';
+      final String jsPref =
+          "(function(){try{window.__currentScriptKey='" +
+          key.replaceAll("'", "") +
+          "'; window.__preferredStrategy='" +
+          pref.replaceAll("'", "") +
+          "'}catch(e){}})()";
+      await controller.runJavaScript(jsPref);
+      if (pref.isNotEmpty) {
+        print('🧠 [Strategy] 使用缓存策略: $pref (key=$key)');
+      }
+    } catch (e) {
+      print('⚠️ [Strategy] 注入偏好策略失败: $e');
+    }
 
     // 无论探测结果如何，优先尝试使用已注入的 grass 适配器
     if (!_hasValidAdapter) {

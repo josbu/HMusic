@@ -17,6 +17,11 @@ class SourceSettings {
   final String youTubeAudioQuality; // YouTube音频质量选择
   final bool enableTts; // 是否启用TTS文字转语音功能
   final String ttsTestText; // TTS测试文字
+  final bool useBuiltinScript; // 是否使用内置脚本（优先级高于scriptUrl）
+  final String
+  primarySource; // 主要音源选择: 'unified' | 'youtube' | 'js_external' | 'js_builtin'
+  final String
+  scriptPreset; // 预置脚本选择: 'xiaoqiu' | 'grass' | 'sixyin' | 'custom'
 
   const SourceSettings({
     this.enabled = true,
@@ -35,6 +40,9 @@ class SourceSettings {
     this.youTubeAudioQuality = '320k', // 默认使用320k高音质
     this.enableTts = false, // 默认关闭TTS功能
     this.ttsTestText = '你好，这是TTS测试', // 默认TTS测试文字
+    this.useBuiltinScript = true, // 默认使用内置脚本（LX Custom Source）
+    this.primarySource = 'unified', // 默认使用统一API
+    this.scriptPreset = 'xiaoqiu', // 默认选择 xiaoqiu.js
   });
 
   SourceSettings copyWith({
@@ -52,6 +60,9 @@ class SourceSettings {
     String? youTubeAudioQuality,
     bool? enableTts,
     String? ttsTestText,
+    bool? useBuiltinScript,
+    String? primarySource,
+    String? scriptPreset,
   }) {
     return SourceSettings(
       enabled: enabled ?? this.enabled,
@@ -69,6 +80,9 @@ class SourceSettings {
       youTubeAudioQuality: youTubeAudioQuality ?? this.youTubeAudioQuality,
       enableTts: enableTts ?? this.enableTts,
       ttsTestText: ttsTestText ?? this.ttsTestText,
+      useBuiltinScript: useBuiltinScript ?? this.useBuiltinScript,
+      primarySource: primarySource ?? this.primarySource,
+      scriptPreset: scriptPreset ?? this.scriptPreset,
     );
   }
 }
@@ -88,6 +102,9 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
   static const _kYouTubeAudioQuality = 'source_youtube_audio_quality';
   static const _kEnableTts = 'source_enable_tts';
   static const _kTtsTestText = 'source_tts_test_text';
+  static const _kUseBuiltinScript = 'source_use_builtin_script';
+  static const _kPrimarySource = 'source_primary_source';
+  static const _kScriptPreset = 'source_script_preset';
 
   bool _isLoaded = false;
   bool get isLoaded => _isLoaded;
@@ -113,8 +130,11 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       final youTubeAudioQuality = prefs.getString(_kYouTubeAudioQuality);
       final enableTts = prefs.getBool(_kEnableTts);
       final ttsTestText = prefs.getString(_kTtsTestText);
+      final useBuiltinScript = prefs.getBool(_kUseBuiltinScript);
+      final primarySource = prefs.getString(_kPrimarySource);
+      final scriptPreset = prefs.getString(_kScriptPreset);
 
-      print('🔧 [SourceSettings] 加载设置:');
+      print('[XMC] 🔧 [SourceSettings] 加载设置:');
       print('  - enabled: $enabled');
       print('  - useJsForSearch: $useJsSearch');
       print('  - jsOnlyNoFallback: $jsOnly');
@@ -124,17 +144,20 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       print('  - youTubeAudioQuality: $youTubeAudioQuality');
       print('  - enableTts: $enableTts');
       print('  - ttsTestText: $ttsTestText');
+      print('  - useBuiltinScript: $useBuiltinScript');
+      print('  - primarySource: $primarySource');
       print('  - 原始URL长度: ${scriptUrl?.length ?? 0}');
       print('  - 原始URL: $scriptUrl');
       print('  - unifiedApiBase: $unifiedApiBase');
+      print('  - scriptPreset: $scriptPreset');
 
       // 若用户未设置脚本 URL，则保留我们预设的镜像默认值
       final finalUrl =
           (scriptUrl == null || scriptUrl.isEmpty)
               ? state.scriptUrl
               : scriptUrl;
-      print('🔧 [SourceSettings] 最终URL长度: ${finalUrl.length}');
-      print('🔧 [SourceSettings] 最终URL: $finalUrl');
+      print('[XMC] 🔧 [SourceSettings] 最终URL长度: ${finalUrl.length}');
+      print('[XMC] 🔧 [SourceSettings] 最终URL: $finalUrl');
 
       state = state.copyWith(
         enabled: enabled ?? state.enabled,
@@ -152,16 +175,19 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
         youTubeAudioQuality: youTubeAudioQuality ?? state.youTubeAudioQuality,
         enableTts: enableTts ?? state.enableTts,
         ttsTestText: ttsTestText ?? state.ttsTestText,
+        useBuiltinScript: useBuiltinScript ?? state.useBuiltinScript,
+        primarySource: primarySource ?? state.primarySource,
+        scriptPreset: scriptPreset ?? state.scriptPreset,
       );
     } catch (e) {
-      print('❌ [SourceSettings] 加载设置失败: $e');
+      print('[XMC] ❌ [SourceSettings] 加载设置失败: $e');
     } finally {
       _isLoaded = true;
     }
   }
 
   Future<void> save(SourceSettings s) async {
-    print('🔧 [SourceSettings] 开始保存设置:');
+    print('[XMC] 🔧 [SourceSettings] 开始保存设置:');
     print('  - enabled: ${s.enabled}');
     print('  - useJsForSearch: ${s.useJsForSearch}');
     print('  - jsOnlyNoFallback: ${s.jsOnlyNoFallback}');
@@ -171,63 +197,77 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
     print('  - youTubeAudioQuality: ${s.youTubeAudioQuality}');
     print('  - enableTts: ${s.enableTts}');
     print('  - ttsTestText: ${s.ttsTestText}');
+    print('  - useBuiltinScript: ${s.useBuiltinScript}');
+    print('  - primarySource: ${s.primarySource}');
     print('  - scriptUrl长度: ${s.scriptUrl.length}');
     print('  - unifiedApiBase: ${s.unifiedApiBase}');
 
-    // 先更新state
-    state = s;
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-    final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kEnabled, s.enabled);
+      await prefs.setString(_kScriptUrl, s.scriptUrl);
+      await prefs.setString(_kPlatform, s.platform);
+      await prefs.setString(_kNetease, s.cookieNetease);
+      await prefs.setString(_kTencent, s.cookieTencent);
+      await prefs.setBool(_kUseJsForSearch, s.useJsForSearch);
+      await prefs.setBool(_kJsOnlyNoFallback, s.jsOnlyNoFallback);
+      await prefs.setBool(_kUseUnifiedApi, s.useUnifiedApi);
+      await prefs.setString(_kUnifiedApiBase, s.unifiedApiBase);
+      await prefs.setBool(_kUseYouTubeProxy, s.useYouTubeProxy);
+      await prefs.setString(_kYouTubeDownloadSource, s.youTubeDownloadSource);
+      await prefs.setString(_kYouTubeAudioQuality, s.youTubeAudioQuality);
+      await prefs.setBool(_kEnableTts, s.enableTts);
+      await prefs.setString(_kTtsTestText, s.ttsTestText);
+      await prefs.setBool(_kUseBuiltinScript, s.useBuiltinScript);
+      await prefs.setString(_kPrimarySource, s.primarySource);
+      await prefs.setString(_kScriptPreset, s.scriptPreset);
 
-    await prefs.setBool(_kEnabled, s.enabled);
-    await prefs.setString(_kScriptUrl, s.scriptUrl);
-    await prefs.setString(_kPlatform, s.platform);
-    await prefs.setString(_kNetease, s.cookieNetease);
-    await prefs.setString(_kTencent, s.cookieTencent);
-    await prefs.setBool(_kUseJsForSearch, s.useJsForSearch);
-    await prefs.setBool(_kJsOnlyNoFallback, s.jsOnlyNoFallback);
-    await prefs.setBool(_kUseUnifiedApi, s.useUnifiedApi);
-    await prefs.setString(_kUnifiedApiBase, s.unifiedApiBase);
-    await prefs.setBool(_kUseYouTubeProxy, s.useYouTubeProxy);
-    await prefs.setString(_kYouTubeDownloadSource, s.youTubeDownloadSource);
-    await prefs.setString(_kYouTubeAudioQuality, s.youTubeAudioQuality);
-    await prefs.setBool(_kEnableTts, s.enableTts);
-    await prefs.setString(_kTtsTestText, s.ttsTestText);
+      // 只有保存成功后才更新state
+      state = s;
 
-    // 立即验证保存是否成功
-    final savedEnabled = prefs.getBool(_kEnabled);
-    final savedUseJs = prefs.getBool(_kUseJsForSearch);
-    final savedJsOnly = prefs.getBool(_kJsOnlyNoFallback);
-    final savedUseUnified = prefs.getBool(_kUseUnifiedApi);
-    final savedUseYouTube = prefs.getBool(_kUseYouTubeProxy);
-    final savedYouTubeSource = prefs.getString(_kYouTubeDownloadSource);
-    final savedYouTubeQuality = prefs.getString(_kYouTubeAudioQuality);
-    final savedEnableTts = prefs.getBool(_kEnableTts);
-    final savedTtsTestText = prefs.getString(_kTtsTestText);
-    final savedUrl = prefs.getString(_kScriptUrl);
-    final savedApiBase = prefs.getString(_kUnifiedApiBase);
+      print('[XMC] 🔧 [SourceSettings] 设置保存成功');
+    } catch (e) {
+      print('[XMC] ❌ [SourceSettings] 保存设置失败: $e');
+      rethrow; // 重新抛出异常，让UI层处理
+    }
 
-    print('🔧 [SourceSettings] SharedPreferences保存验证:');
-    print('  - enabled: $savedEnabled');
-    print('  - useJsForSearch: $savedUseJs');
-    print('  - jsOnlyNoFallback: $savedJsOnly');
-    print('  - useUnifiedApi: $savedUseUnified');
-    print('  - useYouTubeProxy: $savedUseYouTube');
-    print('  - youTubeDownloadSource: $savedYouTubeSource');
-    print('  - youTubeAudioQuality: $savedYouTubeQuality');
-    print('  - enableTts: $savedEnableTts');
-    print('  - ttsTestText: $savedTtsTestText');
-    print('  - scriptUrl: $savedUrl');
-    print('  - unifiedApiBase: $savedApiBase');
+    // 验证保存结果
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedEnabled = prefs.getBool(_kEnabled);
+      final savedUseJs = prefs.getBool(_kUseJsForSearch);
+      final savedJsOnly = prefs.getBool(_kJsOnlyNoFallback);
+      final savedUseUnified = prefs.getBool(_kUseUnifiedApi);
+      final savedUseYouTube = prefs.getBool(_kUseYouTubeProxy);
+      final savedYouTubeSource = prefs.getString(_kYouTubeDownloadSource);
+      final savedYouTubeQuality = prefs.getString(_kYouTubeAudioQuality);
+      final savedEnableTts = prefs.getBool(_kEnableTts);
+      final savedTtsTestText = prefs.getString(_kTtsTestText);
+      final savedUseBuiltinScript = prefs.getBool(_kUseBuiltinScript);
+      final savedPrimarySource = prefs.getString(_kPrimarySource);
+      final savedUrl = prefs.getString(_kScriptUrl);
+      final savedApiBase = prefs.getString(_kUnifiedApiBase);
+      final savedScriptPreset = prefs.getString(_kScriptPreset);
 
-    print('🔧 [SourceSettings] 最终state状态:');
-    print('  - state.enabled: ${state.enabled}');
-    print('  - state.useJsForSearch: ${state.useJsForSearch}');
-    print('  - state.jsOnlyNoFallback: ${state.jsOnlyNoFallback}');
-    print('  - state.useUnifiedApi: ${state.useUnifiedApi}');
-    print('  - state.useYouTubeProxy: ${state.useYouTubeProxy}');
-    print('  - state.youTubeDownloadSource: ${state.youTubeDownloadSource}');
-    print('  - state.youTubeAudioQuality: ${state.youTubeAudioQuality}');
+      print('[XMC] 🔧 [SourceSettings] SharedPreferences保存验证:');
+      print('  - enabled: $savedEnabled');
+      print('  - useJsForSearch: $savedUseJs');
+      print('  - jsOnlyNoFallback: $savedJsOnly');
+      print('  - useUnifiedApi: $savedUseUnified');
+      print('  - useYouTubeProxy: $savedUseYouTube');
+      print('  - youTubeDownloadSource: $savedYouTubeSource');
+      print('  - youTubeAudioQuality: $savedYouTubeQuality');
+      print('  - enableTts: $savedEnableTts');
+      print('  - ttsTestText: $savedTtsTestText');
+      print('  - useBuiltinScript: $savedUseBuiltinScript');
+      print('  - primarySource: $savedPrimarySource');
+      print('  - scriptUrl: $savedUrl');
+      print('  - unifiedApiBase: $savedApiBase');
+      print('  - scriptPreset: $savedScriptPreset');
+    } catch (e) {
+      print('[XMC] ⚠️ [SourceSettings] 验证保存结果时出错: $e');
+    }
   }
 }
 

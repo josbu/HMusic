@@ -2,11 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/music.dart';
 import '../../data/models/online_music_result.dart';
 import '../../data/services/unified_api_service.dart';
-import '../../data/services/youtube_proxy_service.dart';
-import 'js_source_provider.dart';
 import 'source_settings_provider.dart';
-import 'dio_provider.dart';
 import '../../data/adapters/search_adapter.dart';
+import 'js_source_provider.dart';
 
 class MusicSearchState {
   final List<Music> searchResults;
@@ -51,13 +49,13 @@ class MusicSearchNotifier extends StateNotifier<MusicSearchState> {
       return;
     }
 
-    final apiService = ref.read(apiServiceProvider);
-    if (apiService == null) return;
+    // 仅保留统一API，不再依赖本地索引
+    // 统一API下无需预先读取服务，这里仅等待设置加载
 
     try {
       state = state.copyWith(isLoading: true, searchQuery: query, error: null);
-
-      final results = await apiService.searchMusic(query);
+      final unified = ref.read(unifiedApiServiceProvider);
+      final results = await unified.searchMusic(query: query, platform: 'qq');
       final musicList = SearchAdapter.parse(results);
 
       state = state.copyWith(
@@ -81,219 +79,204 @@ class MusicSearchNotifier extends StateNotifier<MusicSearchState> {
       return;
     }
 
-    final apiService = ref.read(apiServiceProvider);
-    if (apiService == null) return;
-
     try {
-      // ignore: avoid_print
-      print('🔍 searchOnline: start query="$query"');
+      print('[XMC] 🔍 searchOnline: start query="$query"');
       state = state.copyWith(isLoading: true, searchQuery: query, error: null);
-      final settings = ref.read(sourceSettingsProvider);
 
-      // 详细的设置状态调试
-      print('🔧 [MusicSearch] JS音源启用: ${settings.enabled}');
-      print('🔧 [MusicSearch] 使用JS搜索: ${settings.useJsForSearch}');
-      print('🔧 [MusicSearch] JS禁止回落: ${settings.jsOnlyNoFallback}');
-      print('🔧 [MusicSearch] 脚本URL非空: ${settings.scriptUrl.isNotEmpty}');
-      print('🔧 [MusicSearch] 使用统一API: ${settings.useUnifiedApi}');
-      print('🔧 [MusicSearch] 使用YouTube代理: ${settings.useYouTubeProxy}');
+      // 等待音源设置完成加载，避免读取到默认值
+      final settingsNotifier = ref.read(sourceSettingsProvider.notifier);
+      int __waitLoops = 0;
+      while (!settingsNotifier.isLoaded && __waitLoops < 20) {
+        await Future.delayed(const Duration(milliseconds: 50));
+        __waitLoops++;
+      }
+      var settings = ref.read(sourceSettingsProvider);
+
+      print('[XMC] 🔧 [MusicSearch] 主要音源: ${settings.primarySource}');
+      // JS音源是否启用由 primarySource 控制，不再单独依赖 enabled
+      print(
+        '[XMC] 🔧 [MusicSearch] JS音源启用(由primarySource推断): ${settings.primarySource == 'js_external'}',
+      );
+      print('[XMC] 🔧 [MusicSearch] 使用统一API: ${settings.useUnifiedApi}');
+      print('[XMC] 🔧 [MusicSearch] 统一API地址: ${settings.unifiedApiBase}');
 
       List<OnlineMusicResult> parsed = [];
-      bool usedSpecialSource = false;
 
-      // 🎯 线路0：YouTube代理搜索（需要翻墙）
-      if (settings.useYouTubeProxy) {
-        print('🌐 [MusicSearch] 线路0：使用YouTube代理进行搜索（需要翻墙）...');
-        final youtubeService = ref.read(youtubeProxyServiceProvider);
+      // 根据primarySource设置选择音源
+      if (settings.primarySource == 'js_external') {
+        print('[XMC] 🎵 [MusicSearch] 使用JS外置音源');
+        parsed = await _searchUsingJsSource(query, settings, ref);
 
-        try {
-          final results = await youtubeService
-              .searchMusic(query: query, maxResults: 20)
-              .timeout(
-                const Duration(seconds: 20),
-                onTimeout: () => <OnlineMusicResult>[],
-              );
-
-          print('🔍 [MusicSearch] YouTube代理返回 ${results.length} 个结果');
-          parsed = results;
-          usedSpecialSource = parsed.isNotEmpty;
-        } catch (e) {
-          print('❌ [MusicSearch] YouTube代理搜索异常: $e');
-          print('💡 [MusicSearch] 提示：YouTube代理需要翻墙才能正常使用');
+        // 如果JS音源搜索失败，回退到统一API
+        if (parsed.isEmpty && settings.useUnifiedApi) {
+          print('[XMC] 🔄 [MusicSearch] JS音源无结果，回退到统一API');
+          parsed = await _searchUsingUnifiedAPI(query, settings, ref);
         }
-      }
-      // 🎯 线路1：使用统一API (music.txqq.pro) - 仅在YouTube代理未成功时执行
-      if (!usedSpecialSource && settings.useUnifiedApi) {
-        print('🌐 [MusicSearch] 线路1：使用统一API进行搜索和播放...');
-        final unifiedService = ref.read(unifiedApiServiceProvider);
-
-        try {
-          final results = await unifiedService
-              .searchMusic(
-                query: query,
-                platform:
-                    settings.platform == 'auto' ? 'qq' : settings.platform,
-                page: 1,
-              )
-              .timeout(
-                const Duration(seconds: 15),
-                onTimeout: () => <OnlineMusicResult>[],
-              );
-
-          print('🔍 [MusicSearch] 统一API返回 ${results.length} 个结果');
-          parsed = results;
-          usedSpecialSource = parsed.isNotEmpty;
-        } catch (e) {
-          print('❌ [MusicSearch] 统一API搜索异常: $e');
-        }
-      }
-      // 🎯 线路2：使用JS源 - 仅在前面的特殊源都未成功时执行
-      else if (!usedSpecialSource) {
-        print('🌐 [MusicSearch] 线路2：使用JS源进行搜索和播放...');
-
-        // 修正条件：如果开启了JS only模式，应该强制使用JS搜索
-        bool shouldUseJs =
-            settings.enabled &&
-            settings.scriptUrl.isNotEmpty &&
-            (settings.useJsForSearch || settings.jsOnlyNoFallback);
-
-        print('🔧 [MusicSearch] 应该使用JS: $shouldUseJs');
-
-        if (shouldUseJs) {
-          print('🌐 [MusicSearch] 使用JS音源进行搜索...');
-          final webSvc = await ref.read(webviewJsSourceServiceProvider.future);
-          if (webSvc != null) {
-            try {
-              print('🔍 [MusicSearch] 开始WebView搜索，超时15秒...');
-              final list = await webSvc
-                  .search(query, platform: settings.platform)
-                  .timeout(
-                    const Duration(seconds: 15),
-                    onTimeout: () {
-                      print('⏰ [MusicSearch] WebView搜索超时');
-                      return const [];
-                    },
-                  );
-              print('🔍 searchOnline(webview): got ${list.length} items');
-              parsed =
-                  list
-                      .map((e) {
-                        final m = e;
-                        print('🔍 [MusicSearch] 原始WebView项目: $m');
-                        final platform =
-                            (m['platform'] ?? m['source'] ?? m['type'] ?? '')
-                                .toString();
-                        final id =
-                            (m['id'] ?? m['songmid'] ?? m['hash'] ?? '')
-                                .toString();
-                        final result = OnlineMusicResult(
-                          title: (m['title'] ?? m['name'] ?? '').toString(),
-                          author:
-                              (m['artist'] ?? m['singer'] ?? m['author'] ?? '')
-                                  .toString(),
-                          url: (m['url'] ?? m['link'] ?? '').toString(),
-                          picture: m['pic']?.toString(),
-                          link: m['link']?.toString(),
-                          platform: platform.isEmpty ? null : platform,
-                          songId: id.isEmpty ? null : id,
-                        );
-                        print(
-                          '🔍 [MusicSearch] 转换后: ${result.title} - ${result.author} - URL: ${result.url} - Platform: ${result.platform} - ID: ${result.songId}',
-                        );
-                        return result;
-                      })
-                      .where((e) => e.title.isNotEmpty)
-                      .toList();
-              usedSpecialSource = parsed.isNotEmpty;
-            } catch (e) {
-              print('❌ [MusicSearch] WebView搜索异常: $e');
-            }
-          }
-          if (!usedSpecialSource) {
-            final jsSvc = await ref.read(jsSourceServiceProvider.future);
-            if (jsSvc != null) {
-              try {
-                print('🔍 [MusicSearch] 开始LocalJS搜索，超时15秒...');
-                final list = await jsSvc
-                    .search(query, platform: settings.platform)
-                    .timeout(
-                      const Duration(seconds: 15),
-                      onTimeout: () {
-                        print('⏰ [MusicSearch] LocalJS搜索超时');
-                        return const [];
-                      },
-                    );
-                print('🔍 searchOnline(local_js): got ${list.length} items');
-                parsed =
-                    list
-                        .map((e) {
-                          final m = e;
-                          final platform =
-                              (m['platform'] ?? m['source'] ?? m['type'] ?? '')
-                                  .toString();
-                          final id =
-                              (m['id'] ?? m['songmid'] ?? m['hash'] ?? '')
-                                  .toString();
-                          return OnlineMusicResult(
-                            title: (m['title'] ?? m['name'] ?? '').toString(),
-                            author:
-                                (m['artist'] ??
-                                        m['singer'] ??
-                                        m['author'] ??
-                                        '')
-                                    .toString(),
-                            url: (m['url'] ?? m['link'] ?? '').toString(),
-                            picture: m['pic']?.toString(),
-                            link: m['link']?.toString(),
-                            platform: platform.isEmpty ? null : platform,
-                            songId: id.isEmpty ? null : id,
-                          );
-                        })
-                        .where((e) => e.title.isNotEmpty)
-                        .toList();
-                usedSpecialSource = parsed.isNotEmpty;
-              } catch (e) {
-                print('❌ [MusicSearch] LocalJS搜索异常: $e');
-              }
-            }
-          }
-        }
-      } // 结束 线路2：JS源
-
-      // 如果特殊音源（统一API或JS源）未提供有效结果，回落到内置接口
-      if (!usedSpecialSource) {
-        final jsOnly = settings.jsOnlyNoFallback || settings.useUnifiedApi;
-        if (jsOnly) {
-          // 仅特殊音源模式：直接返回空列表，不触发回退
-          state = state.copyWith(isLoading: false, onlineResults: const []);
-          print('🔍 searchOnline: 特殊音源模式，不使用内置回退');
-          return;
-        }
-        print('🔍 searchOnline(lx): request...');
-        final data = await apiService
-            .searchOnlineByTxqq(keyword: query)
-            .timeout(const Duration(seconds: 12), onTimeout: () => const []);
-        print('🔍 searchOnline(lx): got ${data.length} raw items');
-        parsed =
-            data
-                .whereType<Map>()
-                .map(
-                  (e) =>
-                      OnlineMusicResult.fromTxqqPro(e.cast<String, dynamic>()),
-                )
-                .toList();
+      } else if (settings.primarySource == 'unified' ||
+          settings.useUnifiedApi) {
+        print('[XMC] 🎵 [MusicSearch] 使用统一API');
+        parsed = await _searchUsingUnifiedAPI(query, settings, ref);
+      } else {
+        print('[XMC] ⚠️ [MusicSearch] 无可用音源，使用默认统一API');
+        parsed = await _searchUsingUnifiedAPI(query, settings, ref);
       }
 
       state = state.copyWith(isLoading: false, onlineResults: parsed);
-      print('🔍 searchOnline: done, parsed=${parsed.length}');
+      print('[XMC] 🔍 searchOnline: done, parsed=${parsed.length}');
     } catch (e) {
-      // ignore: avoid_print
-      print('🔍 searchOnline: error=$e');
+      print('[XMC] 🔍 searchOnline: error=$e');
       state = state.copyWith(
         isLoading: false,
         error: e.toString(),
         onlineResults: [],
       );
+    }
+  }
+
+  // JS音源搜索和统一API搜索
+
+  /// 使用JS音源进行搜索
+  Future<List<OnlineMusicResult>> _searchUsingJsSource(
+    String query,
+    SourceSettings settings,
+    Ref ref,
+  ) async {
+    try {
+      print('🎵 [MusicSearch] JS音源模式');
+
+      // 先尝试：隐藏 WebView JS（适配落雪/野草🌾）
+      try {
+        final webSvc = await ref.read(webviewJsSourceServiceProvider.future);
+        if (webSvc != null) {
+          final results = await webSvc
+              .search(
+                query,
+                // JS 模式下固定为 auto，让脚本自适应平台
+                platform: 'auto',
+                page: 1,
+              )
+              .timeout(
+                const Duration(seconds: 18),
+                onTimeout: () => <Map<String, dynamic>>[],
+              );
+
+          if (results.isNotEmpty) {
+            print('[XMC] 🔍 [MusicSearch] WebView JS返回 ${results.length} 个结果');
+            final converted =
+                results.map((item) {
+                  return OnlineMusicResult(
+                    songId: (item['songmid'] ?? item['id'] ?? '').toString(),
+                    title: (item['title'] ?? '未知标题').toString(),
+                    author:
+                        (item['artist'] ?? item['singer'] ?? '未知艺术家')
+                            .toString(),
+                    url: (item['url'] ?? item['link'] ?? '').toString(),
+                    album: (item['album'] ?? '').toString(),
+                    duration: _parseDuration(item['duration']),
+                    platform:
+                        (item['platform'] ?? settings.platform).toString(),
+                    extra: const {'sourceApi': 'js_builtin'},
+                  );
+                }).toList();
+            return converted;
+          }
+        }
+      } catch (e) {
+        print('[XMC] ⚠️ [MusicSearch] WebView JS搜索异常: $e');
+      }
+
+      // 回退：LocalJS
+      try {
+        final jsService = await ref.read(jsSourceServiceProvider.future);
+        if (jsService == null || !jsService.isReady) {
+          print('[XMC] ❌ [MusicSearch] LocalJS 音源不可用');
+          return [];
+        }
+        final results = await jsService
+            .search(
+              query,
+              platform: settings.platform == 'auto' ? 'qq' : settings.platform,
+              page: 1,
+            )
+            .timeout(
+              const Duration(seconds: 15),
+              onTimeout: () => <Map<String, dynamic>>[],
+            );
+        print('[XMC] 🔍 [MusicSearch] LocalJS 返回 ${results.length} 个结果');
+        final converted =
+            results.map((item) {
+              return OnlineMusicResult(
+                songId: item['id']?.toString() ?? '',
+                title: item['title']?.toString() ?? '未知标题',
+                author: item['artist']?.toString() ?? '未知艺术家',
+                url: item['url']?.toString() ?? '',
+                album: item['album']?.toString() ?? '',
+                duration: _parseDuration(item['duration']),
+                platform: item['platform']?.toString() ?? 'js',
+                extra: const {'sourceApi': 'js_builtin'},
+              );
+            }).toList();
+        return converted;
+      } catch (e) {
+        print('[XMC] ❌ [MusicSearch] LocalJS 搜索异常: $e');
+        return [];
+      }
+    } catch (e) {
+      print('[XMC] ❌ [MusicSearch] JS音源搜索失败: $e');
+      return [];
+    }
+  }
+
+  /// 解析持续时间
+  int _parseDuration(dynamic duration) {
+    if (duration == null) return 0;
+    if (duration is int) return duration;
+    if (duration is double) return duration.round();
+    if (duration is String) {
+      // 尝试解析 "mm:ss" 格式
+      final parts = duration.split(':');
+      if (parts.length == 2) {
+        final minutes = int.tryParse(parts[0]) ?? 0;
+        final seconds = int.tryParse(parts[1]) ?? 0;
+        return minutes * 60 + seconds;
+      }
+      // 尝试直接解析数字
+      return int.tryParse(duration) ?? 0;
+    }
+    return 0;
+  }
+
+  /// 使用统一API进行搜索
+  Future<List<OnlineMusicResult>> _searchUsingUnifiedAPI(
+    String query,
+    SourceSettings settings,
+    Ref ref,
+  ) async {
+    try {
+      print('🎵 [MusicSearch] 统一API模式');
+      final unifiedService = ref.read(unifiedApiServiceProvider);
+
+      try {
+        final results = await unifiedService
+            .searchMusic(
+              query: query,
+              platform: settings.platform == 'auto' ? 'qq' : settings.platform,
+              page: 1,
+            )
+            .timeout(
+              const Duration(seconds: 15),
+              onTimeout: () => <OnlineMusicResult>[],
+            );
+
+        print('[XMC] 🔍 [MusicSearch] 统一API返回 ${results.length} 个结果');
+        return results;
+      } catch (e) {
+        print('[XMC] ❌ [MusicSearch] 统一API搜索异常: $e');
+        return [];
+      }
+    } catch (e) {
+      print('[XMC] ❌ [MusicSearch] 统一API搜索失败: $e');
+      return [];
     }
   }
 
@@ -312,10 +295,7 @@ final unifiedApiServiceProvider = Provider<UnifiedApiService>((ref) {
   return UnifiedApiService(baseUrl: settings.unifiedApiBase);
 });
 
-// YouTube代理服务Provider
-final youtubeProxyServiceProvider = Provider<YouTubeProxyService>((ref) {
-  return YouTubeProxyService();
-});
+// 移除YouTube代理Provider，仅保留统一API
 
 final musicSearchProvider =
     StateNotifierProvider<MusicSearchNotifier, MusicSearchState>((ref) {

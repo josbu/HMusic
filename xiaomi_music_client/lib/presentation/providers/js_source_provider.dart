@@ -9,7 +9,9 @@ final jsSourceServiceProvider = FutureProvider<LocalJsSourceService?>((
   ref,
 ) async {
   final settings = ref.watch(sourceSettingsProvider);
-  if (!settings.enabled || settings.scriptUrl.isEmpty) return null;
+  final jsSelected =
+      settings.primarySource == 'js_external' || settings.enabled;
+  if (!jsSelected || settings.scriptUrl.isEmpty) return null;
   final svc = await LocalJsSourceService.create();
   await svc.loadScript(settings);
   if (!svc.isReady) return null;
@@ -26,8 +28,9 @@ final webviewJsSourceServiceProvider = FutureProvider<WebViewJsSourceService?>((
 ) async {
   final settings = ref.watch(sourceSettingsProvider);
   final ctrl = ref.watch(webviewJsSourceControllerProvider);
-  if (!settings.enabled || settings.scriptUrl.isEmpty || ctrl == null)
-    return null;
+  final jsSelected =
+      settings.primarySource == 'js_external' || settings.enabled;
+  if (!jsSelected || settings.scriptUrl.isEmpty || ctrl == null) return null;
   final svc = WebViewJsSourceService(ctrl);
   await svc.init(settings);
   return svc;
