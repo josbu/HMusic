@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class SourceSettings {
   final bool enabled;
-  final String scriptUrl; // 远程 JS 地址（如 sixyin latest.js）
+  final String scriptUrl; // 远程 JS 地址
   final String
   platform; // 可选：优先平台，如 'auto' | 'qq' | 'netease' | 'kuwo' | 'kugou'
   final String cookieNetease; // MUSIC_U=
@@ -20,8 +20,7 @@ class SourceSettings {
   final bool useBuiltinScript; // 是否使用内置脚本（优先级高于scriptUrl）
   final String
   primarySource; // 主要音源选择: 'unified' | 'youtube' | 'js_external' | 'js_builtin'
-  final String
-  scriptPreset; // 预置脚本选择: 'xiaoqiu' | 'grass' | 'sixyin' | 'custom'
+  final String scriptPreset; // 预置脚本选择: 'xiaoqiu' | 'grass' | 'custom'
 
   const SourceSettings({
     this.enabled = true,

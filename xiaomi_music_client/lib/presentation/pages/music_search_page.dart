@@ -712,19 +712,33 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
           // 🎯 播放成功后，询问是否下载到音乐库（可选）
           if (mounted) {
             print('[XMC] 📥 [Play] 询问是否下载到音乐库...');
-            final shouldDownload = await _showDownloadConfirmation(item.title);
-            if (shouldDownload) {
-              print('[XMC] 📥 [Play] 用户选择下载到音乐库');
+            final downloadResult = await _showDownloadWithQualitySelection(
+              item.title,
+              item,
+            );
+            if (downloadResult != null &&
+                downloadResult['shouldDownload'] == true) {
+              final selectedQuality = downloadResult['quality'] as String;
+              print('[XMC] 📥 [Play] 用户选择下载到音乐库，音质: $selectedQuality');
+
+              // 根据选择的音质重新获取播放链接
+              final qualityUrl = await _getPlayUrlWithQuality(
+                item,
+                selectedQuality,
+              );
+              final downloadUrl = qualityUrl ?? playUrl;
+
               await ref
                   .read(musicLibraryProvider.notifier)
-                  .downloadOneMusic(item.title, url: playUrl);
+                  .downloadOneMusic(item.title, url: downloadUrl);
 
               if (mounted) {
                 AppSnackBar.show(
                   context,
                   SnackBar(
-                    content: Text('已添加到音乐库: ${item.title}'),
+                    content: Text('已添加到音乐库: ${item.title} ($selectedQuality)'),
                     backgroundColor: Colors.blue,
+                    duration: Duration(seconds: 3),
                   ),
                 );
               }
@@ -1425,19 +1439,33 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
           // 🎯 播放成功后，询问是否下载到音乐库（可选）
           if (mounted) {
             print('[XMC] 📥 [Play] 询问是否下载到音乐库...');
-            final shouldDownload = await _showDownloadConfirmation(item.title);
-            if (shouldDownload) {
-              print('[XMC] 📥 [Play] 用户选择下载到音乐库');
+            final downloadResult = await _showDownloadWithQualitySelection(
+              item.title,
+              item,
+            );
+            if (downloadResult != null &&
+                downloadResult['shouldDownload'] == true) {
+              final selectedQuality = downloadResult['quality'] as String;
+              print('[XMC] 📥 [Play] 用户选择下载到音乐库，音质: $selectedQuality');
+
+              // 根据选择的音质重新获取播放链接
+              final qualityUrl = await _getPlayUrlWithQuality(
+                item,
+                selectedQuality,
+              );
+              final downloadUrl = qualityUrl ?? playUrl;
+
               await ref
                   .read(musicLibraryProvider.notifier)
-                  .downloadOneMusic(item.title, url: playUrl);
+                  .downloadOneMusic(item.title, url: downloadUrl);
 
               if (mounted) {
                 AppSnackBar.show(
                   context,
                   SnackBar(
-                    content: Text('已添加到音乐库: ${item.title}'),
+                    content: Text('已添加到音乐库: ${item.title} ($selectedQuality)'),
                     backgroundColor: Colors.blue,
+                    duration: Duration(seconds: 3),
                   ),
                 );
               }
@@ -1582,61 +1610,266 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
   }
 
   // 🎯 新增：显示下载确认对话框
+  /// 音质选项定义
+  static const List<Map<String, String>> qualityOptions = [
+    {'value': '128k', 'label': '标准音质 (128k)', 'description': '文件小，流畅播放'},
+    {'value': '320k', 'label': '高品质 (320k)', 'description': '推荐选择，音质与大小平衡'},
+    {'value': 'flac', 'label': '无损音质 (FLAC)', 'description': '完美音质，文件较大'},
+    {
+      'value': 'flac24bit',
+      'label': '超高音质 (Hi-Res)',
+      'description': '发烧友级别，需要会员',
+    },
+  ];
+
+  Future<Map<String, dynamic>?> _showDownloadWithQualitySelection(
+    String musicTitle,
+    OnlineMusicResult item,
+  ) async {
+    String selectedQuality = '320k'; // 默认选择320k
+
+    return await showDialog<Map<String, dynamic>?>(
+      context: context,
+      builder:
+          (context) => StatefulBuilder(
+            builder:
+                (context, setState) => AlertDialog(
+                  backgroundColor: Theme.of(context).colorScheme.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  title: Row(
+                    children: [
+                      Icon(
+                        Icons.library_music,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 24,
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '下载到音乐库',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  content: SizedBox(
+                    width: double.maxFinite,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '将 "$musicTitle" 添加到音乐库',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontSize: 14,
+                          ),
+                        ),
+                        SizedBox(height: 16),
+                        Text(
+                          '选择音质：',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outline.withOpacity(0.3),
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            children:
+                                qualityOptions.map((option) {
+                                  final isSelected =
+                                      selectedQuality == option['value'];
+                                  return InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        selectedQuality = option['value']!;
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            isSelected
+                                                ? Theme.of(context)
+                                                    .colorScheme
+                                                    .primary
+                                                    .withOpacity(0.1)
+                                                : Colors.transparent,
+                                        border:
+                                            option != qualityOptions.last
+                                                ? Border(
+                                                  bottom: BorderSide(
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .outline
+                                                        .withOpacity(0.2),
+                                                    width: 0.5,
+                                                  ),
+                                                )
+                                                : null,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Radio<String>(
+                                            value: option['value']!,
+                                            groupValue: selectedQuality,
+                                            onChanged: (value) {
+                                              setState(() {
+                                                selectedQuality = value!;
+                                              });
+                                            },
+                                            activeColor:
+                                                Theme.of(
+                                                  context,
+                                                ).colorScheme.primary,
+                                          ),
+                                          SizedBox(width: 8),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  option['label']!,
+                                                  style: TextStyle(
+                                                    color:
+                                                        Theme.of(
+                                                          context,
+                                                        ).colorScheme.onSurface,
+                                                    fontSize: 14,
+                                                    fontWeight:
+                                                        isSelected
+                                                            ? FontWeight.w500
+                                                            : FontWeight.normal,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  option['description']!,
+                                                  style: TextStyle(
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .onSurface
+                                                        .withOpacity(0.6),
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(null),
+                      child: Text(
+                        '取消',
+                        style: TextStyle(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed:
+                          () => Navigator.of(context).pop({
+                            'shouldDownload': true,
+                            'quality': selectedQuality,
+                            'item': item,
+                          }),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: Text(
+                        '开始下载',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onPrimary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+          ),
+    );
+  }
+
+  /// 保留原有的简单下载确认方法，用于向后兼容
   Future<bool> _showDownloadConfirmation(String musicTitle) async {
-    return await showDialog<bool>(
-          context: context,
-          builder:
-              (context) => AlertDialog(
-                backgroundColor: Theme.of(context).colorScheme.surface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                title: Text(
-                  '添加到音乐库',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                content: Text(
-                  '是否将 "$musicTitle" 添加到音乐库？',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: Text(
-                      '取消',
-                      style: TextStyle(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onSurface.withOpacity(0.6),
-                      ),
-                    ),
-                  ),
-                  ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    child: Text(
-                      '添加',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onPrimary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-        ) ??
-        false;
+    final result = await _showDownloadWithQualitySelection(
+      musicTitle,
+      OnlineMusicResult(
+        title: musicTitle,
+        author: '未知艺术家',
+        url: '',
+        platform: 'unknown',
+        songId: '',
+      ),
+    );
+    return result != null && result['shouldDownload'] == true;
+  }
+
+  /// 根据指定音质获取播放链接
+  Future<String?> _getPlayUrlWithQuality(
+    OnlineMusicResult item,
+    String quality,
+  ) async {
+    try {
+      print('[XMC] 🎵 [QualityDownload] 获取 ${item.title} 的 $quality 音质链接...');
+
+      final webSvc = await ref.read(webviewJsSourceServiceProvider.future);
+      if (webSvc == null) {
+        throw Exception('WebView服务未就绪');
+      }
+
+      // 通过WebView JS源获取指定音质的播放链接
+      final directUrl = await webSvc.resolveMusicUrl(
+        platform: item.platform == 'auto' ? 'tx' : (item.platform ?? 'tx'),
+        songId: item.songId ?? '',
+        quality: quality,
+      );
+
+      if (directUrl != null && directUrl.isNotEmpty) {
+        print('[XMC] ✅ [QualityDownload] 获取 $quality 音质链接成功');
+        return directUrl;
+      }
+
+      throw Exception('获取音质链接失败');
+    } catch (e) {
+      print('[XMC] ❌ [QualityDownload] 获取 $quality 音质链接失败: $e');
+      // 如果指定音质获取失败，返回null（使用原有链接）
+      return null;
+    }
   }
 
   // 🎯 新增：尝试获取直接音频流链接
@@ -1671,7 +1904,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
     throw Exception('无法获取直接音频流链接');
   }
 
-  // 🎯 新增：尝试使用lx-custom-source.js获取直接音频流链接
+  // 🎯 尝试通过WebView JS源获取直接音频流链接
   Future<String?> _getDirectStreamViaLxScript(OnlineMusicResult item) async {
     try {
       final webSvc = await ref.read(webviewJsSourceServiceProvider.future);

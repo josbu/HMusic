@@ -56,8 +56,185 @@ class WebViewJsSourceService {
   SourceSettings? _currentSettings;
   String? _loadedScriptUrlFromJs;
   Map<String, dynamic> _strategyCache = <String, dynamic>{};
+  String? _currentApiKey; // 存储当前脚本的API密钥
+  String? _currentScriptContent; // 存储当前脚本内容
 
   WebViewJsSourceService(this.controller);
+
+  /// 从文本中提取指定关键字后的引号值
+  String? _extractQuotedValue(String content, String keyword) {
+    try {
+      // 查找关键字位置
+      int index = content.indexOf(keyword);
+      if (index == -1) return null;
+
+      // 从关键字位置开始搜索引号
+      final substring = content.substring(index);
+
+      // 查找引号并提取值
+      final quotes = ['"', "'", '`'];
+      for (final quote in quotes) {
+        // 寻找等号或冒号后的引号开始
+        int eqIndex = substring.indexOf('=');
+        int colonIndex = substring.indexOf(':');
+
+        // 选择最近的分隔符
+        int separatorIndex = -1;
+        if (eqIndex != -1 && colonIndex != -1) {
+          separatorIndex = eqIndex < colonIndex ? eqIndex : colonIndex;
+        } else if (eqIndex != -1) {
+          separatorIndex = eqIndex;
+        } else if (colonIndex != -1) {
+          separatorIndex = colonIndex;
+        }
+
+        if (separatorIndex == -1) continue;
+
+        final afterSeparator = substring.substring(separatorIndex + 1);
+        final startIndex = afterSeparator.indexOf(quote);
+        if (startIndex == -1) continue;
+
+        final endIndex = afterSeparator.indexOf(quote, startIndex + 1);
+        if (endIndex == -1) continue;
+
+        final value = afterSeparator.substring(startIndex + 1, endIndex);
+        print('🔍 [KeyExtractor] 找到候选值: "$value" (关键字: $keyword)');
+
+        // 验证密钥格式：只接受英文字母数字组合，长度3-50
+        if (value.isNotEmpty &&
+            value.length >= 3 &&
+            value.length <= 50 &&
+            !value.contains(' ') &&
+            !value.contains('音乐') && // 排除中文标识符
+            !value.contains('小秋') && // 排除脚本名称
+            !value.contains('music') && // 排除一般性描述
+            RegExp(r'^[a-zA-Z0-9\-_]+$').hasMatch(value)) {
+          print('✅ [KeyExtractor] 验证通过: "$value"');
+          return value;
+        } else {
+          print('❌ [KeyExtractor] 验证失败: "$value" (可能是中文或无效格式)');
+        }
+      }
+
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// 从脚本内容中提取API密钥
+  String? _extractApiKeyFromScript() {
+    if (_currentScriptContent == null) {
+      print('❌ [KeyExtractor] 脚本内容为空');
+      return null;
+    }
+
+    try {
+      final content = _currentScriptContent!;
+      print('🔍 [KeyExtractor] 开始分析脚本内容，长度: ${content.length}');
+
+      // 1. 检测明文JS的API_KEY模式
+      final apiKeySearch = _extractQuotedValue(content, 'API_KEY');
+      if (apiKeySearch != null) {
+        print('🔑 [KeyExtractor] 明文API_KEY提取到密钥: $apiKeySearch');
+        return apiKeySearch;
+      }
+
+      // 2. 检测X-Request-Key模式
+      final requestKeySearch = _extractQuotedValue(content, 'X-Request-Key');
+      if (requestKeySearch != null) {
+        print('🔑 [KeyExtractor] X-Request-Key提取到密钥: $requestKeySearch');
+        return requestKeySearch;
+      }
+
+      // 3. 特殊已知密钥检测
+      if (content.contains('share-v2')) {
+        print('🔑 [KeyExtractor] 检测到已知密钥: share-v2');
+        return 'share-v2';
+      }
+
+      // 4. 根据脚本URL特征判断
+      if (_loadedScriptUrlFromJs != null) {
+        final scriptUrl = _loadedScriptUrlFromJs!.toLowerCase();
+        if (scriptUrl.contains('xiaoqiu')) {
+          print('🔑 [KeyExtractor] xiaoqiu脚本使用已知密钥: share-v2');
+          return 'share-v2';
+        }
+      }
+
+      print('❌ [KeyExtractor] 未找到有效密钥，脚本可能已加密或使用未知格式');
+      return null;
+    } catch (e) {
+      print('❌ [KeyExtractor] 密钥提取异常: $e');
+      return null;
+    }
+  }
+
+  /// 注入运行时密钥监听器，用于捕获加密脚本中的API密钥
+  Future<void> _injectRuntimeKeyListener(WebViewController controller) async {
+    try {
+      print('🔍 [RuntimeKeyListener] 注入密钥监听器，用于加密脚本');
+
+      await controller.runJavaScript(r'''
+        (function() {
+          // 拦截原始fetch函数
+          if (typeof window.originalFetch === 'undefined') {
+            window.originalFetch = window.fetch;
+            
+            window.fetch = function(url, options) {
+              try {
+                // 检查是否是LX Music API请求
+                if (url && typeof url === 'string' && 
+                    (url.includes('/url/') || url.includes('/search/'))) {
+                  
+                  // 提取X-Request-Key
+                  if (options && options.headers) {
+                    const headers = options.headers;
+                    let extractedKey = null;
+                    
+                    // 检查不同格式的headers
+                    if (typeof headers === 'object') {
+                      // 对象格式: { "X-Request-Key": "value" }
+                      for (const key in headers) {
+                        if (key === 'X-Request-Key' || key === 'x-request-key') {
+                          extractedKey = headers[key];
+                          break;
+                        }
+                      }
+                      
+                      // Headers实例
+                      if (headers.get && typeof headers.get === 'function') {
+                        extractedKey = headers.get('X-Request-Key') || headers.get('x-request-key');
+                      }
+                    }
+                    
+                    // 发现密钥时通知Flutter
+                    if (extractedKey && extractedKey.length > 3) {
+                      console.log('[RuntimeKeyListener] 捕获到API密钥:', extractedKey);
+                      try {
+                        JSBridge.postMessage('runtime_key_found:' + extractedKey);
+                      } catch(e) {
+                        console.warn('[RuntimeKeyListener] 密钥传递失败:', e);
+                      }
+                    }
+                  }
+                }
+              } catch(e) {
+                console.warn('[RuntimeKeyListener] 监听异常:', e);
+              }
+              
+              // 继续执行原始请求
+              return window.originalFetch.apply(this, arguments);
+            };
+            
+            console.log('[RuntimeKeyListener] 密钥监听器已注入');
+          }
+        })();
+      ''');
+    } catch (e) {
+      print('❌ [RuntimeKeyListener] 注入失败: $e');
+    }
+  }
 
   void _completeSearchResult(List<Map<String, dynamic>> results) {
     if (_pendingSearchCompleter != null &&
@@ -91,23 +268,26 @@ class WebViewJsSourceService {
       if (text != null && text.isNotEmpty) {
         print('✅ [WebViewJsSource] 内置野草🌾脚本下载成功，长度: ${text.length}');
         // 使用解码器处理可能的混淆
-        return GrassSourceDecoder.decodeAndPrepareScript(text);
+        final decodedScript = GrassSourceDecoder.decodeAndPrepareScript(text);
+        // 从内置脚本提取密钥
+        if (decodedScript != null) {
+          _currentScriptContent = decodedScript;
+          _currentApiKey = _extractApiKeyFromScript();
+          if (_currentApiKey != null) {
+            print('✅ [WebViewJsSource] 内置脚本API密钥: $_currentApiKey');
+          } else {
+            print('⚠️ [WebViewJsSource] 内置脚本未找到API密钥');
+          }
+        }
+        return decodedScript;
       }
       print('⚠️ [WebViewJsSource] 野草🌾源下载失败，回退到旧的本地资产脚本');
     } catch (e) {
       print('⚠️ [WebViewJsSource] 下载野草🌾源异常: $e');
     }
 
-    // 回退：使用旧的本地资产脚本
-    try {
-      final scriptContent = await rootBundle.loadString(
-        'assets/js/lx-custom-source.js',
-      );
-      print('✅ [WebViewJsSource] 本地资产脚本加载成功，长度: ${scriptContent.length}');
-      return scriptContent;
-    } catch (e) {
-      print('❌ [WebViewJsSource] 本地资产脚本也加载失败: $e');
-    }
+    // 不再使用本地资产脚本，直接返回错误
+    print('❌ [WebViewJsSource] 所有脚本源加载失败');
     return null;
   }
 
@@ -183,9 +363,20 @@ class WebViewJsSourceService {
 
     // 注册适配器状态桥接器
     await controller.addJavaScriptChannel(
-      'SixyinBridge',
+      'JSBridge',
       onMessageReceived: (msg) {
-        print('📨 [SixyinBridge] 收到消息: ${msg.message}');
+        print('📨 [JSBridge] 收到消息: ${msg.message}');
+
+        // 检查运行时密钥捕获
+        if (msg.message.startsWith('runtime_key_found:')) {
+          final key = msg.message.substring('runtime_key_found:'.length);
+          if (key.isNotEmpty && key.length > 3) {
+            _currentApiKey = key;
+            print('🔑 [RuntimeKeyListener] 成功捕获加密脚本密钥: $key');
+          }
+          return;
+        }
+
         // 检查适配器状态
         if (msg.message.startsWith('loaded:')) {
           _loadedScriptUrlFromJs = msg.message.substring('loaded:'.length);
@@ -252,19 +443,19 @@ class WebViewJsSourceService {
             resultJson = payload.substring(sep + 1);
             if (_activeSearchId != null && incomingId != _activeSearchId) {
               print(
-                '⚠️ [SixyinBridge] 丢弃过期搜索结果 id=$incomingId, 当前=${_activeSearchId}',
+                '⚠️ [JSBridge] 丢弃过期搜索结果 id=$incomingId, 当前=${_activeSearchId}',
               );
               return;
             }
           } else {
             // 无ID旧格式：若当前存在活动ID，则仅当无并发时接受
             if (_activeSearchId != null) {
-              print('⚠️ [SixyinBridge] 无ID结果在并发期间到达，已忽略');
+              print('⚠️ [JSBridge] 无ID结果在并发期间到达，已忽略');
               return;
             }
           }
 
-          print('🔍 [SixyinBridge] 收到搜索结果: ${resultJson.length} 字符');
+          print('🔍 [JSBridge] 收到搜索结果: ${resultJson.length} 字符');
           try {
             final parsed = jsonDecode(resultJson);
             if (parsed is List) {
@@ -273,12 +464,12 @@ class WebViewJsSourceService {
                       .where((e) => e is Map)
                       .map((e) => (e as Map).cast<String, dynamic>())
                       .toList();
-              print('✅ [SixyinBridge] 解析搜索结果: ${results.length} 项');
+              print('✅ [JSBridge] 解析搜索结果: ${results.length} 项');
               // 如果有等待中的搜索，完成它
               _completeSearchResult(results);
             }
           } catch (e) {
-            print('⚠️ [SixyinBridge] 解析搜索结果失败: $e');
+            print('⚠️ [JSBridge] 解析搜索结果失败: $e');
             _completeSearchResult(<Map<String, dynamic>>[]);
           } finally {
             // 本次搜索完成，清空活动ID
@@ -297,7 +488,7 @@ class WebViewJsSourceService {
             return;
           }
 
-          print('🔗 [SixyinBridge] 收到URL解析结果: $url');
+          print('🔗 [JSBridge] 收到URL解析结果: $url');
 
           // 检查是否是回退的酷我音乐链接
           if (url.contains('kuwo.cn')) {
@@ -373,16 +564,21 @@ class WebViewJsSourceService {
           headers.putIfAbsent('Pragma', () => 'no-cache');
 
           // 若为 LX Music API 相关请求，自动补齐认证头
-          try {
-            final lowerUrl = url.toLowerCase();
-            final isLxApi =
-                lowerUrl.contains('/url/') || lowerUrl.contains('/search/');
-            if (isLxApi) {
-              headers.putIfAbsent('X-Request-Key', () => '3.141592653');
-              // 模拟 LX 客户端 UA
-              headers['User-Agent'] = 'lx-music-request/2.4.0';
+          final lowerUrl = url.toLowerCase();
+          final isLxApi =
+              lowerUrl.contains('/url/') || lowerUrl.contains('/search/');
+          if (isLxApi) {
+            // 检查是否有有效的API密钥
+            if (_currentApiKey == null || _currentApiKey!.isEmpty) {
+              print('❌ [NetworkBridge] 缺少有效API密钥，拒绝请求: $url');
+              throw Exception('缺少有效的API密钥，无法访问LX Music API');
             }
-          } catch (_) {}
+
+            headers.putIfAbsent('X-Request-Key', () => _currentApiKey!);
+            // 模拟 LX 客户端 UA
+            headers['User-Agent'] = 'lx-music-request/2.4.0';
+            print('🔑 [NetworkBridge] 使用提取的API密钥: $_currentApiKey');
+          }
 
           // 使用Dio执行请求
           final dio = Dio(
@@ -429,6 +625,23 @@ class WebViewJsSourceService {
           print(
             '📦 [NetworkBridge] 响应长度: ${response.data?.toString().length ?? 0}',
           );
+
+          // 特别打印音乐API的返回结果
+          if (url.contains('lxmusicapi.onrender.com')) {
+            print('🎵 [MusicAPI] URL: $url');
+            print('🎵 [MusicAPI] 返回数据: ${response.data}');
+            try {
+              final apiResult = jsonDecode(response.data.toString());
+              print('🎵 [MusicAPI] 解析结果: $apiResult');
+              if (apiResult['data'] != null) {
+                print(
+                  '🎵 [MusicAPI] 播放链接: ${apiResult['data']['url'] ?? apiResult['data']}',
+                );
+              }
+            } catch (parseError) {
+              print('🎵 [MusicAPI] JSON解析失败: $parseError');
+            }
+          }
 
           // 返回结果给JS
           final result = {
@@ -492,26 +705,17 @@ class WebViewJsSourceService {
       // 当为六音默认地址时，追加 jsDelivr 镜像
       // 添加多个可靠的镜像源，优先使用支持完整功能的脚本
       final fallbackUrls = [
-        // grass - 野草🌾源（默认首选）
+        // xiaoqiu.js - 优先选择，支持完整功能
+        'https://fastly.jsdelivr.net/gh/Huibq/keep-alive/Music_Free/xiaoqiu.js',
+        'https://cdn.jsdelivr.net/gh/Huibq/keep-alive/Music_Free/xiaoqiu.js',
+        'https://raw.githubusercontent.com/Huibq/keep-alive/main/Music_Free/xiaoqiu.js',
+        // grass - 野草🌾源（备用）
         'https://ghproxy.net/raw.githubusercontent.com/pdone/lx-music-source/main/grass/latest.js',
         'https://cdn.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
         'https://fastly.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
         'https://gcore.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
         'https://testingcf.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
         'https://raw.githubusercontent.com/pdone/lx-music-source/main/grass/latest.js',
-        // xiaoqiu.js - 支持完整的搜索和URL解析功能
-        'https://fastly.jsdelivr.net/gh/Huibq/keep-alive/Music_Free/xiaoqiu.js',
-        'https://cdn.jsdelivr.net/gh/Huibq/keep-alive/Music_Free/xiaoqiu.js',
-        'https://raw.githubusercontent.com/Huibq/keep-alive/main/Music_Free/xiaoqiu.js',
-        // sixyin - 仅搜索功能，作为备用
-        'https://cdn.jsdelivr.net/gh/pdone/lx-music-source/sixyin/latest.js',
-        'https://fastly.jsdelivr.net/gh/pdone/lx-music-source/sixyin/latest.js',
-        'https://gcore.jsdelivr.net/gh/pdone/lx-music-source/sixyin/latest.js',
-        'https://testingcf.jsdelivr.net/gh/pdone/lx-music-source/sixyin/latest.js',
-        // GitHub原始文件（备用）
-        'https://raw.githubusercontent.com/pdone/lx-music-source/main/sixyin/latest.js',
-        // 自定义CDN（备用）
-        'https://gitee.com/pdone/lx-music-source/raw/main/sixyin/latest.js',
       ];
 
       // 如果当前URL不在fallback列表中，则添加所有fallback
@@ -523,25 +727,44 @@ class WebViewJsSourceService {
       }
       // 根据设置选择脚本源
       String? scriptText;
-      // 在使用 JS 外置音源进行“搜索”时，优先使用远程脚本（如 xiaoqiu.js）
-      final preferRemoteForSearch =
-          settings.useJsForSearch == true ||
-          settings.primarySource == 'js_external';
-      if (settings.useBuiltinScript && !preferRemoteForSearch) {
-        // 仅在不需要JS搜索时才加载内置脚本
+
+      // 检查用户是否选择了具体的脚本URL
+      final hasUserScriptUrl =
+          settings.scriptUrl.isNotEmpty && settings.scriptUrl != 'builtin';
+
+      if (hasUserScriptUrl) {
+        // 用户明确选择了脚本URL，优先使用用户选择
+        print('🎯 [WebViewJsSource] 用户选择脚本: ${settings.scriptUrl}');
+        scriptText = await _downloadScriptWithFallback(urls);
+      } else if (settings.useBuiltinScript) {
+        // 只有在用户没有选择具体脚本时才使用内置野草源
+        print('🌾 [WebViewJsSource] 使用内置野草源');
         scriptText = await _loadBuiltinScript();
         if (scriptText == null || scriptText.isEmpty) {
           print('⚠️ [WebViewJsSource] 内置脚本加载失败，回退到远程脚本');
           scriptText = await _downloadScriptWithFallback(urls);
         }
       } else {
-        // 搜索阶段或外置模式，使用远程脚本
+        // 默认使用远程脚本
+        print('🌐 [WebViewJsSource] 使用远程脚本');
         scriptText = await _downloadScriptWithFallback(urls);
       }
 
       if (scriptText != null && scriptText.isNotEmpty) {
-        final sourceType = settings.useBuiltinScript ? "内置脚本" : "远程脚本";
+        final sourceType =
+            hasUserScriptUrl
+                ? "用户脚本"
+                : (settings.useBuiltinScript ? "内置脚本" : "远程脚本");
         print('📥 [WebViewJsSource] $sourceType 已加载，直接注入执行');
+
+        // 保存脚本内容并提取API密钥
+        _currentScriptContent = scriptText;
+        _currentApiKey = _extractApiKeyFromScript();
+        if (_currentApiKey != null) {
+          print('✅ [WebViewJsSource] 成功提取API密钥: $_currentApiKey');
+        } else {
+          print('⚠️ [WebViewJsSource] 未能提取API密钥，API请求可能失败');
+        }
         const String lxShim = r'''(function(){
           try{
             var g = (typeof globalThis !== 'undefined') ? globalThis : (this||{});
@@ -881,6 +1104,12 @@ class WebViewJsSourceService {
         })()''';
         await controller.runJavaScript(commonJsShim);
         await controller.runJavaScript(scriptText);
+
+        // 如果没有提取到密钥，注入运行时监听器捕获加密脚本的密钥
+        if (_currentApiKey == null) {
+          await _injectRuntimeKeyListener(controller);
+        }
+
         // 将 CommonJS 导出的函数提升到全局，便于后续检测与调用
         await controller.runJavaScript(r'''(function(){
           try{
@@ -915,7 +1144,7 @@ class WebViewJsSourceService {
               }catch(_){ }
               try{
                 var found=[]; 
-                var c=['sixyinSearch','sixyinSearchImpl','search','musicSearch','searchMusic'];
+                var c=['search','searchImpl','search','musicSearch','searchMusic'];
                 for(var i=0;i<c.length;i++){ 
                   try{ 
                     var f=eval(c[i]); 
@@ -950,7 +1179,7 @@ class WebViewJsSourceService {
                 
                 if(found.length){
                   console.log('[延迟探测] ✅ 发现函数:', found.join(','));
-                  try{ SixyinBridge.postMessage('adapter_found:'+found.join(',')); }catch(_){ }
+                  try{ JSBridge.postMessage('adapter_found:'+found.join(',')); }catch(_){ }
                   clearInterval(timer);
                 } else if(attempts % 5 === 0) {
                   console.log('[延迟探测] 尝试', attempts, '/30, 等待草莓源初始化...');
@@ -973,7 +1202,7 @@ class WebViewJsSourceService {
             try{ 
               console.log('[Grass检测] 开始全面函数扫描...');
               const found=[]; 
-              const c=['sixyinSearch','sixyinSearchImpl','search','musicSearch','searchMusic']; 
+              const c=['search','searchImpl','search','musicSearch','searchMusic']; 
               for(const n of c){ 
                 try{ 
                   const f=eval(n); 
@@ -1015,7 +1244,7 @@ class WebViewJsSourceService {
               try{
                 console.log('[Grass检测] 开始智能Grass源检测...');
                 let grassCandidates = [];
-                const blacklist = ['fetch', 'sixyinSearch', 'sixyinAutoSearch', 'require', 'eval', 'setTimeout', 'setInterval', 'Promise', 'XMLHttpRequest', 'grassSearch', 'grassAutoSearch', '__ensureHoisted', 'normalizeGrassResult', 'normalizeGrassItem', '__networkCallback'];
+                const blacklist = ['fetch', 'search', 'autoSearch', 'require', 'eval', 'setTimeout', 'setInterval', 'Promise', 'XMLHttpRequest', 'grassSearch', 'grassAutoSearch', '__ensureHoisted', 'normalizeGrassResult', 'normalizeGrassItem', '__networkCallback'];
                 let totalFunctions = 0;
                 
                 for(const k in window){ 
@@ -1032,7 +1261,7 @@ class WebViewJsSourceService {
                       if(funcStr.length > 1500 && 
                          !funcStr.includes('[native code]') &&
                          !funcStr.includes('function fetch') &&
-                         !funcStr.includes('SixyinBridge') &&
+                         !funcStr.includes('JSBridge') &&
                          !funcStr.includes('NetworkBridge')
                       ){
                         // 检查是否包含音乐相关特征
@@ -1099,7 +1328,7 @@ class WebViewJsSourceService {
                         const funcStr = window[k].toString();
                         if(funcStr.length > 800 && 
                            !funcStr.includes('[native code]') &&
-                           !funcStr.includes('SixyinBridge') &&
+                           !funcStr.includes('JSBridge') &&
                            (funcStr.includes('search') || 
                             funcStr.includes('music') || 
                             funcStr.includes('0x') ||
@@ -1165,7 +1394,7 @@ class WebViewJsSourceService {
               
               if(found.length){ 
                 console.log('[Grass检测] ✅ 总共发现函数:', found);
-                SixyinBridge.postMessage('adapter_found:'+found.join(',')); 
+                JSBridge.postMessage('adapter_found:'+found.join(',')); 
                 return;
               } 
               
@@ -1177,10 +1406,10 @@ class WebViewJsSourceService {
                 }catch(e){} 
               } 
               console.log('[Grass检测] 通用扫描结果:', g);
-              SixyinBridge.postMessage('adapter_found:'+g.join(',')); 
+              JSBridge.postMessage('adapter_found:'+g.join(',')); 
             }catch(e){ 
               console.error('[Grass检测] 全局异常:', e);
-              SixyinBridge.postMessage('adapter_found:'); 
+              JSBridge.postMessage('adapter_found:'); 
             } 
           })()
         ''');
@@ -1193,16 +1422,16 @@ class WebViewJsSourceService {
         final js =
             "(async()=>{const urls=[" +
             escapedList +
-            "]; const safePost=(m)=>{try{ if(window.SixyinBridge && SixyinBridge.postMessage){ SixyinBridge.postMessage(m);} }catch(_){}}; const fetchWithTimeout=async(u,ms)=>{const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),ms); try{const res=await fetch(u,{cache:'no-store',signal:ctrl.signal}); clearTimeout(t); return res}catch(e){clearTimeout(t); throw e}}; const injectLX=()=>{ try{ var g = (typeof globalThis !== 'undefined') ? globalThis : (this||{}); if(!g.lx){ g.lx = { EVENT_NAMES:{}, APP_EVENT_NAMES:{}, CURRENT_PLATFORM:'desktop', APP_SETTING:{}, version:'2.4.0', isDev:false, on:function(){}, off:function(){}, emit:function(){}, }; } }catch(e){} }; for (const u of urls){ try{ const res = await fetchWithTimeout(u, 8000); const t = await res.text(); injectLX(); eval(t); safePost('loaded:'+u); window.__sixyin_loaded = true; break; }catch(e){ safePost('load_fail:'+u); }} safePost('adapter_probe:start'); try{ const found=[]; const cands=['sixyinSearch','sixyinSearchImpl','search','musicSearch','searchMusic']; for(const n of cands){ try{ const f = eval(n); if(typeof f==='function'){ found.push(n);} }catch(e){} } if(found.length===0){ try{ const globals=[]; for (const k in window){ try{ if(typeof window[k]==='function' && k.toLowerCase().includes('search')) globals.push(k);}catch(e){} } safePost('adapter_found:'+globals.join(',')); }catch(e){ safePost('adapter_found:'); } } else { safePost('adapter_found:'+found.join(',')); } }catch(e){ safePost('adapter_found:'); } })()";
+            "]; const safePost=(m)=>{try{ if(window.JSBridge && JSBridge.postMessage){ JSBridge.postMessage(m);} }catch(_){}}; const fetchWithTimeout=async(u,ms)=>{const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),ms); try{const res=await fetch(u,{cache:'no-store',signal:ctrl.signal}); clearTimeout(t); return res}catch(e){clearTimeout(t); throw e}}; const injectLX=()=>{ try{ var g = (typeof globalThis !== 'undefined') ? globalThis : (this||{}); if(!g.lx){ g.lx = { EVENT_NAMES:{}, APP_EVENT_NAMES:{}, CURRENT_PLATFORM:'desktop', APP_SETTING:{}, version:'2.4.0', isDev:false, on:function(){}, off:function(){}, emit:function(){}, }; } }catch(e){} }; for (const u of urls){ try{ const res = await fetchWithTimeout(u, 8000); const t = await res.text(); injectLX(); eval(t); safePost('loaded:'+u); window.__js_loaded = true; break; }catch(e){ safePost('load_fail:'+u); }} safePost('adapter_probe:start'); try{ const found=[]; const cands=['search','searchImpl','search','musicSearch','searchMusic']; for(const n of cands){ try{ const f = eval(n); if(typeof f==='function'){ found.push(n);} }catch(e){} } if(found.length===0){ try{ const globals=[]; for (const k in window){ try{ if(typeof window[k]==='function' && k.toLowerCase().includes('search')) globals.push(k);}catch(e){} } safePost('adapter_found:'+globals.join(',')); }catch(e){ safePost('adapter_found:'); } } else { safePost('adapter_found:'+found.join(',')); } }catch(e){ safePost('adapter_found:'); } })()";
         await controller.runJavaScript(js);
       }
     }
 
     // 注入统一搜索适配器（静默模式，避免大量 console 消息导致 OOM）
     const adapter = r'''
-      if (!window.__sixyin_adapter_injected__) {
-        window.__sixyin_adapter_injected__ = true;
-            // 将适配器命名为与当前来源一致，避免混淆（不使用 sixyin 前缀）
+      if (!window.__js_adapter_injected__) {
+        window.__js_adapter_injected__ = true;
+            // 将适配器命名为与当前来源一致，避免混淆
             if (!window.__grassAdapter__) window.__grassAdapter__ = {};
             
             // 结果标准化函数
@@ -1455,7 +1684,7 @@ class WebViewJsSourceService {
                     // 检查结果是否有效
                     if(result && (Array.isArray(result) || (result.data && Array.isArray(result.data)))) {
                       console.log('[Adapter] 找到有效结果，使用参数组合', (entry.id||('#'+(i+1))));
-                      if (entry.id) { try{ SixyinBridge.postMessage('strategy_selected:' + entry.id); }catch(_){} }
+                      if (entry.id) { try{ JSBridge.postMessage('strategy_selected:' + entry.id); }catch(_){} }
                       __selectedId = entry.id || __selectedId;
                       break;
                     }
@@ -1479,7 +1708,7 @@ class WebViewJsSourceService {
                         // 若之前未确认策略，但Promise解析后有效，则按S5或未知处理
                         if(!fnName.includes('module.exports')) { __selectedId = 'S5'; }
                       }
-                      if (__selectedId) { try{ SixyinBridge.postMessage('strategy_selected:' + __selectedId); }catch(_){} }
+                      if (__selectedId) { try{ JSBridge.postMessage('strategy_selected:' + __selectedId); }catch(_){} }
                     }
                   } catch (promiseError) {
                     console.warn('[Adapter] Promise失败:', promiseError);
@@ -1491,17 +1720,17 @@ class WebViewJsSourceService {
                 if (result) {
                   if (Array.isArray(result)) {
                     console.log('[Adapter] 返回数组，长度:', result.length);
-                    if (__selectedId) { try{ SixyinBridge.postMessage('strategy_selected:' + __selectedId); }catch(_){} }
+                    if (__selectedId) { try{ JSBridge.postMessage('strategy_selected:' + __selectedId); }catch(_){} }
                     return result;
                   }
                   if (result.data && Array.isArray(result.data)) {
                     console.log('[Adapter] 返回result.data，长度:', result.data.length);
-                    if (__selectedId) { try{ SixyinBridge.postMessage('strategy_selected:' + __selectedId); }catch(_){} }
+                    if (__selectedId) { try{ JSBridge.postMessage('strategy_selected:' + __selectedId); }catch(_){} }
                     return result.data;
                   }
                   if (result.list && Array.isArray(result.list)) {
                     console.log('[Adapter] 返回result.list，长度:', result.list.length);
-                    if (__selectedId) { try{ SixyinBridge.postMessage('strategy_selected:' + __selectedId); }catch(_){} }
+                    if (__selectedId) { try{ JSBridge.postMessage('strategy_selected:' + __selectedId); }catch(_){} }
                     return result.list;
                   }
                   // 如果是对象但不是数组，尝试转换
@@ -1608,7 +1837,7 @@ class WebViewJsSourceService {
           try {
             console.log('[Adapter] 开始Grass源智能检测和调用...');
             const grassFunctions = [];
-            const blacklist = ['fetch', 'sixyinSearch', 'sixyinAutoSearch', 'require', 'eval', 'setTimeout', 'setInterval', 'Promise', 'XMLHttpRequest', 'grassSearch', 'grassAutoSearch', '__ensureHoisted', 'normalizeGrassResult', 'normalizeGrassItem', '__networkCallback'];
+            const blacklist = ['fetch', 'search', 'autoSearch', 'require', 'eval', 'setTimeout', 'setInterval', 'Promise', 'XMLHttpRequest', 'grassSearch', 'grassAutoSearch', '__ensureHoisted', 'normalizeGrassResult', 'normalizeGrassItem', '__networkCallback'];
             
             // 第一轮：搜索可能的草莓源函数（严格模式）
             console.log('[Adapter] 第一轮：严格模式检测...');
@@ -1620,7 +1849,7 @@ class WebViewJsSourceService {
                   // 针对野草🌾源的特征检测（高度混淆的代码）
                   if(funcStr.length > 1500 && 
                      !funcStr.includes('[native code]') &&
-                     !funcStr.includes('SixyinBridge') &&
+                     !funcStr.includes('JSBridge') &&
                      !funcStr.includes('NetworkBridge')
                   ) {
                     // 检查混淆特征
@@ -1673,7 +1902,7 @@ class WebViewJsSourceService {
                     // 宽松条件：长度>800且包含关键模式
                     if(funcStr.length > 800 && 
                        !funcStr.includes('[native code]') &&
-                       !funcStr.includes('SixyinBridge') &&
+                       !funcStr.includes('JSBridge') &&
                        (funcStr.includes('search') || 
                         funcStr.includes('music') || 
                         funcStr.includes('0x') ||
@@ -2083,7 +2312,7 @@ class WebViewJsSourceService {
       ''';
     await controller.runJavaScript(adapter);
     await controller.runJavaScript(
-      "try{SixyinBridge.postMessage('adapter_injected')}catch(e){}",
+      "try{JSBridge.postMessage('adapter_injected')}catch(e){}",
     );
 
     print('✅ [WebViewJsSource] WebView音源初始化完成！');
@@ -2137,10 +2366,10 @@ class WebViewJsSourceService {
     try {
       _pendingProbe = Completer<List<String>>();
       const String probeJs = r'''(function(){
-        const safePost=(m)=>{try{ if(window.SixyinBridge && SixyinBridge.postMessage){ SixyinBridge.postMessage(m);} }catch(_){}};
+        const safePost=(m)=>{try{ if(window.JSBridge && JSBridge.postMessage){ JSBridge.postMessage(m);} }catch(_){}};
         try{
           const found=[];
-          const cands=['sixyinSearch','sixyinSearchImpl','search','musicSearch','searchMusic'];
+          const cands=['search','searchImpl','search','musicSearch','searchMusic'];
           for(const n of cands){ try{ const f = eval(n); if(typeof f==='function'){ found.push(n);} }catch(e){} }
           if(found.length===0){
             try{
@@ -2247,7 +2476,7 @@ class WebViewJsSourceService {
           console.log('[WebView] 开始异步搜索，使用事件回调');
           function sendResult(data) {
             try {
-              window.SixyinBridge.postMessage('search_result:' + '__SID__' + ':' + JSON.stringify(data));
+              window.JSBridge.postMessage('search_result:' + '__SID__' + ':' + JSON.stringify(data));
             } catch(e) {
               console.error('[WebView] 发送结果失败:', e);
             }
@@ -2267,11 +2496,11 @@ class WebViewJsSourceService {
               const safeResult = result.map((item,index)=>{try{console.log('[WebView] 原始项目',index,':', JSON.stringify(item)); const safe={};if(item.title||item.name)safe.title=item.title||item.name;if(item.artist||item.singer)safe.artist=item.artist||item.singer;if(item.album)safe.album=item.album;if(item.duration)safe.duration=item.duration;if(item.url||item.link)safe.url=item.url||item.link;if(item.id)safe.id=item.id;if(item.platform)safe.platform=item.platform; else safe.platform='$platform';if(item.songmid)safe.songmid=item.songmid;if(item.hash)safe.hash=item.hash;console.log('[WebView] 映射后项目',index,':', JSON.stringify(safe));return safe;}catch(e){console.warn('[WebView] 项目',index,'序列化失败:', e);return {title:'Unknown',artist:'Unknown'};}});
               
               console.log('[WebView] 安全结果数量:', safeResult.length);
-              window.__sixyin_last_json = safeResult;
+              window.__js_last_json = safeResult;
               sendResult(safeResult);
             } catch(e) {
               console.error('[WebView] 搜索异常:', e);
-              window.__sixyin_last_json = [];
+              window.__js_last_json = [];
               sendResult([]);
             }
           }
@@ -2332,7 +2561,7 @@ class WebViewJsSourceService {
     print('🔄 [WebViewJsSource] 从备份变量读取结果...');
     try {
       final backup = await controller.runJavaScriptReturningResult(
-        "(function(){try{console.log('[BackupRead] 备份变量类型:', typeof window.__sixyin_last_json); console.log('[BackupRead] 备份变量长度:', window.__sixyin_last_json ? window.__sixyin_last_json.length : 'null'); return JSON.stringify(window.__sixyin_last_json||[]);}catch(e){console.error('[BackupRead] 错误:', e); return '[]'}})()",
+        "(function(){try{console.log('[BackupRead] 备份变量类型:', typeof window.__js_last_json); console.log('[BackupRead] 备份变量长度:', window.__js_last_json ? window.__js_last_json.length : 'null'); return JSON.stringify(window.__js_last_json||[]);}catch(e){console.error('[BackupRead] 错误:', e); return '[]'}})()",
       );
 
       if (backup is String && backup.isNotEmpty && backup != '[]') {
@@ -2460,7 +2689,7 @@ class WebViewJsSourceService {
                     console.log('[URL解析] 为避免播放失败，拒绝使用有版权问题的链接');
                     
                     // 直接发送空结果，提示用户版权问题
-                    window.SixyinBridge.postMessage('url_result:COPYRIGHT_ERROR');
+                    window.JSBridge.postMessage('url_result:COPYRIGHT_ERROR');
                     return;
                   }
                 }
@@ -2477,7 +2706,7 @@ class WebViewJsSourceService {
               
               if(finalUrl && finalUrl.length > 0) {
                 console.log('[URL解析] Music Free 格式成功，返回URL:', finalUrl);
-                window.SixyinBridge.postMessage('url_result:' + finalUrl);
+                window.JSBridge.postMessage('url_result:' + finalUrl);
                 return;
               } else {
                 console.log('[URL解析] Music Free 返回了无效结果:', JSON.stringify(result));
@@ -2506,12 +2735,12 @@ class WebViewJsSourceService {
             
             if(typeof url==='string' && url.length > 0) {
               console.log('[URL解析] LX成功获取字符串URL:', url);
-              window.SixyinBridge.postMessage('url_result:' + url);
+              window.JSBridge.postMessage('url_result:' + url);
               return;
             }
             if(url && url.url && url.url.length > 0) {
               console.log('[URL解析] LX成功获取对象URL:', url.url);
-              window.SixyinBridge.postMessage('url_result:' + url.url);
+              window.JSBridge.postMessage('url_result:' + url.url);
               return;
             }
           }
@@ -2587,7 +2816,7 @@ class WebViewJsSourceService {
                       
                       if(finalUrl && finalUrl.length > 0) {
                         console.log('[URL解析] Grass源成功解析URL:', finalUrl);
-                        window.SixyinBridge.postMessage('url_result:' + finalUrl);
+                        window.JSBridge.postMessage('url_result:' + finalUrl);
                         return;
                       }
                     }
@@ -2612,11 +2841,11 @@ class WebViewJsSourceService {
             console.log('[URL解析] lx.EVENT_NAMES存在:', !!lx.EVENT_NAMES);  
             console.log('[URL解析] lx.emit类型:', typeof lx.emit);
           }
-          window.SixyinBridge.postMessage('url_result:');
+          window.JSBridge.postMessage('url_result:');
           return;
         } catch(e) {
           console.error('[URL解析] 异常:', e);
-          window.SixyinBridge.postMessage('url_result:');
+          window.JSBridge.postMessage('url_result:');
           return;
         }
       })()

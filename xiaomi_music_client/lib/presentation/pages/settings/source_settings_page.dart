@@ -260,10 +260,7 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                               value: 'grass',
                               child: Text('grass/latest.js'),
                             ),
-                            DropdownMenuItem(
-                              value: 'sixyin',
-                              child: Text('sixyin/latest.js'),
-                            ),
+
                             DropdownMenuItem(
                               value: 'custom',
                               child: Text('自定义脚本'),
@@ -278,9 +275,6 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                             } else if (selected == 'grass') {
                               _jsCtrl.text =
                                   'https://fastly.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js';
-                            } else if (selected == 'sixyin') {
-                              _jsCtrl.text =
-                                  'https://fastly.jsdelivr.net/gh/pdone/lx-music-source/sixyin/latest.js';
                             }
                           },
                         ),

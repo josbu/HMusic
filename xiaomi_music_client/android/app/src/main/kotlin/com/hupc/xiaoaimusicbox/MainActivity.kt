@@ -1,4 +1,4 @@
-package com.example.xiaomi_music_client
+package com.hupc.xiaoaimusicbox
 
 import io.flutter.embedding.android.FlutterActivity
 

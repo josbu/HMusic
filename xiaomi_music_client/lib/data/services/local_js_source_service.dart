@@ -82,20 +82,9 @@ class LocalJsSourceService {
       print('[XMC] ⚠️ [LocalJsSource] 下载落雪（野草🌾）源异常: $e');
     }
 
-    // 回退：使用旧的本地资产脚本
-    try {
-      print('[XMC] 📦 [LocalJsSource] 加载内置LX Custom Source脚本...');
-      final scriptContent = await rootBundle.loadString(
-        'assets/js/lx-custom-source.js',
-      );
-      print(
-        '[XMC] ✅ [LocalJsSource] 本地资产脚本加载成功，长度: ${scriptContent.length} 字符',
-      );
-      return scriptContent;
-    } catch (e) {
-      print('[XMC] ❌ [LocalJsSource] 本地资产脚本加载失败: $e');
-      return null;
-    }
+    // 本地脚本已移除，不再支持
+    print('[XMC] ❌ [LocalJsSource] 本地脚本已移除，不再支持');
+    return null;
   }
 
   /// 下载远程脚本
@@ -608,7 +597,7 @@ class LocalJsSourceService {
         (function(){
           var ok = [];
           try {
-            var names = ${jsonEncode(<String>['sixyinSearch', 'sixyinSearchImpl', 'search', 'musicSearch', 'searchMusic'])};
+            var names = ${jsonEncode(<String>['search', 'musicSearch', 'searchMusic'])};
             for (var i = 0; i < names.length; i++) {
               var n = names[i];
               try {
@@ -673,13 +662,7 @@ class LocalJsSourceService {
     final platforms =
         platform == 'auto' ? ["qq", "netease", "kuwo", "kugou"] : [platform];
     // 尝试多种可能的函数名来适应混淆后的代码
-    final candidateFunctions = [
-      'sixyinSearch',
-      'sixyinSearchImpl',
-      'search',
-      'musicSearch',
-      'searchMusic',
-    ];
+    final candidateFunctions = ['search', 'musicSearch', 'searchMusic'];
 
     String? workingFunction;
     String result = '[]';
