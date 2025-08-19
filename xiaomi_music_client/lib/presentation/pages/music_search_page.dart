@@ -323,7 +323,9 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
       final dir =
           await getDownloadsDirectory() ??
           await getApplicationDocumentsDirectory();
-      final safeName = item.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final titlePart = item.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final authorPart = item.author.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final safeName = authorPart.isNotEmpty ? '$titlePart-$authorPart' : titlePart;
       final ext = p.extension(Uri.parse(url).path);
       final filePath = p.join(
         dir.path,
