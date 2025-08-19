@@ -536,6 +536,8 @@ class WebViewJsSourceService {
             }
 
             headers.putIfAbsent('X-Request-Key', () => _currentApiKey!);
+            // 同时设置小写变体，兼容大小写严格匹配的后端
+            headers.putIfAbsent('x-request-key', () => _currentApiKey!);
             // 模拟 LX 客户端 UA
             headers['User-Agent'] = 'lx-music-request/2.4.0';
             print('🔑 [NetworkBridge] 使用提取的API密钥: $_currentApiKey');
