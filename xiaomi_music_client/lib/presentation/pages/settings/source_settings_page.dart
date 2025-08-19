@@ -32,10 +32,14 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
     if (_initialized) return;
     _apiCtrl.text = s.unifiedApiBase;
     _platform = s.platform == 'auto' ? 'qq' : s.platform;
-    _jsCtrl.text =
-        s.scriptUrl.isNotEmpty
-            ? s.scriptUrl
-            : 'https://fastly.jsdelivr.net/gh/Huibq/keep-alive/Music_Free/xiaoqiu.js';
+    
+    // 隐藏内置脚本的真实地址，只在自定义时显示
+    if (s.scriptPreset == 'custom') {
+      _jsCtrl.text = s.scriptUrl;
+    } else {
+      _jsCtrl.text = '内置脚本 (${s.scriptPreset}.js)';
+    }
+    
     _primary = s.primarySource;
     _scriptPreset = s.scriptPreset;
     _initialized = true;
@@ -266,8 +270,9 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                             final selected = v ?? 'xiaoqiu';
                             setState(() => _scriptPreset = selected);
                             if (selected == 'xiaoqiu') {
-                              _jsCtrl.text =
-                                  'https://fastly.jsdelivr.net/gh/Huibq/keep-alive/Music_Free/xiaoqiu.js';
+                              _jsCtrl.text = '内置脚本 (xiaoqiu.js)';
+                            } else if (selected == 'custom') {
+                              _jsCtrl.text = '';
                             }
                           },
                         ),
@@ -283,8 +288,11 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: _jsCtrl,
+                      enabled: _scriptPreset == 'custom',
                       decoration: InputDecoration(
-                        hintText: '输入或选择预置脚本地址',
+                        hintText: _scriptPreset == 'custom' 
+                            ? '输入自定义脚本地址' 
+                            : '使用预置脚本',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -292,6 +300,10 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                           horizontal: 12,
                           vertical: 16,
                         ),
+                        fillColor: _scriptPreset != 'custom' 
+                            ? Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3)
+                            : null,
+                        filled: _scriptPreset != 'custom',
                       ),
                     ),
                   ],
@@ -304,11 +316,21 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
             onPressed: () async {
               try {
                 final current = ref.read(sourceSettingsProvider);
+                
+                // 确定最终的脚本URL
+                String finalScriptUrl;
+                if (_scriptPreset == 'custom') {
+                  finalScriptUrl = _jsCtrl.text.trim();
+                } else {
+                  // 使用内置脚本的真实地址，但不显示给用户
+                  finalScriptUrl = 'https://fastly.jsdelivr.net/gh/Huibq/keep-alive/Music_Free/xiaoqiu.js';
+                }
+                
                 final newSettings = current.copyWith(
                   unifiedApiBase: current.unifiedApiBase, // 固定使用默认值
                   platform: _platform,
                   enabled: _primary == 'js_external',
-                  scriptUrl: _jsCtrl.text.trim(),
+                  scriptUrl: finalScriptUrl,
                   primarySource: _primary,
                   scriptPreset: _scriptPreset,
                 );

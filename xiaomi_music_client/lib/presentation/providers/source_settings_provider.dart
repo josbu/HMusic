@@ -145,18 +145,14 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       print('  - ttsTestText: $ttsTestText');
       print('  - useBuiltinScript: $useBuiltinScript');
       print('  - primarySource: $primarySource');
-      print('  - 原始URL长度: ${scriptUrl?.length ?? 0}');
-      print('  - 原始URL: $scriptUrl');
-      print('  - unifiedApiBase: $unifiedApiBase');
       print('  - scriptPreset: $scriptPreset');
+      print('  - unifiedApiBase: $unifiedApiBase');
 
       // 若用户未设置脚本 URL，则保留我们预设的镜像默认值
       final finalUrl =
           (scriptUrl == null || scriptUrl.isEmpty)
               ? state.scriptUrl
               : scriptUrl;
-      print('[XMC] 🔧 [SourceSettings] 最终URL长度: ${finalUrl.length}');
-      print('[XMC] 🔧 [SourceSettings] 最终URL: $finalUrl');
 
       state = state.copyWith(
         enabled: enabled ?? state.enabled,
@@ -198,7 +194,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
     print('  - ttsTestText: ${s.ttsTestText}');
     print('  - useBuiltinScript: ${s.useBuiltinScript}');
     print('  - primarySource: ${s.primarySource}');
-    print('  - scriptUrl长度: ${s.scriptUrl.length}');
+    print('  - scriptPreset: ${s.scriptPreset}');
     print('  - unifiedApiBase: ${s.unifiedApiBase}');
 
     try {
@@ -245,7 +241,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       final savedTtsTestText = prefs.getString(_kTtsTestText);
       final savedUseBuiltinScript = prefs.getBool(_kUseBuiltinScript);
       final savedPrimarySource = prefs.getString(_kPrimarySource);
-      final savedUrl = prefs.getString(_kScriptUrl);
+
       final savedApiBase = prefs.getString(_kUnifiedApiBase);
       final savedScriptPreset = prefs.getString(_kScriptPreset);
 
@@ -261,9 +257,8 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       print('  - ttsTestText: $savedTtsTestText');
       print('  - useBuiltinScript: $savedUseBuiltinScript');
       print('  - primarySource: $savedPrimarySource');
-      print('  - scriptUrl: $savedUrl');
-      print('  - unifiedApiBase: $savedApiBase');
       print('  - scriptPreset: $savedScriptPreset');
+      print('  - unifiedApiBase: $savedApiBase');
     } catch (e) {
       print('[XMC] ⚠️ [SourceSettings] 验证保存结果时出错: $e');
     }
