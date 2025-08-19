@@ -20,7 +20,7 @@ class SourceSettings {
   final bool useBuiltinScript; // 是否使用内置脚本（优先级高于scriptUrl）
   final String
   primarySource; // 主要音源选择: 'unified' | 'youtube' | 'js_external' | 'js_builtin'
-  final String scriptPreset; // 预置脚本选择: 'xiaoqiu' | 'grass' | 'custom'
+  final String scriptPreset; // 预置脚本选择: 'xiaoqiu' | 'custom'
 
   const SourceSettings({
     this.enabled = true,

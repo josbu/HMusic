@@ -35,7 +35,7 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
     _jsCtrl.text =
         s.scriptUrl.isNotEmpty
             ? s.scriptUrl
-            : 'https://ghproxy.net/raw.githubusercontent.com/pdone/lx-music-source/main/grass/latest.js';
+            : 'https://fastly.jsdelivr.net/gh/Huibq/keep-alive/Music_Free/xiaoqiu.js';
     _primary = s.primarySource;
     _scriptPreset = s.scriptPreset;
     _initialized = true;
@@ -256,10 +256,6 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                               value: 'xiaoqiu',
                               child: Text('xiaoqiu.js'),
                             ),
-                            DropdownMenuItem(
-                              value: 'grass',
-                              child: Text('grass/latest.js'),
-                            ),
 
                             DropdownMenuItem(
                               value: 'custom',
@@ -272,9 +268,6 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                             if (selected == 'xiaoqiu') {
                               _jsCtrl.text =
                                   'https://fastly.jsdelivr.net/gh/Huibq/keep-alive/Music_Free/xiaoqiu.js';
-                            } else if (selected == 'grass') {
-                              _jsCtrl.text =
-                                  'https://fastly.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js';
                             }
                           },
                         ),

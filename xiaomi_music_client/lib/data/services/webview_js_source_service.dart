@@ -6,7 +6,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../presentation/providers/source_settings_provider.dart';
-import 'grass_source_decoder.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// A minimal transformer that always treats responses as plain text and
@@ -251,43 +250,9 @@ class WebViewJsSourceService {
     }
   }
 
-  /// 加载内置脚本
+  /// 加载内置脚本（已不再使用grass，保留空实现以兼容旧流程）
   Future<String?> _loadBuiltinScript() async {
-    // 优先使用内置的“野草🌾”源（通过内置镜像列表），失败再回退到旧的本地资产
-    try {
-      print('📦 [WebViewJsSource] 内置优先：下载野草🌾源（grass/latest.js）');
-      final grassUrls = <String>[
-        'https://ghproxy.net/raw.githubusercontent.com/pdone/lx-music-source/main/grass/latest.js',
-        'https://raw.githubusercontent.com/pdone/lx-music-source/main/grass/latest.js',
-        'https://cdn.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
-        'https://fastly.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
-        'https://gcore.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
-        'https://testingcf.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
-      ];
-      final text = await _downloadScriptWithFallback(grassUrls);
-      if (text != null && text.isNotEmpty) {
-        print('✅ [WebViewJsSource] 内置野草🌾脚本下载成功，长度: ${text.length}');
-        // 使用解码器处理可能的混淆
-        final decodedScript = GrassSourceDecoder.decodeAndPrepareScript(text);
-        // 从内置脚本提取密钥
-        if (decodedScript != null) {
-          _currentScriptContent = decodedScript;
-          _currentApiKey = _extractApiKeyFromScript();
-          if (_currentApiKey != null) {
-            print('✅ [WebViewJsSource] 内置脚本API密钥: $_currentApiKey');
-          } else {
-            print('⚠️ [WebViewJsSource] 内置脚本未找到API密钥');
-          }
-        }
-        return decodedScript;
-      }
-      print('⚠️ [WebViewJsSource] 野草🌾源下载失败，回退到旧的本地资产脚本');
-    } catch (e) {
-      print('⚠️ [WebViewJsSource] 下载野草🌾源异常: $e');
-    }
-
-    // 不再使用本地资产脚本，直接返回错误
-    print('❌ [WebViewJsSource] 所有脚本源加载失败');
+    print('ℹ️ [WebViewJsSource] 内置脚本加载已禁用（grass移除）');
     return null;
   }
 
@@ -709,13 +674,6 @@ class WebViewJsSourceService {
         'https://fastly.jsdelivr.net/gh/Huibq/keep-alive/Music_Free/xiaoqiu.js',
         'https://cdn.jsdelivr.net/gh/Huibq/keep-alive/Music_Free/xiaoqiu.js',
         'https://raw.githubusercontent.com/Huibq/keep-alive/main/Music_Free/xiaoqiu.js',
-        // grass - 野草🌾源（备用）
-        'https://ghproxy.net/raw.githubusercontent.com/pdone/lx-music-source/main/grass/latest.js',
-        'https://cdn.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
-        'https://fastly.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
-        'https://gcore.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
-        'https://testingcf.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
-        'https://raw.githubusercontent.com/pdone/lx-music-source/main/grass/latest.js',
       ];
 
       // 如果当前URL不在fallback列表中，则添加所有fallback
