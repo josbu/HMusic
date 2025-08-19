@@ -31,11 +31,7 @@ class LocalJsSourceService {
     return LocalJsSourceService._(getJavascriptRuntime(), dio);
   }
 
-  /// 加载内置脚本（已禁用 grass）
-  Future<String?> _loadBuiltinScript() async {
-    print('[XMC] ℹ️ [LocalJsSource] 内置脚本加载已禁用（grass移除）');
-    return null;
-  }
+  // 内置脚本加载已完全移除
 
   /// 下载远程脚本
   Future<String?> _downloadScript(String url) async {
@@ -105,42 +101,20 @@ class LocalJsSourceService {
     }
     // 优先使用用户指定的脚本源，同时为同一脚本添加CDN镜像以避免raw.githubusercontent超时
     final List<String> fallbackUrls = [finalUrl];
-    try {
-      if (finalUrl.contains('raw.githubusercontent.com') &&
-          finalUrl.contains('/pdone/lx-music-source/') &&
-          finalUrl.endsWith('/grass/latest.js')) {
-        // 替换为 jsDelivr 多个镜像
-        fallbackUrls.addAll([
-          'https://cdn.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
-          'https://fastly.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
-          'https://gcore.jsdelivr.net/gh/pdone/lx-music-source/grass/latest.js',
-        ]);
-      }
-    } catch (_) {}
+    // 移除对 grass/latest.js 的任何特殊处理
 
     // 去重
     final uniqueUrls = fallbackUrls.toSet().toList();
 
-    // 根据设置选择脚本源
+    // 仅使用远程脚本
     String? scriptContent;
-    if (settings.useBuiltinScript) {
-      // 使用内置脚本，不回退到远程脚本
-      scriptContent = await _loadBuiltinScript();
-      if (scriptContent == null || scriptContent.isEmpty) {
-        print('[XMC] ❌ [LocalJsSource] 内置脚本加载失败，且设置为仅使用内置脚本');
-      } else {
-        print('[XMC] ✅ [LocalJsSource] 内置脚本加载成功');
-      }
-    } else {
-      // 使用远程脚本
-      print('🔄 [LocalJsSource] 尝试加载 ${uniqueUrls.length} 个镜像源');
-      for (final url in uniqueUrls) {
-        print('🌐 [LocalJsSource] 正在请求: $url');
-        scriptContent = await _downloadScript(url);
-        if (scriptContent != null && scriptContent.isNotEmpty) {
-          print('[XMC] ✅ [LocalJsSource] 远程脚本加载成功: $url');
-          break;
-        }
+    print('🔄 [LocalJsSource] 尝试加载 ${uniqueUrls.length} 个镜像源');
+    for (final url in uniqueUrls) {
+      print('🌐 [LocalJsSource] 正在请求: $url');
+      scriptContent = await _downloadScript(url);
+      if (scriptContent != null && scriptContent.isNotEmpty) {
+        print('[XMC] ✅ [LocalJsSource] 远程脚本加载成功: $url');
+        break;
       }
     }
 
