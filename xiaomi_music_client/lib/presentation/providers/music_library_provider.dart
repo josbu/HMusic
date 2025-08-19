@@ -13,6 +13,8 @@ class MusicLibraryState {
   final String? error;
   final String searchQuery;
   final List<Music> filteredMusicList;
+  final bool isSelectionMode;
+  final Set<String> selectedMusicNames;
 
   const MusicLibraryState({
     this.musicList = const [],
@@ -20,6 +22,8 @@ class MusicLibraryState {
     this.error,
     this.searchQuery = '',
     this.filteredMusicList = const [],
+    this.isSelectionMode = false,
+    this.selectedMusicNames = const {},
   });
 
   MusicLibraryState copyWith({
@@ -28,6 +32,8 @@ class MusicLibraryState {
     String? error,
     String? searchQuery,
     List<Music>? filteredMusicList,
+    bool? isSelectionMode,
+    Set<String>? selectedMusicNames,
   }) {
     return MusicLibraryState(
       musicList: musicList ?? this.musicList,
@@ -35,6 +41,8 @@ class MusicLibraryState {
       error: error,
       searchQuery: searchQuery ?? this.searchQuery,
       filteredMusicList: filteredMusicList ?? this.filteredMusicList,
+      isSelectionMode: isSelectionMode ?? this.isSelectionMode,
+      selectedMusicNames: selectedMusicNames ?? this.selectedMusicNames,
     );
   }
 }
@@ -269,6 +277,68 @@ class MusicLibraryNotifier extends StateNotifier<MusicLibraryState> {
 
   void clearError() {
     state = state.copyWith(error: null);
+  }
+
+  // 批量删除相关方法
+  void toggleSelectionMode() {
+    state = state.copyWith(
+      isSelectionMode: !state.isSelectionMode,
+      selectedMusicNames: {},
+    );
+  }
+
+  void toggleMusicSelection(String musicName) {
+    final selected = Set<String>.from(state.selectedMusicNames);
+    if (selected.contains(musicName)) {
+      selected.remove(musicName);
+    } else {
+      selected.add(musicName);
+    }
+    state = state.copyWith(selectedMusicNames: selected);
+  }
+
+  void selectAllMusic() {
+    final allNames = state.filteredMusicList.map((music) => music.name).toSet();
+    state = state.copyWith(selectedMusicNames: allNames);
+  }
+
+  void clearSelection() {
+    state = state.copyWith(selectedMusicNames: {});
+  }
+
+  Future<void> deleteSelectedMusic() async {
+    if (state.selectedMusicNames.isEmpty) return;
+
+    final apiService = ref.read(apiServiceProvider);
+    if (apiService == null) return;
+
+    try {
+      state = state.copyWith(isLoading: true);
+
+      // 批量删除音乐文件
+      for (final musicName in state.selectedMusicNames) {
+        await apiService.deleteMusic(musicName);
+      }
+
+      // 从本地列表中移除被删除的音乐
+      final updatedList = state.musicList
+          .where((music) => !state.selectedMusicNames.contains(music.name))
+          .toList();
+
+      final updatedFilteredList = state.filteredMusicList
+          .where((music) => !state.selectedMusicNames.contains(music.name))
+          .toList();
+
+      state = state.copyWith(
+        musicList: updatedList,
+        filteredMusicList: updatedFilteredList,
+        isLoading: false,
+        isSelectionMode: false,
+        selectedMusicNames: {},
+      );
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString());
+    }
   }
 }
 
