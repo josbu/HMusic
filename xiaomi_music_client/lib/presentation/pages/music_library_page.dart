@@ -356,7 +356,6 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
                          libraryState.filteredMusicList.isNotEmpty;
     
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(
@@ -373,65 +372,69 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
         ],
       ),
       child: SafeArea(
-        child: Row(
-          children: [
-            // 全选/取消全选按钮
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  if (isAllSelected) {
-                    ref.read(musicLibraryProvider.notifier).clearSelection();
-                  } else {
-                    ref.read(musicLibraryProvider.notifier).selectAllMusic();
-                  }
-                },
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: isAllSelected 
-                      ? Colors.orange 
-                      : Theme.of(context).colorScheme.primary,
-                  side: BorderSide(
-                    color: isAllSelected 
+        minimum: const EdgeInsets.only(bottom: 8),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child: Row(
+            children: [
+              // 全选/取消全选按钮
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    if (isAllSelected) {
+                      ref.read(musicLibraryProvider.notifier).clearSelection();
+                    } else {
+                      ref.read(musicLibraryProvider.notifier).selectAllMusic();
+                    }
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: isAllSelected 
                         ? Colors.orange 
                         : Theme.of(context).colorScheme.primary,
+                    side: BorderSide(
+                      color: isAllSelected 
+                          ? Colors.orange 
+                          : Theme.of(context).colorScheme.primary,
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                icon: Icon(
-                  isAllSelected ? Icons.deselect : Icons.select_all,
-                  size: 18,
-                ),
-                label: Text(
-                  isAllSelected ? '取消全选' : '全选',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-              ),
-            ),
-            
-            const SizedBox(width: 12),
-            
-            // 批量删除按钮
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: libraryState.selectedMusicNames.isNotEmpty
-                    ? () => _showBatchDeleteDialog(libraryState)
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: libraryState.selectedMusicNames.isNotEmpty
-                      ? Colors.red
-                      : Colors.grey.withOpacity(0.3),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                icon: const Icon(Icons.delete, size: 18),
-                label: Text(
-                  libraryState.selectedMusicNames.isEmpty
-                      ? '删除'
-                      : '删除 (${libraryState.selectedMusicNames.length})',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
+                  icon: Icon(
+                    isAllSelected ? Icons.deselect : Icons.select_all,
+                    size: 18,
+                  ),
+                  label: Text(
+                    isAllSelected ? '取消全选' : '全选',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
                 ),
               ),
-            ),
-          ],
+              
+              const SizedBox(width: 12),
+              
+              // 批量删除按钮
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: libraryState.selectedMusicNames.isNotEmpty
+                      ? () => _showBatchDeleteDialog(libraryState)
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: libraryState.selectedMusicNames.isNotEmpty
+                        ? Colors.red
+                        : Colors.grey.withOpacity(0.3),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  icon: const Icon(Icons.delete, size: 18),
+                  label: Text(
+                    libraryState.selectedMusicNames.isEmpty
+                        ? '删除'
+                        : '删除 (${libraryState.selectedMusicNames.length})',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -605,7 +608,9 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
         padding: EdgeInsets.only(
           left: 16,
           right: 16,
-          bottom: AppLayout.contentBottomPadding(context),
+          bottom: libraryState.isSelectionMode 
+              ? 100 // 为批量操作工具栏留出空间
+              : AppLayout.contentBottomPadding(context),
         ),
         itemCount: musicList.length,
         itemBuilder: (context, index) {
