@@ -53,16 +53,22 @@ class MusicLibraryNotifier extends StateNotifier<MusicLibraryState> {
   final Ref ref;
 
   MusicLibraryNotifier(this.ref) : super(const MusicLibraryState()) {
+    debugPrint('MusicLibraryProvider: 初始化完成');
+    
     // 监听认证状态变化，在用户登录后自动加载音乐库
     ref.listen<AuthState>(authProvider, (previous, next) {
+      debugPrint('MusicLibraryProvider: 认证状态变化 - previous: ${previous.runtimeType}, next: ${next.runtimeType}');
+      
       if (next is AuthAuthenticated && previous is! AuthAuthenticated) {
         debugPrint('MusicLibraryProvider: 用户已认证，自动加载音乐库');
         // 延迟一点时间确保认证完全完成
         Future.delayed(const Duration(milliseconds: 800), () {
+          debugPrint('MusicLibraryProvider: 延迟后开始刷新音乐库');
           refreshLibrary();
         });
       }
       if (next is AuthInitial) {
+        debugPrint('MusicLibraryProvider: 用户登出，清空音乐库状态');
         state = const MusicLibraryState();
       }
     });

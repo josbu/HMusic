@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../widgets/app_snackbar.dart';
 import '../providers/music_library_provider.dart';
@@ -34,6 +35,16 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
 
     // 启动列表动画
     _listAnimationController.forward();
+    
+    // 手动触发音乐库加载作为临时解决方案
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 检查音乐库是否为空且没有正在加载
+      final libraryState = ref.read(musicLibraryProvider);
+      if (libraryState.musicList.isEmpty && !libraryState.isLoading) {
+        debugPrint('MusicLibraryPage: 手动触发音乐库加载');
+        ref.read(musicLibraryProvider.notifier).refreshLibrary();
+      }
+    });
   }
 
   @override
