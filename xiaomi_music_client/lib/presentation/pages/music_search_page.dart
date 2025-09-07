@@ -791,11 +791,6 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
                   .read(musicLibraryProvider.notifier)
                   .downloadOneMusic(fileName, url: downloadUrl);
 
-              // 额外触发一次音乐库刷新，确保界面更新
-              Future.delayed(const Duration(seconds: 2), () {
-                ref.read(musicLibraryProvider.notifier).refreshLibrary();
-              });
-
               if (mounted) {
                 AppSnackBar.show(
                   context,
@@ -852,11 +847,6 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
       await ref
           .read(musicLibraryProvider.notifier)
           .downloadOneMusic(fallbackFileName, url: playUrl);
-          
-      // 额外触发一次音乐库刷新，确保界面更新
-      Future.delayed(const Duration(seconds: 2), () {
-        ref.read(musicLibraryProvider.notifier).refreshLibrary();
-      });
       if (mounted) {
         AppSnackBar.show(
           context,

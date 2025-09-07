@@ -181,42 +181,68 @@ class MusicLibraryNotifier extends StateNotifier<MusicLibraryState> {
       );
       // 简单成功判断
       if (resp['ret'] == 'OK' || resp['success'] == true) {
-        debugPrint('MusicLibrary: 下载请求成功，开始等待和刷新');
+        debugPrint('MusicLibrary: 下载请求成功，开始监测下载状态');
         
-        // 下载是异步的，需要等待较长时间让服务器完成下载
-        await Future.delayed(const Duration(seconds: 3));
+        // 使用智能下载状态监测
+        await _waitForDownloadCompletion(musicName, apiService);
+        
+        debugPrint('MusicLibrary: 下载监测完成，刷新音乐库');
         await refreshLibrary();
-        
-        // 如果第一次刷新后还没有找到新歌曲，再次尝试刷新
-        final currentCount = state.musicList.length;
-        bool foundNewMusic = state.musicList.any((music) => 
-            music.name.contains(musicName.split(' - ').first) || 
-            music.name == musicName);
-            
-        if (!foundNewMusic) {
-          debugPrint('MusicLibrary: 第一次刷新未找到新音乐，5秒后再次刷新');
-          await Future.delayed(const Duration(seconds: 5));
-          await refreshLibrary();
-          
-          // 第二次检查
-          foundNewMusic = state.musicList.any((music) => 
-              music.name.contains(musicName.split(' - ').first) || 
-              music.name == musicName);
-              
-          if (!foundNewMusic) {
-            debugPrint('MusicLibrary: 第二次刷新仍未找到新音乐，10秒后最后一次刷新');
-            await Future.delayed(const Duration(seconds: 10));
-            await refreshLibrary();
-          }
-        }
-        
-        debugPrint('MusicLibrary: 下载和刷新流程完成');
       } else {
         state = state.copyWith(isLoading: false, error: resp.toString());
       }
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  /// 智能监测下载完成状态
+  Future<void> _waitForDownloadCompletion(String musicName, dynamic apiService) async {
+    const maxAttempts = 30; // 最多等待3分钟 (6秒 * 30)
+    int attempts = 0;
+    
+    while (attempts < maxAttempts) {
+      attempts++;
+      
+      try {
+        // 方法1: 检查音乐库中是否已有该音乐
+        final currentResponse = await apiService.getMusicList();
+        final currentMusicList = MusicListAdapter.parse(currentResponse);
+        
+        final foundMusic = currentMusicList.any((music) =>
+            music.name == musicName ||
+            music.name.contains(musicName.split(' - ').first) ||
+            (music.title != null && music.title!.contains(musicName.split(' - ').first)));
+            
+        if (foundMusic) {
+          debugPrint('MusicLibrary: 下载完成检测成功 (第${attempts}次检查)');
+          return;
+        }
+        
+        // 方法2: 尝试获取下载日志检查状态 (如果API支持)
+        try {
+          final downloadLog = await apiService.getDownloadLog();
+          if (downloadLog.contains(musicName) && 
+              (downloadLog.contains('完成') || 
+               downloadLog.contains('success') || 
+               downloadLog.contains('下载成功'))) {
+            debugPrint('MusicLibrary: 通过下载日志检测到完成 (第${attempts}次检查)');
+            return;
+          }
+        } catch (e) {
+          debugPrint('MusicLibrary: 下载日志检查失败: $e');
+        }
+        
+        debugPrint('MusicLibrary: 第${attempts}次检查未完成，等待6秒后重试');
+        await Future.delayed(const Duration(seconds: 6));
+        
+      } catch (e) {
+        debugPrint('MusicLibrary: 下载状态检查异常: $e');
+        await Future.delayed(const Duration(seconds: 6));
+      }
+    }
+    
+    debugPrint('MusicLibrary: 下载监测超时，可能下载仍在进行中');
   }
 
   // 上传多个音乐文件
