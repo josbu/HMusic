@@ -763,9 +763,9 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
             print('[XMC] ⚠️ [Play] 播放状态刷新失败: $e');
           }
 
-          // 🎯 播放成功后，自动下载到音乐库（不再询问）
+          // 🎯 播放成功后，在后台异步下载到音乐库（不阻塞播放）
           if (mounted) {
-            print('[XMC] 📥 [Play] 自动下载到音乐库...');
+            print('[XMC] 📥 [Play] 启动后台异步下载到音乐库...');
             final downloadResult = await _showDownloadWithQualitySelection(
               item.title,
               item,
@@ -773,7 +773,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
             if (downloadResult != null &&
                 downloadResult['shouldDownload'] == true) {
               final selectedQuality = downloadResult['quality'] as String;
-              print('[XMC] 📥 [Play] 自动选择音质: $selectedQuality');
+              print('[XMC] 📥 [Play] 异步下载音质: $selectedQuality');
 
               // 根据选择的音质重新获取播放链接
               final qualityUrl = await _getPlayUrlWithQuality(
@@ -787,17 +787,18 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
               final safeAuthor = item.author.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
               final fileName = safeAuthor.isNotEmpty ? '$safeTitle - $safeAuthor' : safeTitle;
 
-              await ref
+              // 异步下载，不阻塞UI
+              ref
                   .read(musicLibraryProvider.notifier)
-                  .downloadOneMusic(fileName, url: downloadUrl);
+                  .downloadOneMusicAsync(fileName, url: downloadUrl);
 
               if (mounted) {
                 AppSnackBar.show(
                   context,
                   SnackBar(
-                    content: Text('已添加到音乐库: $fileName ($selectedQuality)'),
-                    backgroundColor: Colors.blue,
-                    duration: Duration(seconds: 3),
+                    content: Text('正在后台下载: $fileName ($selectedQuality)'),
+                    backgroundColor: Colors.orange,
+                    duration: Duration(seconds: 2),
                   ),
                 );
               }
@@ -844,15 +845,16 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
       final safeAuthor = item.author.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
       final fallbackFileName = safeAuthor.isNotEmpty ? '$safeTitle - $safeAuthor' : safeTitle;
       
-      await ref
+      // 使用异步下载作为回退方案
+      ref
           .read(musicLibraryProvider.notifier)
-          .downloadOneMusic(fallbackFileName, url: playUrl);
+          .downloadOneMusicAsync(fallbackFileName, url: playUrl);
       if (mounted) {
         AppSnackBar.show(
           context,
           SnackBar(
-            content: Text('已提交播放/下载：$fallbackFileName'),
-            backgroundColor: Colors.green,
+            content: Text('正在后台下载：$fallbackFileName'),
+            backgroundColor: Colors.orange,
           ),
         );
       }

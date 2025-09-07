@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'package:dartssh2/dartssh2.dart';
+import 'dart:async';
 import '../../data/models/music.dart';
 import '../../data/adapters/music_list_adapter.dart';
 import '../../data/services/music_api_service.dart';
@@ -194,6 +195,40 @@ class MusicLibraryNotifier extends StateNotifier<MusicLibraryState> {
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  // 异步下载 - 不阻塞UI，在后台监测完成状态
+  Future<void> downloadOneMusicAsync(String musicName, {String? url}) async {
+    final apiService = ref.read(apiServiceProvider);
+    if (apiService == null) return;
+    
+    try {
+      debugPrint('MusicLibrary: 开始异步下载: $musicName');
+      final resp = await apiService.downloadOneMusic(
+        musicName: musicName,
+        url: url,
+      );
+      
+      if (resp['ret'] == 'OK' || resp['success'] == true) {
+        debugPrint('MusicLibrary: 下载请求成功，启动后台监测');
+        
+        // 在后台监测下载完成状态，不阻塞当前操作
+        _backgroundDownloadMonitor(musicName, apiService);
+      } else {
+        debugPrint('MusicLibrary: 下载请求失败: ${resp.toString()}');
+      }
+    } catch (e) {
+      debugPrint('MusicLibrary: 异步下载异常: $e');
+    }
+  }
+
+  // 后台监测下载完成状态
+  void _backgroundDownloadMonitor(String musicName, dynamic apiService) {
+    // 使用unawaited让这个监测在后台运行，不阻塞其他操作
+    unawaited(_waitForDownloadCompletion(musicName, apiService).then((_) {
+      debugPrint('MusicLibrary: 后台监测完成，刷新音乐库');
+      refreshLibrary();
+    }));
   }
 
   /// 智能监测下载完成状态
