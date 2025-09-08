@@ -72,7 +72,7 @@ class MusicApiService {
   }
 
   Future<void> resumeMusic({required String did}) async {
-    await _client.post('/cmd', data: {'did': did, 'cmd': '播放'});
+    await _client.post('/cmd', data: {'did': did, 'cmd': '播放歌曲'});
   }
 
   Future<void> shutdown({required String did}) async {

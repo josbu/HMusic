@@ -325,7 +325,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       final isPlaying = state.currentMusic?.isPlaying ?? false;
 
-      print('🎵 执行播放控制命令: ${isPlaying ? "暂停" : "播放"}');
+      print('🎵 执行播放控制命令: ${isPlaying ? "暂停" : "播放歌曲"}');
 
       if (isPlaying) {
         await apiService.pauseMusic(did: selectedDid);
