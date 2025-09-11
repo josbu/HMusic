@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/services/local_js_source_service.dart';
 import '../../data/services/webview_js_source_service.dart';
 import 'source_settings_provider.dart';
+import 'js_script_manager_provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 /// 提供已加载脚本的本地 JS 音源服务。
@@ -9,11 +10,15 @@ final jsSourceServiceProvider = FutureProvider<LocalJsSourceService?>((
   ref,
 ) async {
   final settings = ref.watch(sourceSettingsProvider);
+  final scriptManager = ref.read(jsScriptManagerProvider.notifier);
+  final selectedScript = scriptManager.selectedScript;
+  
   final jsSelected =
       settings.primarySource == 'js_external' || settings.enabled;
-  if (!jsSelected || settings.scriptUrl.isEmpty) return null;
+  if (!jsSelected || selectedScript == null) return null;
+  
   final svc = await LocalJsSourceService.create();
-  await svc.loadScript(settings);
+  await svc.loadScript(settings, selectedScript);
   if (!svc.isReady) return null;
   return svc;
 });

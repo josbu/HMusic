@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter_js/flutter_js.dart';
 import 'package:dio/dio.dart';
 import '../../presentation/providers/source_settings_provider.dart';
+import '../../presentation/providers/js_script_manager_provider.dart';
+import '../models/js_script.dart';
 import 'dart:convert';
 // grass 支持已移除
 
@@ -33,6 +36,29 @@ class LocalJsSourceService {
 
   // 内置脚本加载已完全移除
 
+  /// 从本地文件读取脚本内容
+  Future<String?> _readLocalScript(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        print('[XMC] ❌ [LocalJsSource] 本地文件不存在: $filePath');
+        return null;
+      }
+      
+      final script = await file.readAsString();
+      if (script.isEmpty) {
+        print('[XMC] ⚠️ [LocalJsSource] 本地脚本内容为空: $filePath');
+        return null;
+      }
+      
+      print('[XMC] ✅ [LocalJsSource] 成功读取本地脚本: $filePath');
+      return script;
+    } catch (e) {
+      print('[XMC] ❌ [LocalJsSource] 读取本地脚本失败 $filePath: $e');
+      return null;
+    }
+  }
+
   /// 下载远程脚本
   Future<String?> _downloadScript(String url) async {
     try {
@@ -62,60 +88,48 @@ class LocalJsSourceService {
     }
   }
 
-  Future<void> loadScript(SourceSettings settings) async {
+  Future<void> loadScript(SourceSettings settings, [JsScript? selectedScript]) async {
     print('[XMC] 🔧 [LocalJsSource] 开始加载JS音源');
     print('[XMC] 🔧 [LocalJsSource] 启用状态: ${settings.enabled}');
-    print('[XMC] 🔧 [LocalJsSource] 使用内置脚本: ${settings.useBuiltinScript}');
-    print('[XMC] 🔧 [LocalJsSource] 脚本URL长度: ${settings.scriptUrl.length}');
-    print('[XMC] 🔧 [LocalJsSource] 脚本URL: ${settings.scriptUrl}');
-    // 分段打印长URL，避免截断
-    if (settings.scriptUrl.length > 100) {
-      print(
-        '🔧 [LocalJsSource] URL前半部分: ${settings.scriptUrl.substring(0, settings.scriptUrl.length ~/ 2)}',
-      );
-      print(
-        '🔧 [LocalJsSource] URL后半部分: ${settings.scriptUrl.substring(settings.scriptUrl.length ~/ 2)}',
-      );
-    }
+    print('[XMC] 🔧 [LocalJsSource] 主要音源: ${settings.primarySource}');
+    print('[XMC] 🔧 [LocalJsSource] 选中脚本: ${selectedScript?.name ?? '无'}');
 
-    if (!settings.enabled) {
-      print('[XMC] ❌ [LocalJsSource] 音源未启用');
+    if (!settings.enabled || settings.primarySource != 'js_external') {
+      print('[XMC] ❌ [LocalJsSource] JS音源未启用');
       _loaded = false;
       return;
     }
-    if (!settings.useBuiltinScript && settings.scriptUrl.isEmpty) {
-      print('[XMC] ❌ [LocalJsSource] 远程脚本URL为空');
+    
+    if (selectedScript == null) {
+      print('[XMC] ❌ [LocalJsSource] 未选择脚本');
       _loaded = false;
       return;
     }
 
-    // 检查URL是否被截断，如果是xiaoqiu相关且不以.js结尾，尝试修复
-    String finalUrl = settings.scriptUrl;
-    if (finalUrl.contains('xiaoqiu') &&
-        !finalUrl.endsWith('.js') &&
-        !finalUrl.endsWith('/')) {
-      if (finalUrl.endsWith('.j')) {
-        finalUrl = finalUrl + 's';
-        print('[XMC] 🔧 [LocalJsSource] 检测到URL截断，自动修复: $finalUrl');
-      }
-    }
-    // 优先使用用户指定的脚本源，同时为同一脚本添加CDN镜像以避免raw.githubusercontent超时
-    final List<String> fallbackUrls = [finalUrl];
-    // 移除对 grass/latest.js 的任何特殊处理
-
-    // 去重
-    final uniqueUrls = fallbackUrls.toSet().toList();
-
-    // 仅使用远程脚本
+    // 获取脚本内容
     String? scriptContent;
-    print('🔄 [LocalJsSource] 尝试加载 ${uniqueUrls.length} 个镜像源');
-    for (final url in uniqueUrls) {
-      print('🌐 [LocalJsSource] 正在请求: $url');
-      scriptContent = await _downloadScript(url);
-      if (scriptContent != null && scriptContent.isNotEmpty) {
-        print('[XMC] ✅ [LocalJsSource] 远程脚本加载成功: $url');
+    
+    switch (selectedScript.source) {
+      case JsScriptSource.builtin:
+      case JsScriptSource.url:
+        // 从URL下载脚本
+        print('🌐 [LocalJsSource] 从URL加载脚本: ${selectedScript.content}');
+        final urls = [selectedScript.content];
+        for (final url in urls) {
+          print('🌐 [LocalJsSource] 正在请求: $url');
+          scriptContent = await _downloadScript(url);
+          if (scriptContent != null && scriptContent.isNotEmpty) {
+            print('[XMC] ✅ [LocalJsSource] 脚本加载成功: $url');
+            break;
+          }
+        }
         break;
-      }
+        
+      case JsScriptSource.localFile:
+        // 从本地文件加载
+        print('📁 [LocalJsSource] 从本地文件加载脚本: ${selectedScript.content}');
+        scriptContent = await _readLocalScript(selectedScript.content);
+        break;
     }
 
     if (scriptContent == null || scriptContent.isEmpty) {

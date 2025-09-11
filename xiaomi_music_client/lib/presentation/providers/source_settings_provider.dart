@@ -20,7 +20,8 @@ class SourceSettings {
   final bool useBuiltinScript; // 是否使用内置脚本（优先级高于scriptUrl）
   final String
   primarySource; // 主要音源选择: 'unified' | 'youtube' | 'js_external' | 'js_builtin'
-  final String scriptPreset; // 预置脚本选择: 'xiaoqiu' | 'custom'
+  final String scriptPreset; // 预置脚本选择: 'xiaoqiu' | 'custom' | 'local_file'
+  final String localScriptPath; // 本地脚本文件路径
 
   const SourceSettings({
     this.enabled = true,
@@ -42,6 +43,7 @@ class SourceSettings {
     this.useBuiltinScript = true, // 默认使用内置脚本（LX Custom Source）
     this.primarySource = 'unified', // 默认使用统一API
     this.scriptPreset = 'xiaoqiu', // 默认选择 xiaoqiu.js
+    this.localScriptPath = '', // 默认无本地脚本路径
   });
 
   SourceSettings copyWith({
@@ -62,6 +64,7 @@ class SourceSettings {
     bool? useBuiltinScript,
     String? primarySource,
     String? scriptPreset,
+    String? localScriptPath,
   }) {
     return SourceSettings(
       enabled: enabled ?? this.enabled,
@@ -82,6 +85,7 @@ class SourceSettings {
       useBuiltinScript: useBuiltinScript ?? this.useBuiltinScript,
       primarySource: primarySource ?? this.primarySource,
       scriptPreset: scriptPreset ?? this.scriptPreset,
+      localScriptPath: localScriptPath ?? this.localScriptPath,
     );
   }
 }
@@ -104,6 +108,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
   static const _kUseBuiltinScript = 'source_use_builtin_script';
   static const _kPrimarySource = 'source_primary_source';
   static const _kScriptPreset = 'source_script_preset';
+  static const _kLocalScriptPath = 'source_local_script_path';
 
   bool _isLoaded = false;
   bool get isLoaded => _isLoaded;
@@ -132,6 +137,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       final useBuiltinScript = prefs.getBool(_kUseBuiltinScript);
       final primarySource = prefs.getString(_kPrimarySource);
       final scriptPreset = prefs.getString(_kScriptPreset);
+      final localScriptPath = prefs.getString(_kLocalScriptPath);
 
       print('[XMC] 🔧 [SourceSettings] 加载设置:');
       print('  - enabled: $enabled');
@@ -146,6 +152,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       print('  - useBuiltinScript: $useBuiltinScript');
       print('  - primarySource: $primarySource');
       print('  - scriptPreset: $scriptPreset');
+      print('  - localScriptPath: $localScriptPath');
       print('  - unifiedApiBase: $unifiedApiBase');
 
       // 若用户未设置脚本 URL，则保留我们预设的镜像默认值
@@ -173,6 +180,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
         useBuiltinScript: useBuiltinScript ?? state.useBuiltinScript,
         primarySource: primarySource ?? state.primarySource,
         scriptPreset: scriptPreset ?? state.scriptPreset,
+        localScriptPath: localScriptPath ?? state.localScriptPath,
       );
     } catch (e) {
       print('[XMC] ❌ [SourceSettings] 加载设置失败: $e');
@@ -195,6 +203,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
     print('  - useBuiltinScript: ${s.useBuiltinScript}');
     print('  - primarySource: ${s.primarySource}');
     print('  - scriptPreset: ${s.scriptPreset}');
+    print('  - localScriptPath: ${s.localScriptPath}');
     print('  - unifiedApiBase: ${s.unifiedApiBase}');
 
     try {
@@ -217,6 +226,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       await prefs.setBool(_kUseBuiltinScript, s.useBuiltinScript);
       await prefs.setString(_kPrimarySource, s.primarySource);
       await prefs.setString(_kScriptPreset, s.scriptPreset);
+      await prefs.setString(_kLocalScriptPath, s.localScriptPath);
 
       // 只有保存成功后才更新state
       state = s;
@@ -241,6 +251,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       final savedTtsTestText = prefs.getString(_kTtsTestText);
       final savedUseBuiltinScript = prefs.getBool(_kUseBuiltinScript);
       final savedPrimarySource = prefs.getString(_kPrimarySource);
+      final savedLocalScriptPath = prefs.getString(_kLocalScriptPath);
 
       final savedApiBase = prefs.getString(_kUnifiedApiBase);
       final savedScriptPreset = prefs.getString(_kScriptPreset);
@@ -258,6 +269,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       print('  - useBuiltinScript: $savedUseBuiltinScript');
       print('  - primarySource: $savedPrimarySource');
       print('  - scriptPreset: $savedScriptPreset');
+      print('  - localScriptPath: $savedLocalScriptPath');
       print('  - unifiedApiBase: $savedApiBase');
     } catch (e) {
       print('[XMC] ⚠️ [SourceSettings] 验证保存结果时出错: $e');
