@@ -565,7 +565,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       } else if (rawResults != null && rawResults.isNotEmpty) {
         final firstResult = rawResults.first;
         final title = firstResult['title'] ?? firstResult['name'] ?? '未知标题';
-        final artist = firstResult['artist'] ?? firstResult['singer'] ?? '未知艺术家';
+        final artist =
+            firstResult['artist'] ?? firstResult['singer'] ?? '未知艺术家';
         songInfo = "$title - $artist";
       }
 

@@ -111,11 +111,10 @@ class MusicApiService {
     required String listName,
     required String musicName,
   }) async {
-    final response = await _client.post('/playmusiclist', data: {
-      'did': did,
-      'listname': listName,
-      'musicname': musicName,
-    });
+    final response = await _client.post(
+      '/playmusiclist',
+      data: {'did': did, 'listname': listName, 'musicname': musicName},
+    );
     return response.data; // 直接返回原始数据，可能是字符串或Map
   }
 
@@ -156,7 +155,7 @@ class MusicApiService {
   }
 
   /// 播放在线搜索结果（支持多种格式）
-  /// 
+  ///
   /// 这是新的通用方法，支持：
   /// - OnlineMusicResult 对象
   /// - 原始搜索结果JSON
@@ -316,12 +315,18 @@ class MusicApiService {
   }
 
   // 代理播放 - 用于需要代理的链接
-  Future<void> playUrlWithProxy({required String did, required String url}) async {
+  Future<void> playUrlWithProxy({
+    required String did,
+    required String url,
+  }) async {
     // 构建完整的代理URL
     final baseUrl = _client.baseUrl;
     final proxyUrl = '$baseUrl/proxy?urlb64=${_encodeUrlToBase64(url)}';
     debugPrint('构建代理URL: $proxyUrl');
-    await _client.get('/playurl', queryParameters: {'did': did, 'url': proxyUrl});
+    await _client.get(
+      '/playurl',
+      queryParameters: {'did': did, 'url': proxyUrl},
+    );
   }
 
   // 智能播放 - 自动判断是否需要代理
@@ -339,17 +344,17 @@ class MusicApiService {
   bool _needsProxy(String url) {
     final uri = Uri.tryParse(url);
     if (uri == null) return false;
-    
+
     // 需要代理的域名列表
     const proxyDomains = [
-      'ws.stream.qqmusic.qq.com',    // QQ音乐
-      'music.163.com',               // 网易云音乐  
-      'freetyst.nf.migu.cn',         // 咪咕音乐
-      'antiserver.kuwo.cn',          // 酷我音乐
-      'fs.taihe.com',                // 百度音乐
+      'ws.stream.qqmusic.qq.com', // QQ音乐
+      'music.163.com', // 网易云音乐
+      'freetyst.nf.migu.cn', // 咪咕音乐
+      'antiserver.kuwo.cn', // 酷我音乐
+      'fs.taihe.com', // 百度音乐
       // 可以根据需要添加更多需要代理的域名
     ];
-    
+
     return proxyDomains.any((domain) => uri.host.contains(domain));
   }
 
