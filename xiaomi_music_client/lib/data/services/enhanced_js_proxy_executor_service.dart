@@ -207,6 +207,12 @@ class EnhancedJSProxyExecutorService {
             globalThis._lxHandlers[eventName] = [];
           }
           globalThis._lxHandlers[eventName].push(handler);
+          
+          // 兼容：也存储到事件监听器列表
+          if (!globalThis._eventListeners[eventName]) {
+            globalThis._eventListeners[eventName] = [];
+          }
+          globalThis._eventListeners[eventName].push(handler);
         },
         
         // 事件发送
@@ -639,67 +645,8 @@ class EnhancedJSProxyExecutorService {
           print('[EnhancedJSProxy] 🔄 脚本更新提醒: ${eventPayload?['log']}');
           break;
         case 'request':
-          print('[EnhancedJSProxy] 🔄 处理request事件，触发事件处理器...');
-          // 触发已注册的request事件处理器
-          final triggerScript = '''
-            (function() {
-              try {
-                const eventData = ${jsonEncode(eventPayload)};
-                console.log('[EnhancedJSProxy] 触发request事件处理器，数据:', eventData);
-                
-                // 查找并触发request事件处理器
-                if (globalThis._lxHandlers && globalThis._lxHandlers.request) {
-                  const handlers = Array.isArray(globalThis._lxHandlers.request) ? 
-                    globalThis._lxHandlers.request : [globalThis._lxHandlers.request];
-                  
-                  console.log('[EnhancedJSProxy] 找到', handlers.length, '个request处理器');
-                  
-                  for (let i = 0; i < handlers.length; i++) {
-                    const handler = handlers[i];
-                    if (typeof handler === 'function') {
-                      console.log('[EnhancedJSProxy] 调用第', i + 1, '个处理器');
-                      const result = handler(eventData);
-                      console.log('[EnhancedJSProxy] 处理器返回:', result);
-                      
-                      // 如果是Promise，等待完成
-                      if (result && typeof result.then === 'function') {
-                        result.then(
-                          function(value) {
-                            console.log('[EnhancedJSProxy] Promise成功:', value);
-                            globalThis._promiseResult = value;
-                            globalThis._promiseComplete = true;
-                          },
-                          function(error) {
-                            console.log('[EnhancedJSProxy] Promise失败:', error);
-                            globalThis._promiseError = error.toString();
-                            globalThis._promiseComplete = true;
-                          }
-                        );
-                      } else if (result !== undefined) {
-                        console.log('[EnhancedJSProxy] 同步结果:', result);
-                        globalThis._promiseResult = result;
-                        globalThis._promiseComplete = true;
-                      }
-                      break; // 只处理第一个处理器
-                    }
-                  }
-                } else {
-                  console.log('[EnhancedJSProxy] 没有找到request事件处理器');
-                  globalThis._promiseError = 'No request handler found';
-                  globalThis._promiseComplete = true;
-                }
-                
-                return true;
-              } catch (e) {
-                console.error('[EnhancedJSProxy] 触发处理器失败:', e);
-                globalThis._promiseError = e.toString();
-                globalThis._promiseComplete = true;
-                return false;
-              }
-            })()
-          ''';
-
-          _runtime!.evaluate(triggerScript);
+          print('[EnhancedJSProxy] 🔄 收到request事件，但现在直接在JS中处理');
+          // 不需要额外处理，JS中已经直接调用了事件处理器
           break;
         default:
           print('[EnhancedJSProxy] 📨 其他事件: $eventName');
@@ -817,26 +764,31 @@ class EnhancedJSProxyExecutorService {
             // 尝试多种调用方式
             let result = null;
             
-            // 方式1: 直接调用lx.emit
-            if (typeof lx !== 'undefined' && lx.emit) {
-              console.log('[EnhancedJSProxy] 尝试调用 lx.emit');
-              result = lx.emit(lx.EVENT_NAMES.request, request);
-              console.log('[EnhancedJSProxy] lx.emit 返回:', result);
-            }
-            
-            // 方式2: 调用事件处理器
-            if (!result && globalThis._lxHandlers && globalThis._lxHandlers.request) {
-              console.log('[EnhancedJSProxy] 尝试调用事件处理器');
+            // 方式1: 调用已注册的request事件处理器（主要方式）
+            if (globalThis._lxHandlers && globalThis._lxHandlers.request) {
+              console.log('[EnhancedJSProxy] 尝试调用已注册的request事件处理器');
               const handlers = Array.isArray(globalThis._lxHandlers.request) ? 
                 globalThis._lxHandlers.request : [globalThis._lxHandlers.request];
               
+              console.log('[EnhancedJSProxy] 找到', handlers.length, '个request处理器');
+              
               for (const handler of handlers) {
                 if (typeof handler === 'function') {
+                  console.log('[EnhancedJSProxy] 调用处理器，参数:', request);
                   result = handler(request);
-                  console.log('[EnhancedJSProxy] 事件处理器返回:', result);
+                  console.log('[EnhancedJSProxy] 处理器返回:', result);
                   if (result) break;
                 }
               }
+            } else {
+              console.log('[EnhancedJSProxy] 没有找到已注册的request事件处理器');
+            }
+            
+            // 方式2: 直接调用lx.emit（备用）
+            if (!result && typeof lx !== 'undefined' && lx.emit) {
+              console.log('[EnhancedJSProxy] 尝试调用 lx.emit');
+              result = lx.emit(lx.EVENT_NAMES.request, request);
+              console.log('[EnhancedJSProxy] lx.emit 返回:', result);
             }
             
             // 方式3: 查找专用函数 (多种命名模式)
