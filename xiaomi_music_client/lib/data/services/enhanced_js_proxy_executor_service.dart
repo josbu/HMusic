@@ -913,7 +913,17 @@ class EnhancedJSProxyExecutorService {
 
       print('[EnhancedJSProxy] 🔍 脚本加载检查结果: ${checkResult.stringResult}');
 
-      if (checkResult.stringResult.contains('error')) {
+      // 仅当顶层存在 error 字段时判定失败，避免因 handler 源码中的 console.error 误判
+      bool hasTopLevelError = false;
+      try {
+        final Map<String, dynamic> parsed = jsonDecode(checkResult.stringResult);
+        hasTopLevelError = parsed.containsKey('error') && parsed['error'] != null;
+      } catch (_) {
+        // 如果解析失败，不据此判失败
+        hasTopLevelError = false;
+      }
+
+      if (hasTopLevelError) {
         print('[EnhancedJSProxy] ❌ 脚本加载失败');
         return false;
       }
