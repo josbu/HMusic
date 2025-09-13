@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter_js/flutter_js.dart';
 import 'package:dio/dio.dart';
 import '../../presentation/providers/source_settings_provider.dart';
-import '../../presentation/providers/js_script_manager_provider.dart';
 import '../models/js_script.dart';
 import 'dart:convert';
 // grass 支持已移除
@@ -137,6 +136,9 @@ class LocalJsSourceService {
       _loaded = false;
       return;
     }
+    
+    // 预处理脚本内容，检测和修复常见问题
+    scriptContent = _preprocessScript(scriptContent);
 
     // 执行脚本
     try {
@@ -506,15 +508,274 @@ class LocalJsSourceService {
       // 跳过额外插件加载，只使用用户指定的单一脚本源
       print('[XMC] 🔒 [LocalJsSource] 只加载用户指定的脚本，跳过额外插件加载');
 
-      print('[XMC] ✅ [LocalJsSource] JS脚本执行成功！');
-      _loaded = true;
+      // 验证脚本加载结果
+      final validation = await _validateScriptLoading();
+      
+      if (validation['success']) {
+        print('[XMC] ✅ [LocalJsSource] JS脚本加载和验证成功！');
+        print('[XMC] ✅ [LocalJsSource] 可用功能: ${validation['functions']}');
+        _loaded = true;
+      } else {
+        print('[XMC] ⚠️ [LocalJsSource] 脚本加载但验证失败: ${validation['error']}');
+        _loaded = false;
+      }
     } catch (e) {
       print('[XMC] ❌ [LocalJsSource] 脚本执行失败，错误: $e');
       _loaded = false;
+      
+      // 尝试错误恢复
+      try {
+        print('[XMC] 🔄 [LocalJsSource] 尝试错误恢复...');
+        await _attemptErrorRecovery(e.toString(), scriptContent);
+      } catch (recoveryError) {
+        print('[XMC] ❌ [LocalJsSource] 错误恢复失败: $recoveryError');
+      }
     }
   }
 
   bool get isReady => _loaded;
+
+  /// 预处理脚本内容，修复常见问题
+  String _preprocessScript(String script) {
+    // 移除潜在的BOM标记
+    if (script.startsWith('\uFEFF')) {
+      script = script.substring(1);
+    }
+    
+    // 修复常见的编码问题
+    script = script.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    
+    // 添加严格模式保护
+    if (!script.contains('use strict') && !script.contains('"use strict"')) {
+      script = '"use strict";\n' + script;
+    }
+    
+    // 包装在IIFE中以避免全局变量污染
+    script = '(function() {\n' + script + '\n})();';
+    
+    return script;
+  }
+
+  /// 验证脚本加载结果
+  Future<Map<String, dynamic>> _validateScriptLoading() async {
+    try {
+      // 检查基本函数可用性
+      final checkResult = await detectAdapterFunctions();
+      if (checkResult['ok'] == true) {
+        final functions = checkResult['functions'] as List<String>;
+        return {
+          'success': true,
+          'functions': functions,
+        };
+      }
+      
+      return {
+        'success': false,
+        'error': '未找到可用的搜索函数',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'error': '验证过程异常: $e',
+      };
+    }
+  }
+
+  /// 尝试错误恢复
+  Future<void> _attemptErrorRecovery(String error, String scriptContent) async {
+    print('[XMC] 🔄 [LocalJsSource] 分析错误类型: $error');
+    
+    if (error.contains('SyntaxError') || error.contains('Unexpected token')) {
+      print('[XMC] 🔄 [LocalJsSource] 检测到语法错误，尝试兼容性修复');
+      
+      // 尝试简化的脚本执行
+      try {
+        final simpleScript = '''
+          // 简化的搜索函数
+          function search(platform, keyword, page) {
+            try {
+              return [{
+                id: 'fallback_' + Date.now(),
+                title: '搜索功能暂不可用',
+                artist: '系统提示',
+                url: '',
+                platform: platform || 'unknown'
+              }];
+            } catch (e) {
+              return [];
+            }
+          }
+          
+          // 导出函数
+          if (typeof module !== 'undefined' && module.exports) {
+            module.exports = { search: search };
+          }
+        ''';
+        
+        _rt.evaluate(simpleScript);
+        print('[XMC] ✅ [LocalJsSource] 错误恢复成功，加载了简化版本');
+        _loaded = true;
+      } catch (e) {
+        print('[XMC] ❌ [LocalJsSource] 错误恢复失败: $e');
+      }
+    }
+  }
+
+  /// 构建智能搜索脚本
+  String _buildSearchScript(
+    String functionName, 
+    List<String> platforms, 
+    String keyword, 
+    int page,
+  ) {
+    return """
+      (function(){ 
+        try { 
+          var plats = ${jsonEncode(platforms)};
+          
+          // 智能平台映射
+          function mapPlat(p) { 
+            p = (p || '').toLowerCase(); 
+            if (p === 'qq' || p === 'tencent') return 'tx'; 
+            if (p === 'netease' || p === '163') return 'wy'; 
+            if (p === 'kuwo') return 'kw'; 
+            if (p === 'kugou') return 'kg'; 
+            if (p === 'migu') return 'mg'; 
+            return p; 
+          }
+          
+          // 智能结果标准化
+          function normalizeResult(x) { 
+            try { 
+              console.log && console.log('[LocalJS] 标准化处理:', typeof x, Array.isArray(x)); 
+              
+              function safeItem(item, idx) { 
+                try { 
+                  var safe = {}; 
+                  if (item.title || item.name) safe.title = item.title || item.name; 
+                  if (item.artist || item.singer) safe.artist = item.artist || item.singer; 
+                  if (item.album) safe.album = item.album; 
+                  if (item.duration) safe.duration = item.duration; 
+                  if (item.url || item.link) safe.url = item.url || item.link; 
+                  if (item.id) safe.id = item.id; 
+                  if (item.platform) safe.platform = item.platform; 
+                  return safe; 
+                } catch (e) { 
+                  console.warn && console.warn('[LocalJS] 项目', idx, '处理失败:', e); 
+                  return { title: 'Unknown', artist: 'Unknown' }; 
+                } 
+              } 
+              
+              // 直接数组
+              if (Array.isArray(x)) { 
+                return x.map(safeItem); 
+              } 
+              
+              // 检查常见的数据字段
+              var dataFields = ['data', 'list', 'songs', 'result', 'items'];
+              for (var i = 0; i < dataFields.length; i++) {
+                var field = dataFields[i];
+                if (x && Array.isArray(x[field])) { 
+                  console.log && console.log('[LocalJS] 发现', field, '字段，长度:', x[field].length); 
+                  return x[field].map(safeItem); 
+                } 
+              }
+              
+              // 检查对象的所有数组字段
+              if (typeof x === 'object' && x !== null) { 
+                var keys = Object.keys(x); 
+                for (var j = 0; j < keys.length; j++) { 
+                  if (Array.isArray(x[keys[j]])) { 
+                    console.log && console.log('[LocalJS] 找到数组字段:', keys[j], '长度:', x[keys[j]].length); 
+                    return x[keys[j]].map(safeItem); 
+                  } 
+                } 
+              } 
+            } catch (e) {
+              console.warn && console.warn('[LocalJS] 标准化错误:', e);
+            } 
+            
+            console.log && console.log('[LocalJS] 无法提取数组，返回空'); 
+            return []; 
+          } 
+          
+          // 尝试多个平台
+          for (var i = 0; i < plats.length; i++) { 
+            try { 
+              var p = mapPlat(plats[i]); 
+              console.log && console.log('[LocalJS] 尝试平台:', p); 
+              
+              var r = $functionName(p, '$keyword', $page); 
+              console.log && console.log('[LocalJS] 平台原始结果:', p, typeof r); 
+              
+              // 处理Promise
+              if (r && typeof r.then === 'function') { 
+                console.log && console.log('[LocalJS] 检测到Promise，检查状态'); 
+                if (r.state === 'fulfilled' && r.value) { 
+                  r = r.value; 
+                } else { 
+                  console.log && console.log('[LocalJS] Promise未完成，跳过'); 
+                  continue; 
+                } 
+              } 
+              
+              var normalized = normalizeResult(r); 
+              if (normalized && normalized.length > 0) { 
+                console.log && console.log('[LocalJS] 平台', p, '找到结果:', normalized.length, '条'); 
+                return JSON.stringify(normalized); 
+              } else { 
+                console.log && console.log('[LocalJS] 平台', p, '无有效结果'); 
+              } 
+            } catch (e) { 
+              console.warn && console.warn('[LocalJS] 平台搜索失败:', p, e); 
+            } 
+          } 
+          
+          // MusicFree格式支持
+          try { 
+            if (typeof module !== 'undefined' && module && module.exports) { 
+              var exp = module.exports; 
+              if (exp.platform && (exp.search || exp.searchMusic)) { 
+                console.log && console.log('[LocalJS] 检测到MusicFree格式，尝试搜索'); 
+                var searchFn = exp.search || exp.searchMusic; 
+                if (typeof searchFn === 'function') { 
+                  var query = { keyword: '$keyword', page: $page, type: 'music' }; 
+                  try { 
+                    var res = searchFn(query); 
+                    console.log && console.log('[LocalJS] MusicFree搜索结果类型:', typeof res); 
+                    
+                    if (res && typeof res.then === 'function') { 
+                      if (res.state === 'fulfilled') { 
+                        var n = normalizeResult(res.value); 
+                        if (n && n.length > 0) { 
+                          return JSON.stringify(n); 
+                        } 
+                      } 
+                    } else { 
+                      var n = normalizeResult(res); 
+                      if (n && n.length > 0) { 
+                        return JSON.stringify(n); 
+                      } 
+                    } 
+                  } catch (fe) { 
+                    console.warn && console.warn('[LocalJS] MusicFree函数调用失败:', fe); 
+                  } 
+                } 
+              } 
+            } 
+          } catch (e) { 
+            console.warn && console.warn('[LocalJS] MusicFree格式搜索失败:', e); 
+          } 
+          
+          console.log && console.log('[LocalJS] 所有平台都失败'); 
+          return '[]'; 
+        } catch (e) { 
+          console.error && console.error('[LocalJS] 搜索代码执行失败:', e); 
+          return '[]'; 
+        } 
+      })()
+    """;
+  }
 
   // 安全执行小段 JS，返回字符串
   String evaluateToString(String js) {
@@ -596,35 +857,62 @@ class LocalJsSourceService {
       print('[XMC] ❌ [LocalJsSource] 脚本未加载，无法搜索');
       return const [];
     }
-    final escapedKw = keyword.replaceAll("'", " ");
-    final platforms =
-        platform == 'auto' ? ["qq", "netease", "kuwo", "kugou"] : [platform];
-    // 尝试多种可能的函数名来适应混淆后的代码
-    final candidateFunctions = ['search', 'musicSearch', 'searchMusic'];
+    
+    // 搜索参数验证和清理
+    if (keyword.trim().isEmpty) {
+      print('[XMC] ⚠️ [LocalJsSource] 搜索关键词为空');
+      return const [];
+    }
+    // 智能参数处理
+    final escapedKw = keyword.replaceAll("'", " ").replaceAll('"', ' ').trim();
+    final platforms = platform == 'auto' 
+        ? ["qq", "netease", "kuwo", "kugou", "migu"] 
+        : [platform];
+    
+    // 智能函数检测：按优先级排序
+    final candidateFunctions = [
+      'search',        // 最常见
+      'musicSearch',   // MusicFree格式
+      'searchMusic',   // 替代格式
+      'doSearch',      // 另一种常见格式
+    ];
+    
+    print('[XMC] 🔍 [LocalJsSource] 尝试平台: ${platforms.join(', ')}');
 
     String? workingFunction;
     String result = '[]';
+    List<String> searchLog = [];
 
-    // 首先检查哪个函数可用
+    // 智能函数检测：检查所有可能的函数
+    Map<String, bool> functionAvailability = {};
     for (final funcName in candidateFunctions) {
-      final checkJs = "typeof $funcName === 'function' ? 'yes' : 'no'";
-      final checkResult = _rt.evaluate(checkJs);
-      if (checkResult.stringResult == 'yes') {
-        workingFunction = funcName;
-        print('[XMC] ✅ [LocalJsSource] 找到可用函数: $funcName');
-        break;
+      try {
+        final checkJs = "typeof $funcName === 'function' ? 'yes' : 'no'";
+        final checkResult = _rt.evaluate(checkJs);
+        functionAvailability[funcName] = checkResult.stringResult == 'yes';
+        if (checkResult.stringResult == 'yes') {
+          workingFunction ??= funcName; // 使用第一个可用的
+        }
+      } catch (e) {
+        functionAvailability[funcName] = false;
+        print('[XMC] ⚠️ [LocalJsSource] 检查函数 $funcName 失败: $e');
       }
+    }
+    
+    print('[XMC] 🔍 [LocalJsSource] 函数可用性: $functionAvailability');
+    
+    if (workingFunction != null) {
+      print('[XMC] ✅ [LocalJsSource] 使用函数: $workingFunction');
     }
 
     if (workingFunction != null) {
-      final js =
-          "(function(){ " +
-          "try { " +
-          "var plats=" +
-          jsonEncode(platforms) +
-          ";" +
-          // 将平台映射为 Huibq 所需代号
-          "function mapPlat(p){ p=(p||'').toLowerCase(); if(p==='qq'||p==='tencent') return 'tx'; if(p==='netease'||p==='163') return 'wy'; if(p==='kuwo') return 'kw'; if(p==='kugou') return 'kg'; if(p==='migu') return 'mg'; return p; }" +
+      // 构建智能搜索JS代码
+      final js = _buildSearchScript(
+        workingFunction, 
+        platforms, 
+        escapedKw, 
+        page,
+      );
           "function norm(x){ " +
           "try{ " +
           "console.log && console.log('[LocalJS] norm处理:', typeof x, Array.isArray(x)); " +
@@ -767,9 +1055,16 @@ class LocalJsSourceService {
           "} " +
           "})()";
       print('🔄 [LocalJsSource] 执行搜索JS代码...');
-      final res = _rt.evaluate(js);
-      result = res.stringResult;
-      print('📤 [LocalJsSource] JS执行结果: $result');
+      try {
+        final res = _rt.evaluate(js);
+        result = res.stringResult;
+        searchLog.add('标准函数执行成功');
+        print('📤 [LocalJsSource] JS执行结果: $result');
+      } catch (e) {
+        searchLog.add('标准函数执行异常: $e');
+        print('[XMC] ❌ [LocalJsSource] 标准搜索异常: $e');
+        result = '[]';
+      }
     } else {
       print('[XMC] ❌ [LocalJsSource] 标准函数未找到，开始混淆函数检测...');
 

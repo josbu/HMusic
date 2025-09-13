@@ -82,6 +82,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   Timer? _statusRefreshTimer;
   Timer? _localProgressTimer;
   DateTime? _lastUpdateTime;
+  DateTime? _lastProgressUpdate; // 上次UI进度更新时间
+  DateTime? _lastRefreshTime; // 上次状态刷新时间
   // 保存服务器最后返回的原始进度，用于本地预测基准
   int? _lastServerOffset;
 
@@ -135,6 +137,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       return;
     }
 
+    // 防止过于频繁的刷新请求
+    final now = DateTime.now();
+    if (_lastRefreshTime != null &&
+        now.difference(_lastRefreshTime!).inMilliseconds < 500) {
+      print('🎵 跳过过于频繁的状态刷新请求');
+      return;
+    }
+    _lastRefreshTime = now;
+
     try {
       if (!silent) {
         state = state.copyWith(isLoading: true);
@@ -166,22 +177,30 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       print('🎵 最终播放状态: ${currentMusic?.curMusic ?? "无"}');
       print('🎵 当前音量: $volume');
 
-      // 进度同步校准机制
+      // 智能进度同步校准机制
       bool needsRecalibration = false;
+      bool useSmoothing = false;
+
       if (state.currentMusic != null && currentMusic != null) {
-        final localOffset = state.currentMusic!.offset ?? 0;
-        final serverOffset = currentMusic.offset ?? 0;
+        final localOffset = state.currentMusic!.offset;
+        final serverOffset = currentMusic.offset;
         final offsetDiff = (serverOffset - localOffset).abs();
-        
-        // 如果差异超过2秒，说明需要重新校准本地时间基准
-        if (offsetDiff > 2) {
+
+        // 智能校准策略：
+        // - 差异 > 5秒：立即重新校准（可能是跳转或切歌）
+        // - 差异 2-5秒：使用平滑过渡
+        // - 差异 < 2秒：正常预测继续
+        if (offsetDiff > 5) {
           needsRecalibration = true;
-          print('🔄 检测到进度跳跃，差异: ${offsetDiff}秒，重新校准时间基准');
-        } else if (offsetDiff > 0) {
-          print('🔄 平滑同步进度，差异: ${offsetDiff}秒');
+          print('🔄 检测到大幅进度跳跃，差异: ${offsetDiff}秒，立即重新校准');
+        } else if (offsetDiff > 2) {
+          useSmoothing = true;
+          print('🔄 检测到中等进度差异: ${offsetDiff}秒，使用平滑过渡');
+        } else if (offsetDiff > 0.5) {
+          print('🔄 微调进度，差异: ${offsetDiff}秒');
         }
       }
-      
+
       state = state.copyWith(
         currentMusic: currentMusic,
         volume: volume,
@@ -189,15 +208,35 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         isLoading: silent ? state.isLoading : false,
         hasLoaded: true,
       );
-      
-      // 保存服务器返回的原始进度作为预测基准
-      _lastServerOffset = currentMusic?.offset ?? 0;
-      
-      // 重新校准：当服务器进度与本地预测差异过大时，重置时间基准
-      // 这样本地预测就会从服务器的当前进度开始重新计算
-      _lastUpdateTime = DateTime.now();
+
+      // 智能更新预测基准
       if (needsRecalibration) {
-        print('⏰ 时间基准已重置，本地预测将从服务器进度 ${_lastServerOffset}秒 开始');
+        // 立即重新校准
+        _lastServerOffset = currentMusic?.offset ?? 0;
+        _lastUpdateTime = DateTime.now();
+        print('⏰ 立即重新校准，基准进度: ${_lastServerOffset}秒');
+      } else if (useSmoothing) {
+        // 使用加权平均进行平滑过渡
+        final serverOffset = currentMusic?.offset ?? 0;
+        final currentBase = _lastServerOffset ?? 0;
+        _lastServerOffset = (currentBase * 0.3 + serverOffset * 0.7).round();
+        _lastUpdateTime = DateTime.now();
+        print('🔄 平滑过渡到新进度: ${_lastServerOffset}秒');
+      } else if (currentMusic != null) {
+        // 正常更新，保持预测连续性
+        final timeSinceLastUpdate =
+            _lastUpdateTime != null
+                ? DateTime.now().difference(_lastUpdateTime!).inSeconds
+                : 0;
+
+        // 只有当服务器进度合理时才更新基准
+        final serverOffset = currentMusic.offset;
+        final expectedOffset = (_lastServerOffset ?? 0) + timeSinceLastUpdate;
+
+        if ((serverOffset - expectedOffset).abs() <= 3) {
+          _lastServerOffset = serverOffset;
+          _lastUpdateTime = DateTime.now();
+        }
       }
 
       // 如果音乐正在播放，启动自动刷新进度
@@ -255,7 +294,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         curPlaylist: state.currentMusic!.curPlaylist,
         isPlaying: false, // 立即显示为暂停状态
         offset: state.currentMusic!.offset,
-        duration: state.currentMusic!.duration, ret: '',
+        duration: state.currentMusic!.duration,
+        ret: '',
       );
       state = state.copyWith(currentMusic: updatedMusic);
       _startProgressTimer(false); // 停止本地进度更新
@@ -320,28 +360,48 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     if (apiService == null || selectedDid == null) return;
 
     try {
-      // 避免按钮长时间 loading，采用轻量刷新
-      state = state.copyWith(isLoading: false);
-
       final isPlaying = state.currentMusic?.isPlaying ?? false;
-
       print('🎵 执行播放控制命令: ${isPlaying ? "暂停" : "播放歌曲"}');
 
+      // 🎯 立即乐观更新UI，提升响应性
+      if (state.currentMusic != null) {
+        final updatedMusic = PlayingMusic(
+          ret: state.currentMusic!.ret,
+          curMusic: state.currentMusic!.curMusic,
+          curPlaylist: state.currentMusic!.curPlaylist,
+          isPlaying: !isPlaying, // 切换播放状态
+          offset: state.currentMusic!.offset,
+          duration: state.currentMusic!.duration,
+        );
+        state = state.copyWith(currentMusic: updatedMusic, isLoading: false);
+
+        // 更新本地进度计时器
+        _startProgressTimer(!isPlaying);
+        if (!isPlaying) {
+          _lastServerOffset = state.currentMusic!.offset;
+          _lastUpdateTime = DateTime.now();
+        }
+      }
+
+      // 异步执行实际命令
       if (isPlaying) {
         await apiService.pauseMusic(did: selectedDid);
       } else {
         await apiService.resumeMusic(did: selectedDid);
       }
 
-      // 等待命令执行后刷新状态
+      // 延迟同步真实状态，但不影响UI响应
       Future.delayed(
-        const Duration(milliseconds: 1000),
+        const Duration(milliseconds: 1500),
         () => refreshStatus(silent: true),
       );
-
-      // 不把按钮锁在 loading
     } catch (e) {
       print('🎵 播放控制失败: $e');
+      // 如果请求失败，恢复原状态
+      Future.delayed(
+        const Duration(milliseconds: 500),
+        () => refreshStatus(silent: true),
+      );
       state = state.copyWith(
         isLoading: false,
         error: '播放控制失败: ${e.toString()}',
@@ -535,45 +595,73 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     _localProgressTimer?.cancel();
 
     if (isPlaying && state.currentMusic != null) {
-      // 每5秒从服务器获取真实进度（减少频率避免跳跃）
-      _statusRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      // 智能刷新策略：根据播放状态调整刷新频率
+      final duration = state.currentMusic?.duration ?? 0;
+      final refreshInterval = duration > 300 ? 8 : 5; // 长歌曲减少刷新频率
+
+      _statusRefreshTimer = Timer.periodic(Duration(seconds: refreshInterval), (
+        _,
+      ) {
         refreshStatus(silent: true);
       });
-      
-      // 每500ms更新本地进度预测（降低频率减少抖动）
-      _localProgressTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+
+      // 更平滑的本地进度更新
+      _localProgressTimer = Timer.periodic(const Duration(milliseconds: 250), (
+        _,
+      ) {
         _updateLocalProgress();
       });
+
+      print('⏰ 启动智能进度定时器，刷新间隔: ${refreshInterval}秒');
+    } else {
+      print('⏸️ 停止进度定时器');
     }
   }
-  
+
   void _updateLocalProgress() {
-    if (state.currentMusic == null || 
-        !state.currentMusic!.isPlaying || 
+    if (state.currentMusic == null ||
+        !state.currentMusic!.isPlaying ||
         _lastUpdateTime == null ||
         _lastServerOffset == null) {
       return;
     }
-    
+
     final now = DateTime.now();
-    final elapsedMs = now.difference(_lastUpdateTime!).inMilliseconds;
-    
-    // 基于服务器最后返回的原始进度进行预测
-    final predictedOffset = _lastServerOffset! + (elapsedMs / 1000).floor();
-    final duration = state.currentMusic!.duration ?? 0;
-    
-    // 确保进度不超过总时长且有实际增长
-    if (predictedOffset < duration && predictedOffset > _lastServerOffset!) {
-      final updatedMusic = PlayingMusic(
-        ret: state.currentMusic!.ret,
-        curMusic: state.currentMusic!.curMusic,
-        curPlaylist: state.currentMusic!.curPlaylist,
-        isPlaying: state.currentMusic!.isPlaying,
-        offset: predictedOffset,
-        duration: state.currentMusic!.duration,
-      );
-      
-      state = state.copyWith(currentMusic: updatedMusic);
+    final elapsedSeconds =
+        now.difference(_lastUpdateTime!).inMilliseconds / 1000.0;
+
+    // 更精确的进度预测，支持小数秒
+    final predictedOffset = (_lastServerOffset! + elapsedSeconds).clamp(
+      0.0,
+      double.infinity,
+    );
+    final duration = state.currentMusic!.duration;
+    final currentOffset = state.currentMusic!.offset;
+
+    // 智能更新策略：
+    // 1. 确保进度不超过总时长
+    // 2. 避免倒退（除非是合理的小幅调整）
+    // 3. 限制更新频率避免UI抖动
+    final newOffset = predictedOffset.floor();
+
+    if (newOffset < duration &&
+        (newOffset > currentOffset || (currentOffset - newOffset).abs() <= 1)) {
+      // 避免频繁的微小更新
+      if ((newOffset - currentOffset).abs() >= 1 ||
+          now.difference(_lastProgressUpdate ?? DateTime(0)).inMilliseconds >=
+              500) {
+        final updatedMusic = PlayingMusic(
+          ret: state.currentMusic!.ret,
+          curMusic: state.currentMusic!.curMusic,
+          curPlaylist: state.currentMusic!.curPlaylist,
+          isPlaying: state.currentMusic!.isPlaying,
+          offset: newOffset,
+          duration: state.currentMusic!.duration,
+        );
+
+        state = state.copyWith(currentMusic: updatedMusic);
+        _lastProgressUpdate = now;
+      }
     }
   }
 
