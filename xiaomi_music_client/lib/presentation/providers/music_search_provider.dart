@@ -211,16 +211,16 @@ class MusicSearchNotifier extends StateNotifier<MusicSearchState> {
     final native = ref.read(nativeMusicSearchServiceProvider);
     final String strategy = settings.jsSearchStrategy;
 
-    Future<List<OnlineMusicResult>> searchOnce(String key) {
+    Future<List<OnlineMusicResult>> searchOnce(String key) async {
       switch (key) {
         case 'qq':
-          return native.searchQQ(query: query, page: page);
+          return await native.searchQQ(query: query, page: page);
         case 'kuwo':
-          return native.searchKuwo(query: query, page: page);
+          return await native.searchKuwo(query: query, page: page);
         case 'netease':
-          return native.searchNetease(query: query, page: page);
+          return await native.searchNetease(query: query, page: page);
         default:
-          return Future.value(<OnlineMusicResult>[]);
+          return <OnlineMusicResult>[];
       }
     }
 
