@@ -48,7 +48,7 @@ class MusicListJsonAdapter {
           if (result.url.isNotEmpty) {
             // 判断URL是否为API接口（需要额外处理）还是直接音乐链接
             final needsApiCall = isApiUrl(result.url);
-            
+
             if (needsApiCall) {
               // API接口链接，需要添加api标记和请求头
               musicItem["api"] = true;
@@ -122,7 +122,7 @@ class MusicListJsonAdapter {
   }
 
   /// 判断URL是否为需要API调用的接口链接
-  /// 
+  ///
   /// API链接特征：
   /// - 包含 '/url/' 路径（如 lxmusicapi.onrender.com/url/tx/...）
   /// - 包含 '/api/' 路径
@@ -130,43 +130,54 @@ class MusicListJsonAdapter {
   /// - 包含特定的API域名
   static bool isApiUrl(String url) {
     if (url.isEmpty) return false;
-    
+
     final uri = Uri.tryParse(url);
     if (uri == null) return false;
-    
+
     // 检查是否为直接音频文件链接
     final path = uri.path.toLowerCase();
-    final directAudioExtensions = ['.mp3', '.m4a', '.flac', '.wav', '.aac', '.ogg'];
-    final isDirectAudio = directAudioExtensions.any((ext) => path.endsWith(ext));
-    
+    final directAudioExtensions = [
+      '.mp3',
+      '.m4a',
+      '.flac',
+      '.wav',
+      '.aac',
+      '.ogg',
+    ];
+    final isDirectAudio = directAudioExtensions.any(
+      (ext) => path.endsWith(ext),
+    );
+
     if (isDirectAudio) {
       return false; // 直接音频文件不需要API处理
     }
-    
+
     // 检查是否为已知的API接口域名或路径
     final host = uri.host.toLowerCase();
     final apiIndicators = [
       // API路径特征
       '/url/', '/api/', '/proxy/', '/stream/',
       // 已知API域名
-      'lxmusicapi', 'musicapi', 'api.', 'proxy.'
+      'lxmusicapi', 'musicapi', 'api.', 'proxy.',
     ];
-    
+
     // 检查路径中是否包含API特征
-    final hasApiPath = apiIndicators.any((indicator) => 
-      url.toLowerCase().contains(indicator));
-    
+    final hasApiPath = apiIndicators.any(
+      (indicator) => url.toLowerCase().contains(indicator),
+    );
+
     // 检查是否为已知的音乐API域名
     final knownApiDomains = [
       'lxmusicapi.onrender.com',
-      'musicapi.lxmusic.org', 
+      'musicapi.lxmusic.org',
       'api.lxmusic.org',
       // 可以添加更多已知的音乐API域名
     ];
-    
-    final isKnownApiDomain = knownApiDomains.any((domain) => 
-      host.contains(domain));
-    
+
+    final isKnownApiDomain = knownApiDomains.any(
+      (domain) => host.contains(domain),
+    );
+
     return hasApiPath || isKnownApiDomain;
   }
 
@@ -278,14 +289,11 @@ class MusicListJsonAdapter {
     Map<String, String>? headers,
     bool? forceApi, // 强制设置是否为API调用
   }) {
-    final musicItem = <String, dynamic>{
-      "name": "$title - $artist",
-      "url": url,
-    };
+    final musicItem = <String, dynamic>{"name": "$title - $artist", "url": url};
 
     // 智能判断或强制设置是否需要API处理
     final needsApi = forceApi ?? (url.isNotEmpty && isApiUrl(url));
-    
+
     if (needsApi) {
       musicItem["api"] = true;
       if (headers != null && headers.isNotEmpty) {
