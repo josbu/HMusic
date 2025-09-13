@@ -725,12 +725,43 @@ class EnhancedJSProxyExecutorService {
 
       _runtime!.evaluate(scriptContent);
       _currentScript = scriptContent;
-
+ 
       // 立即触发一次 inited 到脚本（部分官方脚本在收到 inited 后注册处理器）
       try {
-        _runtime!.evaluate("typeof _dispatchEventToScript === 'function' && _dispatchEventToScript('inited', { status: true });");
+        _runtime!.evaluate(
+          "typeof _dispatchEventToScript === 'function' && _dispatchEventToScript('inited', { status: true });",
+        );
       } catch (_) {}
-
+ 
+      // 试探性调用常见入口函数，促进脚本完成自注册
+      try {
+        _runtime!.evaluate('''
+          (function() {
+            const candidates = [
+              'main', 'init', 'initialize', 'bootstrap', 'start', 'setup',
+              'registerSource', 'registerScript', 'lxInit'
+            ];
+            candidates.forEach(name => {
+              try {
+                if (typeof globalThis[name] === 'function') {
+                  console.log('[LXEnv] 调用入口函数:', name);
+                  try { globalThis[name](); } catch (e) { console.log('[LXEnv] 入口函数调用失败:', name, e && e.message); }
+                }
+              } catch (e) {}
+            });
+            if (typeof window !== 'undefined' && window.lx && typeof window.lx.init === 'function') {
+              console.log('[LXEnv] 调用 window.lx.init');
+              try { window.lx.init(); } catch (e) { console.log('[LXEnv] window.lx.init 调用失败:', e && e.message); }
+            }
+          })()
+        ''');
+      } catch (_) {}
+ 
+      // 延迟再次触发一次 inited，给脚本留出注册时间
+      try {
+        _runtime!.evaluate('setTimeout(function(){ try { if (typeof _dispatchEventToScript === "function") _dispatchEventToScript("inited", { status: true, delayed: true }); } catch(e){} }, 500);');
+      } catch (_) {}
+ 
       // 立即检查脚本执行后的状态
       final immediateCheck = _runtime!.evaluate('''
         JSON.stringify({
@@ -746,9 +777,19 @@ class EnhancedJSProxyExecutorService {
         })
       ''');
       print('[EnhancedJSProxy] 🔍 脚本执行后立即检查: ${immediateCheck.stringResult}');
-
+ 
       // 等待脚本初始化
       await Future.delayed(const Duration(milliseconds: 1000));
+ 
+      // 再次检查是否已注册处理器
+      final delayedCheck = _runtime!.evaluate('''
+        JSON.stringify({
+          requestHandlerCount: globalThis._lxHandlers && globalThis._lxHandlers.request ? 
+            (Array.isArray(globalThis._lxHandlers.request) ? globalThis._lxHandlers.request.length : 1) : 0,
+          handlers: globalThis._lxHandlers
+        })
+      ''');
+      print('[EnhancedJSProxy] 🔍 脚本延迟检查: ${delayedCheck.stringResult}');
 
       // 检查脚本是否正确加载
       final checkResult = _runtime!.evaluate('''
