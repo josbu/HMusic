@@ -22,6 +22,8 @@ class SourceSettings {
   primarySource; // 主要音源选择: 'unified' | 'youtube' | 'js_external' | 'js_builtin'
   final String scriptPreset; // 预置脚本选择: 'xiaoqiu' | 'custom' | 'local_file'
   final String localScriptPath; // 本地脚本文件路径
+  final String
+  jsSearchStrategy; // JS流程下搜索优先级: qqOnly|kuwoOnly|neteaseOnly|qqFirst|kuwoFirst|neteaseFirst
 
   const SourceSettings({
     this.enabled = true,
@@ -44,6 +46,7 @@ class SourceSettings {
     this.primarySource = 'unified', // 默认使用统一API
     this.scriptPreset = 'xiaoqiu', // 默认选择 xiaoqiu.js
     this.localScriptPath = '', // 默认无本地脚本路径
+    this.jsSearchStrategy = 'qqFirst',
   });
 
   SourceSettings copyWith({
@@ -65,6 +68,7 @@ class SourceSettings {
     String? primarySource,
     String? scriptPreset,
     String? localScriptPath,
+    String? jsSearchStrategy,
   }) {
     return SourceSettings(
       enabled: enabled ?? this.enabled,
@@ -86,6 +90,7 @@ class SourceSettings {
       primarySource: primarySource ?? this.primarySource,
       scriptPreset: scriptPreset ?? this.scriptPreset,
       localScriptPath: localScriptPath ?? this.localScriptPath,
+      jsSearchStrategy: jsSearchStrategy ?? this.jsSearchStrategy,
     );
   }
 }
@@ -109,6 +114,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
   static const _kPrimarySource = 'source_primary_source';
   static const _kScriptPreset = 'source_script_preset';
   static const _kLocalScriptPath = 'source_local_script_path';
+  static const _kJsSearchStrategy = 'source_js_search_strategy';
 
   bool _isLoaded = false;
   bool get isLoaded => _isLoaded;
@@ -138,6 +144,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       final primarySource = prefs.getString(_kPrimarySource);
       final scriptPreset = prefs.getString(_kScriptPreset);
       final localScriptPath = prefs.getString(_kLocalScriptPath);
+      final jsSearchStrategy = prefs.getString(_kJsSearchStrategy);
 
       print('[XMC] 🔧 [SourceSettings] 加载设置:');
       print('  - enabled: $enabled');
@@ -181,6 +188,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
         primarySource: primarySource ?? state.primarySource,
         scriptPreset: scriptPreset ?? state.scriptPreset,
         localScriptPath: localScriptPath ?? state.localScriptPath,
+        jsSearchStrategy: jsSearchStrategy ?? state.jsSearchStrategy,
       );
     } catch (e) {
       print('[XMC] ❌ [SourceSettings] 加载设置失败: $e');
@@ -227,6 +235,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       await prefs.setString(_kPrimarySource, s.primarySource);
       await prefs.setString(_kScriptPreset, s.scriptPreset);
       await prefs.setString(_kLocalScriptPath, s.localScriptPath);
+      await prefs.setString(_kJsSearchStrategy, s.jsSearchStrategy);
 
       // 只有保存成功后才更新state
       state = s;
@@ -252,6 +261,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       final savedUseBuiltinScript = prefs.getBool(_kUseBuiltinScript);
       final savedPrimarySource = prefs.getString(_kPrimarySource);
       final savedLocalScriptPath = prefs.getString(_kLocalScriptPath);
+      final savedJsSearchStrategy = prefs.getString(_kJsSearchStrategy);
 
       final savedApiBase = prefs.getString(_kUnifiedApiBase);
       final savedScriptPreset = prefs.getString(_kScriptPreset);
@@ -271,6 +281,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       print('  - scriptPreset: $savedScriptPreset');
       print('  - localScriptPath: $savedLocalScriptPath');
       print('  - unifiedApiBase: $savedApiBase');
+      print('  - jsSearchStrategy: $savedJsSearchStrategy');
     } catch (e) {
       print('[XMC] ⚠️ [SourceSettings] 验证保存结果时出错: $e');
     }

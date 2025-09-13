@@ -18,6 +18,7 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
   bool _initialized = false;
   // _jsEnabled 已由 _primary 状态隐含控制，无需单独使用
   String _primary = 'unified'; // 'unified' | 'js_external'
+  String _jsSearchStrategy = 'qqFirst'; // qqFirst|kuwoFirst|neteaseFirst|qqOnly|kuwoOnly|neteaseOnly
 
   @override
   void initState() {
@@ -32,6 +33,7 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
     _apiCtrl.text = s.unifiedApiBase;
     _platform = s.platform == 'auto' ? 'qq' : s.platform;
     _primary = s.primarySource;
+    _jsSearchStrategy = s.jsSearchStrategy;
     _initialized = true;
   }
 
@@ -244,6 +246,22 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
               const SizedBox(height: 8),
               ...scripts.map((script) => _buildScriptTile(context, script, 
                   selectedScript?.id == script.id, scriptManager)),
+              const SizedBox(height: 16),
+              Text(
+                '搜索源优先级',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildJsSearchStrategyDropdown(context),
+              const SizedBox(height: 6),
+              Text(
+                '说明：仅在“JS 脚本”流程下用于搜索源选择；播放解析仍走JS解析。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                ),
+              ),
             ],
           ],
         ),
@@ -331,6 +349,34 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
             DropdownMenuItem(value: 'migu', child: Text('咪咕音乐')),
           ],
           onChanged: (v) => setState(() => _platform = v ?? 'qq'),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildJsSearchStrategyDropdown(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _jsSearchStrategy,
+          isExpanded: true,
+          items: const [
+            DropdownMenuItem(value: 'qqFirst', child: Text('优先 QQ → 酷狗/网易回退')),
+            DropdownMenuItem(value: 'kuwoFirst', child: Text('优先 酷我 → QQ/网易回退')),
+            DropdownMenuItem(value: 'neteaseFirst', child: Text('优先 网易 → QQ/酷狗回退')),
+            DropdownMenuItem(value: 'qqOnly', child: Text('仅 QQ')),
+            DropdownMenuItem(value: 'kuwoOnly', child: Text('仅 酷我')),
+            DropdownMenuItem(value: 'neteaseOnly', child: Text('仅 网易')),
+          ],
+          onChanged: (v) => setState(() => _jsSearchStrategy = v ?? 'qqFirst'),
         ),
       ),
     );
@@ -470,6 +516,7 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
         localScriptPath: selectedScript?.source == JsScriptSource.localFile 
             ? selectedScript?.content ?? ''
             : '',
+        jsSearchStrategy: _jsSearchStrategy,
       );
 
       await ref.read(sourceSettingsNotifierProvider).save(newSettings);

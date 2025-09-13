@@ -556,7 +556,8 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
           String? resolvedUrl;
           final jsProxy = ref.read(jsProxyProvider.notifier);
           final jsProxyState = ref.read(jsProxyProvider);
-          if (jsProxyState.isInitialized && jsProxyState.currentScript != null) {
+          if (jsProxyState.isInitialized &&
+              jsProxyState.currentScript != null) {
             resolvedUrl = await jsProxy.getMusicUrl(
               source: mapped,
               songId: id,
@@ -565,7 +566,9 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
             );
           }
           if (resolvedUrl == null || resolvedUrl.isEmpty) {
-            final webSvc = await ref.read(webviewJsSourceServiceProvider.future);
+            final webSvc = await ref.read(
+              webviewJsSourceServiceProvider.future,
+            );
             if (webSvc != null) {
               resolvedUrl = await webSvc.resolveMusicUrl(
                 platform: mapped,
@@ -596,7 +599,8 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
               musicAuthor: item.author,
             );
           } else {
-            final apiUrl = 'https://lxmusicapi.onrender.com/url/$mapped/$id/320k';
+            final apiUrl =
+                'https://lxmusicapi.onrender.com/url/$mapped/$id/320k';
             final headers = {'X-Request-Key': 'share-v2'};
             print('[XMC] 🎵 [Play] 解析失败，回退API链接: $apiUrl');
             await apiService.playOnlineMusic(
@@ -613,7 +617,9 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
           try {
             print('[XMC] 🔄 [Play] 刷新播放状态...');
             await Future.delayed(const Duration(seconds: 2));
-            await ref.read(playbackProvider.notifier).refreshStatus(silent: true);
+            await ref
+                .read(playbackProvider.notifier)
+                .refreshStatus(silent: true);
             print('[XMC] ✅ [Play] 播放状态刷新完成');
           } catch (e) {
             print('[XMC] ⚠️ [Play] 播放状态刷新失败: $e');

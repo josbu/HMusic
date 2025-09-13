@@ -123,9 +123,8 @@ class MusicSearchNotifier extends StateNotifier<MusicSearchState> {
       var settings = ref.read(sourceSettingsProvider);
 
       print('[XMC] 🔧 [MusicSearch] 主要音源: ${settings.primarySource}');
-      // JS音源是否启用由 primarySource 控制，不再单独依赖 enabled
       print(
-        '[XMC] 🔧 [MusicSearch] JS音源启用(由primarySource推断): ${settings.primarySource == 'js_external'}',
+        '[XMC] 🔧 [MusicSearch] useJsForSearch: ${settings.useJsForSearch}',
       );
       print('[XMC] 🔧 [MusicSearch] 使用统一API: ${settings.useUnifiedApi}');
       print('[XMC] 🔧 [MusicSearch] 统一API地址: ${settings.unifiedApiBase}');
@@ -135,7 +134,8 @@ class MusicSearchNotifier extends StateNotifier<MusicSearchState> {
       String? lastError;
 
       // 智能音源选择策略
-      final bool preferJs = settings.primarySource == 'js_external';
+      final bool preferJs =
+          settings.useJsForSearch && settings.primarySource == 'js_external';
       final bool hasUnifiedApi =
           settings.useUnifiedApi && settings.unifiedApiBase.isNotEmpty;
 
@@ -185,7 +185,10 @@ class MusicSearchNotifier extends StateNotifier<MusicSearchState> {
       }
 
       // 策略 3：如果主要是统一API但失败，尝试JS作为备用
-      if (parsed.isEmpty && !preferJs && settings.primarySource == 'unified') {
+      if (parsed.isEmpty &&
+          !preferJs &&
+          settings.primarySource == 'unified' &&
+          settings.useJsForSearch) {
         print('[XMC] 🔄 [MusicSearch] 统一API失败，尝试JS备用音源');
         try {
           parsed = await _searchUsingJsSource(
