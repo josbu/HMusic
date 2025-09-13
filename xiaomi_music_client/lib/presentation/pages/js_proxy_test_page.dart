@@ -12,10 +12,16 @@ class JSProxyTestPage extends ConsumerStatefulWidget {
 
 class _JSProxyTestPageState extends ConsumerState<JSProxyTestPage> {
   final TextEditingController _scriptController = TextEditingController();
-  final TextEditingController _sourceController = TextEditingController(text: 'test');
-  final TextEditingController _songIdController = TextEditingController(text: '123456');
-  final TextEditingController _qualityController = TextEditingController(text: '320k');
-  
+  final TextEditingController _sourceController = TextEditingController(
+    text: 'test',
+  );
+  final TextEditingController _songIdController = TextEditingController(
+    text: '123456',
+  );
+  final TextEditingController _qualityController = TextEditingController(
+    text: '320k',
+  );
+
   String _testResult = '';
 
   @override
@@ -71,8 +77,11 @@ console.log('测试脚本加载完成');
 
   Future<void> _loadScript() async {
     final jsProxy = ref.read(jsProxyProvider.notifier);
-    final success = await jsProxy.loadScript(_scriptController.text, scriptName: '测试脚本');
-    
+    final success = await jsProxy.loadScript(
+      _scriptController.text,
+      scriptName: '测试脚本',
+    );
+
     setState(() {
       _testResult = success ? '✅ 脚本加载成功' : '❌ 脚本加载失败';
     });
@@ -85,7 +94,7 @@ console.log('测试脚本加载完成');
       songId: _songIdController.text,
       quality: _qualityController.text,
     );
-    
+
     setState(() {
       _testResult = url != null ? '✅ 获取成功: $url' : '❌ 获取失败';
     });
@@ -112,24 +121,30 @@ console.log('测试脚本加载完成');
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '状态信息',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
+                    Text('状态信息', style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 8),
-                    Text('初始化状态: ${jsProxyState.isInitialized ? "✅ 已初始化" : "❌ 未初始化"}'),
-                    Text('加载状态: ${jsProxyState.isLoading ? "⏳ 加载中..." : "✅ 空闲"}'),
+                    Text(
+                      '初始化状态: ${jsProxyState.isInitialized ? "✅ 已初始化" : "❌ 未初始化"}',
+                    ),
+                    Text(
+                      '加载状态: ${jsProxyState.isLoading ? "⏳ 加载中..." : "✅ 空闲"}',
+                    ),
                     Text('当前脚本: ${jsProxyState.currentScript ?? "无"}'),
-                    Text('支持的音源: ${jsProxyState.supportedSources.keys.join(', ')}'),
+                    Text(
+                      '支持的音源: ${jsProxyState.supportedSources.keys.join(', ')}',
+                    ),
                     if (jsProxyState.error != null)
-                      Text('错误: ${jsProxyState.error}', style: const TextStyle(color: Colors.red)),
+                      Text(
+                        '错误: ${jsProxyState.error}',
+                        style: const TextStyle(color: Colors.red),
+                      ),
                   ],
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // JS脚本输入
             Card(
               child: Padding(
@@ -137,10 +152,7 @@ console.log('测试脚本加载完成');
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'JS脚本',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
+                    Text('JS脚本', style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _scriptController,
@@ -159,9 +171,9 @@ console.log('测试脚本加载完成');
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // 音乐URL测试
             Card(
               child: Padding(
@@ -209,18 +221,20 @@ console.log('测试脚本加载完成');
                     ),
                     const SizedBox(height: 8),
                     ElevatedButton(
-                      onPressed: (jsProxyState.isInitialized && jsProxyState.currentScript != null) 
-                          ? _getMusicUrl 
-                          : null,
+                      onPressed:
+                          (jsProxyState.isInitialized &&
+                                  jsProxyState.currentScript != null)
+                              ? _getMusicUrl
+                              : null,
                       child: const Text('获取音乐链接'),
                     ),
                   ],
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // 测试结果
             Card(
               child: Padding(
@@ -228,10 +242,7 @@ console.log('测试脚本加载完成');
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '测试结果',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
+                    Text('测试结果', style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 8),
                     Container(
                       width: double.infinity,
@@ -245,8 +256,12 @@ console.log('测试脚本加载完成');
                         _testResult.isEmpty ? '等待测试结果...' : _testResult,
                         style: TextStyle(
                           fontFamily: 'monospace',
-                          color: _testResult.startsWith('✅') ? Colors.green : 
-                                 _testResult.startsWith('❌') ? Colors.red : Colors.black,
+                          color:
+                              _testResult.startsWith('✅')
+                                  ? Colors.green
+                                  : _testResult.startsWith('❌')
+                                  ? Colors.red
+                                  : Colors.black,
                         ),
                       ),
                     ),
@@ -254,9 +269,9 @@ console.log('测试脚本加载完成');
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // 快捷操作
             Card(
               child: Padding(
@@ -264,10 +279,7 @@ console.log('测试脚本加载完成');
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '快捷操作',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
+                    Text('快捷操作', style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8.0,
@@ -283,7 +295,10 @@ console.log('测试脚本加载完成');
                         ),
                         ElevatedButton(
                           onPressed: () {
-                            final sources = ref.read(jsProxyProvider.notifier).getSupportedSourcesList();
+                            final sources =
+                                ref
+                                    .read(jsProxyProvider.notifier)
+                                    .getSupportedSourcesList();
                             setState(() {
                               _testResult = '📋 支持的音源: ${sources.join(', ')}';
                             });

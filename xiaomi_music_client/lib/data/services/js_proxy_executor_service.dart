@@ -18,7 +18,7 @@ class JSProxyExecutorService {
     _runtime = getJavascriptRuntime();
     await _setupLXMusicEnvironment();
     _isInitialized = true;
-    
+
     print('[JSProxy] ✅ JS执行环境初始化完成');
   }
 
@@ -105,12 +105,12 @@ class JSProxyExecutorService {
     ''';
 
     _runtime!.evaluate(lxEnvironment);
-    
+
     // 注册Flutter网络请求代理
     _runtime!.onMessage('_flutterRequestProxy', (args) async {
       await _handleNetworkRequest(args);
     });
-    
+
     // 注册Flutter事件发送器
     _runtime!.onMessage('_flutterEventSender', (args) {
       _handleEventSend(args);
@@ -125,9 +125,9 @@ class JSProxyExecutorService {
       final requestId = requestData?['id'];
       final url = requestData?['url'];
       final options = requestData?['options'] ?? {};
-      
+
       print('[JSProxy] 🌐 处理网络请求: $url');
-      
+
       // 发起实际的网络请求
       final response = await _dio.request(
         url,
@@ -139,14 +139,14 @@ class JSProxyExecutorService {
         ),
         data: options['data'],
       );
-      
+
       // 构造响应数据
       final responseData = {
         'statusCode': response.statusCode,
         'body': response.data,
         'headers': response.headers.map,
       };
-      
+
       // 调用JS回调
       final callbackScript = '''
         if (globalThis._pendingRequests['$requestId']) {
@@ -157,13 +157,12 @@ class JSProxyExecutorService {
           callback(null, response);
         }
       ''';
-      
+
       _runtime!.evaluate(callbackScript);
       print('[JSProxy] ✅ 网络请求完成: ${response.statusCode}');
-      
     } catch (e) {
       print('[JSProxy] ❌ 网络请求失败: $e');
-      
+
       // 通知JS请求失败
       final requestId = requestData?['id'] ?? 'unknown';
       final errorScript = '''
@@ -173,7 +172,7 @@ class JSProxyExecutorService {
           callback(new Error('${e.toString().replaceAll("'", "\\'")}'), null);
         }
       ''';
-      
+
       _runtime!.evaluate(errorScript);
     }
   }
@@ -184,9 +183,9 @@ class JSProxyExecutorService {
       final eventData = jsonDecode(args);
       final eventName = eventData['event'];
       final data = eventData['data'];
-      
+
       print('[JSProxy] 📡 收到JS事件: $eventName');
-      
+
       // 处理特定事件
       switch (eventName) {
         case 'inited':
@@ -211,14 +210,14 @@ class JSProxyExecutorService {
 
     try {
       print('[JSProxy] 📜 开始加载JS脚本...');
-      
+
       // 执行JS脚本
       _runtime!.evaluate(scriptContent);
       _currentScript = scriptContent;
-      
+
       // 等待脚本初始化
       await Future.delayed(const Duration(milliseconds: 500));
-      
+
       // 检查脚本是否正确加载
       final checkResult = _runtime!.evaluate('''
         (function() {
@@ -233,17 +232,16 @@ class JSProxyExecutorService {
           }
         })()
       ''');
-      
+
       print('[JSProxy] 🔍 脚本加载检查结果: ${checkResult.stringResult}');
-      
+
       if (checkResult.stringResult.contains('error')) {
         print('[JSProxy] ❌ 脚本加载失败');
         return false;
       }
-      
+
       print('[JSProxy] ✅ JS脚本加载成功');
       return true;
-      
     } catch (e) {
       print('[JSProxy] ❌ JS脚本加载异常: $e');
       return false;
@@ -252,9 +250,9 @@ class JSProxyExecutorService {
 
   /// 获取音乐播放链接
   Future<String?> getMusicUrl({
-    required String source,     // tx, wy, kg等
-    required String songId,     // 歌曲ID  
-    required String quality,    // 320k, flac等
+    required String source, // tx, wy, kg等
+    required String songId, // 歌曲ID
+    required String quality, // 320k, flac等
     Map<String, dynamic>? musicInfo, // 额外音乐信息
   }) async {
     if (!_isInitialized || _currentScript == null) {
@@ -264,21 +262,17 @@ class JSProxyExecutorService {
 
     try {
       print('[JSProxy] 🎵 开始获取音乐链接: $source/$songId/$quality');
-      
+
       // 构造请求参数
       final requestParams = {
         'action': 'musicUrl',
         'source': source,
         'info': {
-          'musicInfo': {
-            'songmid': songId,
-            'hash': songId,
-            ...?musicInfo,
-          },
+          'musicInfo': {'songmid': songId, 'hash': songId, ...?musicInfo},
           'type': quality,
-        }
+        },
       };
-      
+
       // 调用JS处理函数
       final executeScript = '''
         (async function() {
@@ -299,13 +293,13 @@ class JSProxyExecutorService {
           }
         })()
       ''';
-      
+
       final result = _runtime!.evaluate(executeScript);
       print('[JSProxy] 🔍 JS执行结果: ${result.stringResult}');
-      
+
       // 解析结果
       final resultData = jsonDecode(result.stringResult);
-      
+
       if (resultData['success'] == true) {
         final musicUrl = resultData['result'];
         print('[JSProxy] ✅ 成功获取音乐链接: $musicUrl');
@@ -314,7 +308,6 @@ class JSProxyExecutorService {
         print('[JSProxy] ❌ 获取音乐链接失败: ${resultData['error']}');
         return null;
       }
-      
     } catch (e) {
       print('[JSProxy] ❌ 获取音乐链接异常: $e');
       return null;
@@ -337,7 +330,7 @@ class JSProxyExecutorService {
           }
         })()
       ''');
-      
+
       return Map<String, dynamic>.from(jsonDecode(result.stringResult));
     } catch (e) {
       print('[JSProxy] ❌ 获取音源列表失败: $e');

@@ -217,6 +217,9 @@ class _MainPageState extends ConsumerState<MainPage> {
                   case 'tts_settings':
                     context.push('/settings/tts');
                     break;
+                  case 'js_proxy_test':
+                    context.push('/js-proxy-test');
+                    break;
                   case 'logout':
                     ref.read(authProvider.notifier).logout();
                     break;
@@ -270,6 +273,23 @@ class _MainPageState extends ConsumerState<MainPage> {
                           const SizedBox(width: 12),
                           Text(
                             'TTS文字转语音',
+                            style: TextStyle(color: onSurface.withOpacity(0.9)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'js_proxy_test',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.code_rounded,
+                            color: onSurface.withOpacity(0.8),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'JS代理测试',
                             style: TextStyle(color: onSurface.withOpacity(0.9)),
                           ),
                         ],

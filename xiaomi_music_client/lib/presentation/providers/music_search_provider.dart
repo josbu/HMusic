@@ -581,26 +581,27 @@ class MusicSearchNotifier extends StateNotifier<MusicSearchState> {
   }) async {
     try {
       print('[XMC] 🎵 [MusicSearch] 使用JS代理解析音乐链接');
-      
+
       final jsProxyNotifier = ref.read(jsProxyProvider.notifier);
       final jsProxyState = ref.read(jsProxyProvider);
-      
+
       // 检查JS代理是否可用
       if (!jsProxyState.isInitialized || jsProxyState.currentScript == null) {
         print('[XMC] ⚠️ [MusicSearch] JS代理未初始化或脚本未加载');
         return results; // 返回原始结果
       }
-      
+
       // 批量解析音乐链接
       final resolvedResults = await jsProxyNotifier.resolveMultipleResults(
         results,
         preferredQuality: preferredQuality ?? '320k',
         maxConcurrent: 3,
       );
-      
-      print('[XMC] ✅ [MusicSearch] JS代理解析完成: ${resolvedResults.length}/${results.length}');
+
+      print(
+        '[XMC] ✅ [MusicSearch] JS代理解析完成: ${resolvedResults.length}/${results.length}',
+      );
       return resolvedResults.isNotEmpty ? resolvedResults : results;
-      
     } catch (e) {
       print('[XMC] ❌ [MusicSearch] JS代理解析失败: $e');
       return results; // 解析失败时返回原始结果
@@ -614,22 +615,22 @@ class MusicSearchNotifier extends StateNotifier<MusicSearchState> {
   }) async {
     try {
       print('[XMC] 🎵 [MusicSearch] 解析单个音乐链接: ${result.title}');
-      
+
       final jsProxyNotifier = ref.read(jsProxyProvider.notifier);
       final jsProxyState = ref.read(jsProxyProvider);
-      
+
       // 检查JS代理是否可用
       if (!jsProxyState.isInitialized || jsProxyState.currentScript == null) {
         print('[XMC] ⚠️ [MusicSearch] JS代理不可用，返回原始结果');
         return result;
       }
-      
+
       // 解析单个结果
       final resolvedResult = await jsProxyNotifier.resolveOnlineMusicResult(
         result,
         preferredQuality: preferredQuality ?? '320k',
       );
-      
+
       if (resolvedResult != null) {
         print('[XMC] ✅ [MusicSearch] 单个结果解析成功');
         return resolvedResult;
@@ -637,7 +638,6 @@ class MusicSearchNotifier extends StateNotifier<MusicSearchState> {
         print('[XMC] ⚠️ [MusicSearch] 单个结果解析失败，返回原始结果');
         return result;
       }
-      
     } catch (e) {
       print('[XMC] ❌ [MusicSearch] 单个结果解析异常: $e');
       return result;

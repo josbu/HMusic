@@ -47,21 +47,18 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
   Future<void> _initializeService() async {
     try {
       state = state.copyWith(isLoading: true, error: null);
-      
+
       await _service.initialize();
-      
+
       state = state.copyWith(
         isInitialized: true,
         isLoading: false,
         error: null,
       );
-      
+
       print('[JSProxyProvider] ✅ JS代理服务初始化完成');
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: '初始化失败: $e',
-      );
+      state = state.copyWith(isLoading: false, error: '初始化失败: $e');
       print('[JSProxyProvider] ❌ 初始化失败: $e');
     }
   }
@@ -75,34 +72,28 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
 
     try {
       state = state.copyWith(isLoading: true, error: null);
-      
+
       final success = await _service.loadScript(scriptContent);
-      
+
       if (success) {
         final sources = _service.getSupportedSources();
-        
+
         state = state.copyWith(
           isLoading: false,
           currentScript: scriptName ?? '已加载脚本',
           supportedSources: sources,
           error: null,
         );
-        
+
         print('[JSProxyProvider] ✅ 脚本加载成功: ${scriptName ?? '未命名脚本'}');
         print('[JSProxyProvider] 📋 支持的音源: ${sources.keys.join(', ')}');
         return true;
       } else {
-        state = state.copyWith(
-          isLoading: false,
-          error: '脚本加载失败',
-        );
+        state = state.copyWith(isLoading: false, error: '脚本加载失败');
         return false;
       }
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: '加载异常: $e',
-      );
+      state = state.copyWith(isLoading: false, error: '加载异常: $e');
       print('[JSProxyProvider] ❌ 脚本加载异常: $e');
       return false;
     }
@@ -112,26 +103,19 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
   Future<bool> loadScriptFromUrl(String url) async {
     try {
       state = state.copyWith(isLoading: true, error: null);
-      
+
       // 这里可以使用现有的网络服务获取脚本内容
       // 暂时先用简单的方式
       print('[JSProxyProvider] 🌐 从URL加载脚本: $url');
-      
+
       // TODO: 实现从URL获取脚本内容的逻辑
       // final scriptContent = await fetchScriptFromUrl(url);
       // return await loadScript(scriptContent, scriptName: url);
-      
-      state = state.copyWith(
-        isLoading: false,
-        error: '从URL加载脚本功能待实现',
-      );
+
+      state = state.copyWith(isLoading: false, error: '从URL加载脚本功能待实现');
       return false;
-      
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: '从URL加载失败: $e',
-      );
+      state = state.copyWith(isLoading: false, error: '从URL加载失败: $e');
       return false;
     }
   }
@@ -151,20 +135,22 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
     // 检查是否支持该音源
     if (!state.supportedSources.containsKey(source)) {
       print('[JSProxyProvider] ⚠️ 不支持的音源: $source');
-      print('[JSProxyProvider] 📋 支持的音源: ${state.supportedSources.keys.join(', ')}');
+      print(
+        '[JSProxyProvider] 📋 支持的音源: ${state.supportedSources.keys.join(', ')}',
+      );
       return null;
     }
 
     try {
       print('[JSProxyProvider] 🎵 获取音乐链接: $source/$songId/$quality');
-      
+
       final url = await _service.getMusicUrl(
         source: source,
         songId: songId,
         quality: quality,
         musicInfo: musicInfo,
       );
-      
+
       if (url != null) {
         print('[JSProxyProvider] ✅ 成功获取音乐链接');
         return url;
@@ -190,7 +176,7 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
     try {
       // 确定使用的音质
       final quality = preferredQuality ?? '320k';
-      
+
       // 使用JS代理获取真实播放链接
       final resolvedUrl = await getMusicUrl(
         source: result.platform ?? 'unknown',
@@ -202,7 +188,7 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
           'album': result.album,
         },
       );
-      
+
       if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
         // 返回解析后的结果，创建新的OnlineMusicResult
         return OnlineMusicResult(
@@ -216,7 +202,7 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
           extra: result.extra,
         );
       }
-      
+
       return null;
     } catch (e) {
       print('[JSProxyProvider] ❌ 解析OnlineMusicResult失败: $e');
@@ -235,31 +221,36 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
     }
 
     final resolvedResults = <OnlineMusicResult>[];
-    
+
     // 分批处理，避免过多并发请求
     for (int i = 0; i < results.length; i += maxConcurrent) {
       final batch = results.skip(i).take(maxConcurrent).toList();
-      
-      final futures = batch.map((result) => 
-        resolveOnlineMusicResult(result, preferredQuality: preferredQuality)
+
+      final futures = batch.map(
+        (result) => resolveOnlineMusicResult(
+          result,
+          preferredQuality: preferredQuality,
+        ),
       );
-      
+
       final batchResults = await Future.wait(futures);
-      
+
       // 添加成功解析的结果
       for (final resolved in batchResults) {
         if (resolved != null) {
           resolvedResults.add(resolved);
         }
       }
-      
+
       // 短暂延迟，避免请求过于频繁
       if (i + maxConcurrent < results.length) {
         await Future.delayed(const Duration(milliseconds: 200));
       }
     }
-    
-    print('[JSProxyProvider] 📊 批量解析完成: ${resolvedResults.length}/${results.length}');
+
+    print(
+      '[JSProxyProvider] 📊 批量解析完成: ${resolvedResults.length}/${results.length}',
+    );
     return resolvedResults;
   }
 
@@ -300,6 +291,8 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
 }
 
 /// JS代理执行器Provider
-final jsProxyProvider = StateNotifierProvider<JSProxyNotifier, JSProxyState>((ref) {
+final jsProxyProvider = StateNotifierProvider<JSProxyNotifier, JSProxyState>((
+  ref,
+) {
   return JSProxyNotifier();
 });

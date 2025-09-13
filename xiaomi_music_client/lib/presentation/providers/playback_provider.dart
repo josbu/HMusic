@@ -5,7 +5,6 @@ import '../../data/models/playing_music.dart';
 import '../../data/models/online_music_result.dart';
 import 'dio_provider.dart';
 import 'device_provider.dart';
-import 'js_proxy_provider.dart';
 
 enum PlayMode {
   sequence, // 顺序播放
