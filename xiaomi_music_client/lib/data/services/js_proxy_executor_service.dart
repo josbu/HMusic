@@ -650,11 +650,11 @@ class JSProxyExecutorService {
 
       if (resultData['success'] == true) {
         if (resultData['isPromise'] == true) {
-          // 等待Promise完成
+          // 等待Promise完成（最多3秒）
           print('[JSProxy] ⏳ 等待Promise完成...');
 
-          for (int i = 0; i < 200; i++) {
-            // 最多等待20秒
+          for (int i = 0; i < 30; i++) {
+            // 最多等待3秒
             await Future.delayed(Duration(milliseconds: 100));
 
             final checkResult = _runtime!.evaluate('''
@@ -700,7 +700,7 @@ class JSProxyExecutorService {
             }
           }
 
-          print('[JSProxy] ⏰ Promise等待超时 (20秒)');
+          print('[JSProxy] ⏰ Promise等待超时 (3秒)');
           return null;
         } else {
           final musicUrl = resultData['result'];

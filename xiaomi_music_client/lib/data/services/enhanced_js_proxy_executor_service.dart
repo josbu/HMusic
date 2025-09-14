@@ -1170,9 +1170,9 @@ class EnhancedJSProxyExecutorService {
 
       if (resultData['success'] == true) {
         if (resultData['isPromise'] == true) {
-          // 等待Promise完成
-          for (int i = 0; i < 200; i++) {
-            // 20秒超时
+          // 等待Promise完成（最多3秒）
+          for (int i = 0; i < 30; i++) {
+            // 3秒超时
             await Future.delayed(const Duration(milliseconds: 100));
 
             final checkResult = _runtime!.evaluate('''
@@ -1215,7 +1215,7 @@ class EnhancedJSProxyExecutorService {
             }
           }
 
-          print('[EnhancedJSProxy] ⏰ Promise等待超时 (20秒)');
+          print('[EnhancedJSProxy] ⏰ Promise等待超时 (3秒)');
           return null;
         } else {
           final musicUrl = resultData['result'];

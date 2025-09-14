@@ -342,7 +342,8 @@ send(EVENT_NAMES.inited, { status: true, openDevTools: DEV_ENABLE, sources: musi
       }
 
       final file = result.files.first;
-      final content = file.bytes != null ? String.fromCharCodes(file.bytes!) : '';
+      final content =
+          file.bytes != null ? String.fromCharCodes(file.bytes!) : '';
       if (content.isEmpty) {
         setState(() {
           _testResult = '❌ 读取文件失败或内容为空';
