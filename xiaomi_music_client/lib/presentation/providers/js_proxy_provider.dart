@@ -244,7 +244,9 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
     // 对于未声明支持列表的脚本，或加密脚本隐藏了sources，放宽校验：记录告警但继续尝试
     if (!state.supportedSources.containsKey(source)) {
       print('[JSProxyProvider] ⚠️ 脚本未声明支持该音源或音源列表为空: $source');
-      print('[JSProxyProvider] 📋 已声明的音源: ${state.supportedSources.keys.join(', ')}');
+      print(
+        '[JSProxyProvider] 📋 已声明的音源: ${state.supportedSources.keys.join(', ')}',
+      );
       print('[JSProxyProvider] ℹ️ 继续尝试通过脚本的请求处理器获取链接...');
       // 不再提前返回，后续直接尝试 _service.getMusicUrl
     }

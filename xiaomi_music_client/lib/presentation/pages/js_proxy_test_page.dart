@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 import '../providers/js_proxy_provider.dart';
 
 /// JS代理执行器测试页面
@@ -12,6 +13,7 @@ class JSProxyTestPage extends ConsumerStatefulWidget {
 
 class _JSProxyTestPageState extends ConsumerState<JSProxyTestPage> {
   final TextEditingController _scriptController = TextEditingController();
+  final TextEditingController _scriptUrlController = TextEditingController();
   final TextEditingController _sourceController = TextEditingController(
     text: 'tx',
   );
@@ -23,6 +25,7 @@ class _JSProxyTestPageState extends ConsumerState<JSProxyTestPage> {
   );
 
   String _testResult = '';
+  bool _isFetchingUrl = false;
 
   @override
   void initState() {
@@ -229,6 +232,7 @@ send(EVENT_NAMES.inited, { status: true, openDevTools: DEV_ENABLE, sources: musi
   @override
   void dispose() {
     _scriptController.dispose();
+    _scriptUrlController.dispose();
     _sourceController.dispose();
     _songIdController.dispose();
     _qualityController.dispose();
@@ -245,6 +249,77 @@ send(EVENT_NAMES.inited, { status: true, openDevTools: DEV_ENABLE, sources: musi
     setState(() {
       _testResult = success ? '✅ 脚本加载成功' : '❌ 脚本加载失败';
     });
+  }
+
+  String _inferScriptNameFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final last = uri.pathSegments.isNotEmpty ? uri.pathSegments.last : '远程脚本';
+      return last.isNotEmpty ? last : '远程脚本';
+    } catch (_) {
+      return '远程脚本';
+    }
+  }
+
+  Future<void> _importScriptFromUrl({bool loadAfterImport = false}) async {
+    final rawUrl = _scriptUrlController.text.trim();
+    if (rawUrl.isEmpty) {
+      setState(() {
+        _testResult = '⚠️ 请输入脚本链接';
+      });
+      return;
+    }
+
+    setState(() {
+      _isFetchingUrl = true;
+      _testResult = '🔄 正在下载脚本: $rawUrl';
+    });
+
+    try {
+      final dio = Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 15),
+          followRedirects: true,
+          validateStatus: (code) => code != null && code >= 200 && code < 400,
+          responseType: ResponseType.plain,
+          headers: const {
+            'Accept': 'text/plain, application/javascript, */*',
+          },
+        ),
+      );
+
+      final resp = await dio.get<String>(rawUrl);
+      final content = resp.data ?? '';
+      if (content.isEmpty) {
+        throw Exception('脚本内容为空');
+      }
+
+      _scriptController.text = content;
+
+      if (loadAfterImport) {
+        final jsProxy = ref.read(jsProxyProvider.notifier);
+        final success = await jsProxy.loadScript(
+          content,
+          scriptName: _inferScriptNameFromUrl(rawUrl),
+        );
+        setState(() {
+          _testResult = success ? '✅ 已导入并加载脚本' : '❌ 导入成功但加载失败';
+        });
+      } else {
+        setState(() {
+          _testResult = '✅ 已从链接导入脚本内容（未加载）';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _testResult = '❌ 从链接导入失败: $e';
+      });
+    } finally {
+      setState(() {
+        _isFetchingUrl = false;
+      });
+    }
   }
 
   Future<void> _getMusicUrl() async {
@@ -334,6 +409,33 @@ send(EVENT_NAMES.inited, { status: true, openDevTools: DEV_ENABLE, sources: musi
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('JS脚本', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _scriptUrlController,
+                      decoration: const InputDecoration(
+                        labelText: '脚本链接（URL）',
+                        hintText: '例如：https://raw.githubusercontent.com/xxx/script.js',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ElevatedButton(
+                          onPressed: (jsProxyState.isLoading || _isFetchingUrl)
+                              ? null
+                              : () => _importScriptFromUrl(loadAfterImport: false),
+                          child: Text(_isFetchingUrl ? '下载中...' : '从链接导入'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: (jsProxyState.isLoading || _isFetchingUrl)
+                              ? null
+                              : () => _importScriptFromUrl(loadAfterImport: true),
+                          child: Text(_isFetchingUrl ? '下载中...' : '导入并加载'),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: _scriptController,
