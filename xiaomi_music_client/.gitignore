@@ -12,6 +12,11 @@
 .swiftpm/
 migrate_working_dir/
 
+# 混淆构建相关 - 安全敏感
+build/debug-info/
+*.symbols
+obfuscation_map.json
+
 # IntelliJ related
 *.iml
 *.ipr
