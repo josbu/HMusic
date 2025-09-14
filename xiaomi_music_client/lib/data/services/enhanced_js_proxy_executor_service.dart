@@ -833,9 +833,21 @@ class EnhancedJSProxyExecutorService {
                 const compatHandler = function(request){
                   try {
                     let result = null;
-                    // 1) 优先通用函数
-                    if (!result && typeof getMusicUrl === 'function') result = getMusicUrl(request.info);
-                    if (!result && typeof handleGetMusicUrl === 'function') result = handleGetMusicUrl(request.info);
+                    const src = request && request.source;
+                    const info = request && request.info;
+                    const musicInfo = info && info.musicInfo;
+                    const quality = info && info.type;
+                    // 1) 优先通用函数（尝试多种参数签名）
+                    if (!result && typeof getMusicUrl === 'function') {
+                      try { result = getMusicUrl(info); } catch(_) {}
+                      if (!result) { try { result = getMusicUrl(src, musicInfo, quality); } catch(_) {}
+                      if (!result) { try { result = getMusicUrl(musicInfo, quality); } catch(_) {} }
+                    }
+                    if (!result && typeof handleGetMusicUrl === 'function') {
+                      try { result = handleGetMusicUrl(info); } catch(_) {}
+                      if (!result) { try { result = handleGetMusicUrl(src, musicInfo, quality); } catch(_) {}
+                      if (!result) { try { result = handleGetMusicUrl(musicInfo, quality); } catch(_) {} }
+                    }
                     
                     // 2) 平台特定函数名模式
                     if (!result) {
@@ -848,20 +860,27 @@ class EnhancedJSProxyExecutorService {
                         request.source.toUpperCase() + '_MUSIC_URL'
                       ];
                       for (const n of names) {
-                        if (typeof globalThis[n] === 'function') { result = globalThis[n](request.info); if (result) break; }
+                        if (typeof globalThis[n] === 'function') { 
+                          try { result = globalThis[n](info) } catch(_) {}
+                          if (!result) { try { result = globalThis[n](musicInfo, quality) } catch(_) {}
+                          if (!result) { try { result = globalThis[n](src, musicInfo, quality) } catch(_) {} }
+                          if (result) break; 
+                        }
                       }
                     }
                     
                     // 3) apis 对象风格
                     if (!result && typeof apis === 'object' && apis && apis[request.source] && typeof apis[request.source].musicUrl === 'function') {
-                      const q = request.info && request.info.type;
-                      const mi = request.info && request.info.musicInfo;
+                      const q = quality;
+                      const mi = musicInfo;
                       try { result = apis[request.source].musicUrl(mi, q); } catch(_) {}
+                      if (!result) { try { result = apis[request.source].musicUrl(info); } catch(_) {} }
                     }
                     
                     // 4) sources/handlers 对象风格
                     if (!result && typeof sources === 'object' && sources && sources[request.source] && typeof sources[request.source].musicUrl === 'function') {
-                      try { result = sources[request.source].musicUrl(request.info); } catch(_) {}
+                      try { result = sources[request.source].musicUrl(info); } catch(_) {}
+                      if (!result) { try { result = sources[request.source].musicUrl(musicInfo, quality); } catch(_) {} }
                     }
                     
                     // 5) 尝试任何包含关键字的函数
@@ -871,7 +890,7 @@ class EnhancedJSProxyExecutorService {
                         (name.toLowerCase().includes('music') || name.toLowerCase().includes('url') || name.toLowerCase().includes(request.source.toLowerCase()))
                       );
                       for (const fn of allFunctions) {
-                        try { const r = globalThis[fn](request.info || request); if (r) { result = r; break; } } catch(e) {}
+                        try { let r = globalThis[fn](info || request); if (!r) r = globalThis[fn](musicInfo, quality); if (!r) r = globalThis[fn](src, musicInfo, quality); if (r) { result = r; break; } } catch(e) {}
                       }
                     }
                     
