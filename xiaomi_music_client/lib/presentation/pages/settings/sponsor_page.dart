@@ -7,7 +7,7 @@ class SponsorPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('赞赏支持'),
@@ -56,7 +56,7 @@ class SponsorPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '小爱音乐盒是一个开源项目，完全免费使用\n如果这个应用对您有帮助，欢迎赞赏支持开发者',
+                    '小爱音乐盒是一个免费的音乐控制应用\n如果这个应用对您有帮助，欢迎赞赏支持开发者',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: colorScheme.onPrimaryContainer.withOpacity(0.8),
@@ -75,9 +75,7 @@ class SponsorPage extends StatelessWidget {
               decoration: BoxDecoration(
                 color: colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: colorScheme.outline.withOpacity(0.2),
-                ),
+                border: Border.all(color: colorScheme.outline.withOpacity(0.2)),
                 boxShadow: [
                   BoxShadow(
                     color: colorScheme.shadow.withOpacity(0.05),
@@ -106,9 +104,9 @@ class SponsorPage extends StatelessWidget {
                       ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 20),
-                  
+
                   // 赞赏码图片
                   GestureDetector(
                     onLongPress: () => _saveQRCode(context),
@@ -128,9 +126,9 @@ class SponsorPage extends StatelessWidget {
                       ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   Text(
                     '扫描上方二维码或长按保存',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -169,10 +167,10 @@ class SponsorPage extends StatelessWidget {
                   const SizedBox(height: 12),
                   _buildSupportItem(
                     context,
-                    Icons.star_rounded,
-                    'GitHub Star',
-                    '给项目点个⭐',
-                    () => _showComingSoon(context),
+                    Icons.article_rounded,
+                    '关注公众号',
+                    '获取最新动态和教程',
+                    () => _showWechatOfficialDialog(context),
                   ),
                   const SizedBox(height: 8),
                   _buildSupportItem(
@@ -185,7 +183,7 @@ class SponsorPage extends StatelessWidget {
                   const SizedBox(height: 8),
                   _buildSupportItem(
                     context,
-                    Icons.bug_report_rounded,
+                    Icons.feedback_rounded,
                     '反馈建议',
                     '帮助改进应用',
                     () => _showFeedbackDialog(context),
@@ -203,9 +201,7 @@ class SponsorPage extends StatelessWidget {
               decoration: BoxDecoration(
                 color: colorScheme.errorContainer.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: colorScheme.error.withOpacity(0.2),
-                ),
+                border: Border.all(color: colorScheme.error.withOpacity(0.2)),
               ),
               child: Row(
                 children: [
@@ -216,8 +212,8 @@ class SponsorPage extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      '赞赏纯属自愿，应用永远免费开源！\n您的每一份支持都是对开发者最大的鼓励 ❤️',
+                    child:                     Text(
+                      '赞赏纯属自愿，应用永远免费使用！\n您的每一份支持都是对开发者最大的鼓励 ❤️',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: colorScheme.error,
                         height: 1.4,
@@ -241,7 +237,7 @@ class SponsorPage extends StatelessWidget {
     VoidCallback onTap,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -249,11 +245,7 @@ class SponsorPage extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
         child: Row(
           children: [
-            Icon(
-              icon,
-              color: colorScheme.primary,
-              size: 20,
-            ),
+            Icon(icon, color: colorScheme.primary, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -286,12 +278,33 @@ class SponsorPage extends StatelessWidget {
     );
   }
 
-  void _showComingSoon(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('功能开发中，敬请期待！'),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        behavior: SnackBarBehavior.floating,
+  void _showWechatOfficialDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('关注公众号'),
+        content: const Text(
+          '感谢您的关注！\n\n您可以关注我们的微信公众号，获取：\n\n• 应用使用教程\n• 最新功能介绍\n• 问题解答和技巧\n• 开发进展动态\n\n公众号名称：【请替换为您的公众号名称】',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              // 复制公众号名称
+              Clipboard.setData(
+                const ClipboardData(text: '【请替换为您的公众号名称】'),
+              );
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('公众号名称已复制到剪贴板')),
+              );
+            },
+            child: const Text('复制公众号名称'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('好的'),
+          ),
+        ],
       ),
     );
   }
@@ -299,50 +312,58 @@ class SponsorPage extends StatelessWidget {
   void _showShareDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('分享应用'),
-        content: const Text('感谢您愿意推荐小爱音乐盒！\n\n您可以将应用分享给朋友，或在社交媒体上推荐。每一次分享都是对开发者的支持！'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              // 复制分享文本
-              Clipboard.setData(
-                const ClipboardData(text: '推荐一个好用的小爱音箱音乐控制应用：小爱音乐盒！功能强大，完全免费开源 🎵'),
-              );
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('分享文案已复制到剪贴板')),
-              );
-            },
-            child: const Text('复制分享文案'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('分享应用'),
+            content: const Text(
+              '感谢您愿意推荐小爱音乐盒！\n\n您可以将应用分享给朋友，或在社交媒体上推荐。每一次分享都是对开发者的支持！',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  // 复制分享文本
+                   Clipboard.setData(
+                     const ClipboardData(
+                       text: '推荐一个好用的小爱音箱音乐控制应用：小爱音乐盒！功能强大，完全免费 🎵',
+                     ),
+                   );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('分享文案已复制到剪贴板')));
+                },
+                child: const Text('复制分享文案'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('好的'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('好的'),
-          ),
-        ],
-      ),
     );
   }
 
   void _showFeedbackDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('反馈建议'),
-        content: const Text('您的意见和建议对我们非常重要！\n\n如果您在使用过程中遇到问题或有改进建议，欢迎通过以下方式联系：\n\n• GitHub Issues\n• 邮件反馈\n• QQ群交流'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('好的'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('反馈建议'),
+        content: const Text(
+          '您的意见和建议对我们非常重要！\n\n如果您在使用过程中遇到问题或有改进建议，欢迎通过以下方式联系：\n\n• 微信公众号留言\n• 邮件反馈\n• QQ群交流',
+        ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('好的'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   Widget _buildQRCodeImage(ColorScheme colorScheme) {
-    // 尝试加载实际的赞赏码图片，如果不存在则显示占位符
+    // 尝试加载赞赏码图片
     return Image.asset(
       'assets/images/sponsor_qr_code.png',
       width: 200,
@@ -353,24 +374,34 @@ class SponsorPage extends StatelessWidget {
         return Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.qr_code_2_rounded,
-              size: 80,
-              color: colorScheme.onSurfaceVariant.withOpacity(0.6),
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: colorScheme.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.qr_code_2_rounded,
+                size: 60,
+                color: colorScheme.primary.withOpacity(0.7),
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
-              '赞赏码',
+              '微信赞赏码',
               style: TextStyle(
-                color: colorScheme.onSurfaceVariant.withOpacity(0.6),
-                fontSize: 14,
+                color: colorScheme.onSurfaceVariant.withOpacity(0.8),
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(height: 4),
             Text(
-              '长按保存到相册',
+              '请将赞赏码图片添加到\nassets/images/sponsor_qr_code.png',
+              textAlign: TextAlign.center,
               style: TextStyle(
-                color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                color: colorScheme.onSurfaceVariant.withOpacity(0.6),
                 fontSize: 12,
               ),
             ),
