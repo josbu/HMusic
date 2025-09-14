@@ -57,6 +57,12 @@ dependencies:
   json_annotation: ^4.8.1
   # UI图标
   cupertino_icons: ^1.0.8
+  # 图片保存到相册
+  image_gallery_saver: ^2.0.3
+  # 权限请求
+  permission_handler: ^11.3.1
+  # 设备信息
+  device_info_plus: ^10.1.0
 
 dev_dependencies:
   flutter_test:
