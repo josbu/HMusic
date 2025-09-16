@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../providers/js_proxy_provider.dart';
 import '../providers/music_search_provider.dart';
+import '../providers/source_settings_provider.dart';
+import '../providers/js_script_manager_provider.dart';
 import '../../data/models/online_music_result.dart';
 import 'package:dio/dio.dart' as dio;
 import 'package:webview_flutter/webview_flutter.dart';
@@ -483,6 +486,57 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
     }
 
     try {
+      // 🎯 检查用户音源设置和JS脚本状态
+      final settings = ref.read(sourceSettingsProvider);
+      if (settings.primarySource == 'js_external') {
+        final scripts = ref.read(jsScriptManagerProvider);
+        final scriptManager = ref.read(jsScriptManagerProvider.notifier);
+        final selectedScript = scriptManager.selectedScript;
+        
+        if (scripts.isEmpty) {
+          // 用户选择了JS音源但没有导入任何脚本
+          if (mounted) {
+            AppSnackBar.show(
+              context,
+              SnackBar(
+                content: const Text('❌ 未导入JS脚本\n请先在设置中导入JS脚本才能播放音乐'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 5),
+                action: SnackBarAction(
+                  label: '去导入',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    // 导航到音源设置页面
+                    context.push('/settings/source');
+                  },
+                ),
+              ),
+            );
+          }
+          return;
+        } else if (selectedScript == null) {
+          // 有脚本但没有选中任何脚本
+          if (mounted) {
+            AppSnackBar.show(
+              context,
+              SnackBar(
+                content: Text('❌ 未选择JS脚本\n已导入${scripts.length}个脚本，请选择一个使用'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 5),
+                action: SnackBarAction(
+                  label: '去选择',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    context.push('/settings/source');
+                  },
+                ),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
       String? playUrl;
       // 保留设置读取逻辑如后续需要；当前未使用，移除避免未使用告警
 
@@ -608,7 +662,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
                 platform: platform,
                 quality: '320k',
               );
-              
+
               if (unifiedUrl != null && unifiedUrl.isNotEmpty) {
                 print('[XMC] ✅ [Play] 统一API回退成功: $unifiedUrl');
                 await apiService.playOnlineMusic(

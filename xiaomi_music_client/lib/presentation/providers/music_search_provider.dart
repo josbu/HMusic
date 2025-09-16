@@ -4,6 +4,7 @@ import '../../data/models/online_music_result.dart';
 import '../../data/services/unified_api_service.dart';
 import '../../data/services/native_music_search_service.dart';
 import 'source_settings_provider.dart';
+import 'js_script_manager_provider.dart';
 import '../../data/adapters/search_adapter.dart';
 // import 'js_source_provider.dart'; // JS 搜索路径已移除
 import 'js_proxy_provider.dart';
@@ -142,6 +143,21 @@ class MusicSearchNotifier extends StateNotifier<MusicSearchState> {
       print(
         '[XMC] 🎵 [MusicSearch] 音源策略: preferJs=$preferJs, preferUnified=$preferUnified',
       );
+
+      // 🎯 如果用户选择了JS音源，检查是否有可用的脚本
+      if (preferJs) {
+        final scripts = ref.read(jsScriptManagerProvider);
+        final scriptManager = ref.read(jsScriptManagerProvider.notifier);
+        final selectedScript = scriptManager.selectedScript;
+        
+        if (scripts.isEmpty) {
+          // 用户选择了JS音源但没有导入任何脚本
+          throw Exception('未导入JS脚本\n请先在设置中导入JS脚本才能使用JS音源搜索');
+        } else if (selectedScript == null) {
+          // 有脚本但没有选中任何脚本
+          throw Exception('未选择JS脚本\n已导入${scripts.length}个脚本，请在设置中选择一个使用');
+        }
+      }
 
       if (preferJs) {
         print('[XMC] 🎵 [MusicSearch] JS流程（使用原生搜索 + JS解析播放）');
