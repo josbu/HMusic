@@ -7,7 +7,6 @@ import '../providers/device_provider.dart';
 import '../../data/models/device.dart';
 import '../widgets/app_snackbar.dart';
 import '../widgets/app_layout.dart';
-import '../providers/dio_provider.dart'; // Added for TTS
 
 class ControlPanelPage extends ConsumerStatefulWidget {
   final bool showAppBar;
@@ -184,8 +183,14 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
       ),
       child: Column(
         children: [
-          _buildDeviceSelector(deviceState),
-          const SizedBox(height: 12),
+          // 🎯 只在有设备时显示设备选择器
+          if (deviceState.devices.isNotEmpty) ...[
+            _buildDeviceSelector(deviceState),
+            const SizedBox(height: 12),
+          ] else if (!deviceState.isLoading) ...[
+            _buildNoDeviceHint(),
+            const SizedBox(height: 12),
+          ],
           _buildAlbumArtwork(currentMusic, currentMusic?.isPlaying ?? false),
           const SizedBox(height: 12),
           _buildSongInfo(currentMusic, playbackState.hasLoaded),
@@ -302,6 +307,62 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 🎯 没有找到设备时的提示
+  Widget _buildNoDeviceHint() {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.orangeAccent.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.orangeAccent.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            color: Colors.orangeAccent,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '未找到音箱设备，请检查设置',
+              style: TextStyle(
+                color: onSurface,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            icon: Icon(
+              Icons.refresh_rounded,
+              color: Colors.orangeAccent,
+              size: 18,
+            ),
+            onPressed: () async {
+              try {
+                await ref.read(deviceProvider.notifier).loadDevices();
+              } catch (e) {
+                // ignore
+              }
+            },
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+        ],
       ),
     );
   }
