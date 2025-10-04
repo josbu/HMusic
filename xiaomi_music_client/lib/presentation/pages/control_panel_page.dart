@@ -99,6 +99,11 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                     authState,
                   ),
                   const SizedBox(height: 12),
+                  // 🎵 显示当前播放列表
+                  if (playbackState.currentPlaylistSongs.isNotEmpty)
+                    _buildCurrentPlaylist(playbackState),
+                  if (playbackState.currentPlaylistSongs.isNotEmpty)
+                    const SizedBox(height: 12),
                   if (playbackState.error != null)
                     _buildErrorMessage(playbackState),
                 ],
@@ -1067,6 +1072,147 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
           tooltip: state.isFavorite ? '取消收藏' : '加入收藏',
         ),
       ],
+    );
+  }
+
+  /// 🎵 显示当前播放列表
+  Widget _buildCurrentPlaylist(PlaybackState state) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final currentSong = state.currentMusic?.curMusic ?? '';
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color:
+            isLight
+                ? Colors.white.withOpacity(0.6)
+                : Colors.black.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.queue_music_rounded,
+                color: Theme.of(context).colorScheme.primary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '当前播放列表',
+                style: TextStyle(
+                  color: onSurface,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${state.currentPlaylistSongs.length} 首',
+                style: TextStyle(
+                  color: onSurface.withOpacity(0.6),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // 限制最大高度，超出可滚动
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 300),
+            child: ListView.builder(
+              shrinkWrap: true,
+              physics: const ClampingScrollPhysics(),
+              itemCount: state.currentPlaylistSongs.length,
+              itemBuilder: (context, index) {
+                final song = state.currentPlaylistSongs[index];
+                final isCurrentSong = song == currentSong;
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 4),
+                  decoration: BoxDecoration(
+                    color:
+                        isCurrentSong
+                            ? Theme.of(
+                              context,
+                            ).colorScheme.primary.withOpacity(0.1)
+                            : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    leading: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color:
+                            isCurrentSong
+                                ? Theme.of(context).colorScheme.primary
+                                : onSurface.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child:
+                            isCurrentSong
+                                ? Icon(
+                                  Icons.play_arrow_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                )
+                                : Text(
+                                  '${index + 1}',
+                                  style: TextStyle(
+                                    color: onSurface.withOpacity(0.7),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                      ),
+                    ),
+                    title: Text(
+                      song,
+                      style: TextStyle(
+                        color:
+                            isCurrentSong
+                                ? Theme.of(context).colorScheme.primary
+                                : onSurface,
+                        fontSize: 14,
+                        fontWeight:
+                            isCurrentSong ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing:
+                        isCurrentSong
+                            ? Icon(
+                              Icons.graphic_eq_rounded,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 20,
+                            )
+                            : null,
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -36,6 +36,15 @@ class MusicApiService {
     return response.data as Map<String, dynamic>;
   }
 
+  // 获取当前播放列表
+  Future<Map<String, dynamic>> getCurrentPlaylist({String? did}) async {
+    final response = await _client.get(
+      '/curplaylist',
+      queryParameters: did != null ? {'did': did} : null,
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> getVolume({String? did}) async {
     final response = await _client.get(
       '/getvolume',

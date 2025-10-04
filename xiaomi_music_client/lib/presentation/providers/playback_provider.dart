@@ -78,6 +78,7 @@ class PlaybackState {
   final String? albumCoverUrl; // ✨ 当前播放歌曲的专辑封面图 URL
   final int timerMinutes; // ⏰ 定时关机分钟数（0 表示未设置）
   final bool isFavorite; // ⭐ 当前歌曲是否已收藏
+  final List<String> currentPlaylistSongs; // 🎵 当前播放列表的所有歌曲
 
   const PlaybackState({
     this.currentMusic,
@@ -89,6 +90,7 @@ class PlaybackState {
     this.albumCoverUrl,
     this.timerMinutes = 0, // 默认未设置定时
     this.isFavorite = false, // 默认未收藏
+    this.currentPlaylistSongs = const [], // 默认空列表
   });
 
   PlaybackState copyWith({
@@ -101,6 +103,7 @@ class PlaybackState {
     Object? albumCoverUrl = _undefined,
     int? timerMinutes,
     bool? isFavorite,
+    List<String>? currentPlaylistSongs,
   }) {
     return PlaybackState(
       currentMusic: currentMusic ?? this.currentMusic,
@@ -115,6 +118,7 @@ class PlaybackState {
               : albumCoverUrl as String?,
       timerMinutes: timerMinutes ?? this.timerMinutes,
       isFavorite: isFavorite ?? this.isFavorite,
+      currentPlaylistSongs: currentPlaylistSongs ?? this.currentPlaylistSongs,
     );
   }
 }
@@ -225,6 +229,27 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       final volume = volumeResponse['volume'] as int? ?? state.volume;
 
+      // 获取当前播放列表
+      List<String> playlistSongs = [];
+      try {
+        final playlistResponse = await apiService.getCurrentPlaylist(
+          did: selectedDid,
+        );
+        print('🎵 播放列表API响应: $playlistResponse');
+
+        if (playlistResponse['cur_playlist'] != null) {
+          final songs = playlistResponse['cur_playlist'] as List?;
+          if (songs != null) {
+            playlistSongs = songs.map((s) => s.toString()).toList();
+            print('🎵 当前播放列表有 ${playlistSongs.length} 首歌曲');
+          }
+        }
+      } catch (e) {
+        print('🎵 获取播放列表失败: $e');
+        // 即使失败也继续，保留原有列表
+        playlistSongs = state.currentPlaylistSongs;
+      }
+
       print('🎵 最终播放状态: ${currentMusic?.curMusic ?? "无"}');
       print('🎵 当前音量: $volume');
 
@@ -276,6 +301,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         hasLoaded: true,
         albumCoverUrl: isSongChanged ? null : state.albumCoverUrl,
         isFavorite: isSongChanged ? false : state.isFavorite,
+        currentPlaylistSongs: playlistSongs,
       );
 
       // 智能更新预测基准
