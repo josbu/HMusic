@@ -77,6 +77,7 @@ class PlaybackState {
   final bool hasLoaded; // whether initial fetch attempted
   final String? albumCoverUrl; // ✨ 当前播放歌曲的专辑封面图 URL
   final int timerMinutes; // ⏰ 定时关机分钟数（0 表示未设置）
+  final bool isFavorite; // ⭐ 当前歌曲是否已收藏
 
   const PlaybackState({
     this.currentMusic,
@@ -87,6 +88,7 @@ class PlaybackState {
     this.hasLoaded = false,
     this.albumCoverUrl,
     this.timerMinutes = 0, // 默认未设置定时
+    this.isFavorite = false, // 默认未收藏
   });
 
   PlaybackState copyWith({
@@ -98,6 +100,7 @@ class PlaybackState {
     bool? hasLoaded,
     Object? albumCoverUrl = _undefined,
     int? timerMinutes,
+    bool? isFavorite,
   }) {
     return PlaybackState(
       currentMusic: currentMusic ?? this.currentMusic,
@@ -111,6 +114,7 @@ class PlaybackState {
               ? this.albumCoverUrl
               : albumCoverUrl as String?,
       timerMinutes: timerMinutes ?? this.timerMinutes,
+      isFavorite: isFavorite ?? this.isFavorite,
     );
   }
 }
@@ -263,7 +267,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         }
       }
 
-      // 🎯 如果歌曲切换，清除旧的封面图
+      // 🎯 如果歌曲切换，清除旧的封面图和收藏状态
       state = state.copyWith(
         currentMusic: currentMusic,
         volume: volume,
@@ -271,6 +275,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         isLoading: silent ? state.isLoading : false,
         hasLoaded: true,
         albumCoverUrl: isSongChanged ? null : state.albumCoverUrl,
+        isFavorite: isSongChanged ? false : state.isFavorite,
       );
 
       // 智能更新预测基准
@@ -916,11 +921,53 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     try {
       debugPrint('⭐ 加入收藏: ${state.currentMusic!.curMusic}');
       await apiService.executeCommand(did: selectedDid, command: '加入收藏');
+      state = state.copyWith(isFavorite: true);
       debugPrint('✅ 已加入收藏');
-      // 不设置 error，避免覆盖现有状态
     } catch (e) {
       debugPrint('❌ 加入收藏失败: $e');
       state = state.copyWith(error: '加入收藏失败: ${e.toString()}');
+    }
+  }
+
+  /// 💔 取消收藏
+  Future<void> removeFromFavorites() async {
+    final selectedDid = ref.read(deviceProvider).selectedDeviceId;
+    if (selectedDid == null) {
+      debugPrint('⚠️  未选择设备');
+      state = state.copyWith(error: '未选择设备');
+      return;
+    }
+
+    final apiService = ref.read(apiServiceProvider);
+    if (apiService == null) {
+      debugPrint('⚠️  API服务未初始化');
+      state = state.copyWith(error: 'API服务未初始化');
+      return;
+    }
+
+    if (state.currentMusic == null) {
+      debugPrint('⚠️  当前没有播放歌曲');
+      state = state.copyWith(error: '当前没有播放歌曲');
+      return;
+    }
+
+    try {
+      debugPrint('💔 取消收藏: ${state.currentMusic!.curMusic}');
+      await apiService.executeCommand(did: selectedDid, command: '取消收藏');
+      state = state.copyWith(isFavorite: false);
+      debugPrint('✅ 已取消收藏');
+    } catch (e) {
+      debugPrint('❌ 取消收藏失败: $e');
+      state = state.copyWith(error: '取消收藏失败: ${e.toString()}');
+    }
+  }
+
+  /// ⭐💔 切换收藏状态
+  Future<void> toggleFavorites() async {
+    if (state.isFavorite) {
+      await removeFromFavorites();
+    } else {
+      await addToFavorites();
     }
   }
 

@@ -1048,17 +1048,23 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
           ),
         ),
         const SizedBox(width: 32),
-        // 加入收藏按钮
+        // 收藏/取消收藏按钮
         IconButton(
-          icon: const Icon(Icons.favorite_border_rounded),
+          icon: Icon(
+            state.isFavorite
+                ? Icons.favorite_rounded
+                : Icons.favorite_border_rounded,
+          ),
           iconSize: 28,
           color:
-              favoriteEnabled ? Colors.pinkAccent : onSurface.withOpacity(0.4),
+              favoriteEnabled
+                  ? (state.isFavorite ? Colors.redAccent : Colors.pinkAccent)
+                  : onSurface.withOpacity(0.4),
           onPressed:
               favoriteEnabled
-                  ? () => ref.read(playbackProvider.notifier).addToFavorites()
+                  ? () => ref.read(playbackProvider.notifier).toggleFavorites()
                   : null,
-          tooltip: '加入收藏',
+          tooltip: state.isFavorite ? '取消收藏' : '加入收藏',
         ),
       ],
     );
