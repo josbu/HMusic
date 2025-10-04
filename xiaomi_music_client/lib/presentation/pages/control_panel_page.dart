@@ -85,7 +85,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
       backgroundColor: Colors.transparent,
       appBar: widget.showAppBar ? _buildAppBar(context) : null,
       body: SafeArea(
-        bottom: false,
+        bottom: true,
         child: CustomScrollView(
           slivers: [
             SliverPadding(
@@ -112,7 +112,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
             // Fill remaining space so initial view does not leave a large blank
             SliverFillRemaining(
               hasScrollBody: false,
-              child: SizedBox(height: AppLayout.bottomOverlayHeight(context)),
+              child: SizedBox(height: AppLayout.bottomOverlayHeight(context) + 8),
             ),
           ],
         ),

@@ -8,12 +8,11 @@ class AppLayout {
   /// including its top margin and bottom safe-area margin.
   static double bottomOverlayHeight(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
-    final bottomInset = mediaQuery.padding.bottom; // home indicator, etc.
-    final hasBottomInset = bottomInset > 0;
-
+    final bottomInset = mediaQuery.viewPadding.bottom; // stable inset
     const double navHeight = 68.0; // matches _buildModernBottomNav
     const double navTopMargin = 10.0;
-    final double navBottomMargin = hasBottomInset ? (bottomInset + 8.0) : 20.0;
+    const double baseBottomMargin = 24.0;
+    final double navBottomMargin = baseBottomMargin + (bottomInset > 0 ? 0 : 0);
 
     return navHeight + navTopMargin + navBottomMargin;
   }
