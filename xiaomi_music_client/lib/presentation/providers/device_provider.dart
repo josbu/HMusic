@@ -161,31 +161,43 @@ class DeviceNotifier extends StateNotifier<DeviceState> {
         '🔍 [DeviceProvider] 当前 selectedDeviceId: ${state.selectedDeviceId}',
       );
 
-      state = state.copyWith(devices: devices, isLoading: false, error: null);
+      // 🎯 在设备列表最前面插入"本机播放"设备
+      final allDevices = [
+        Device.localDevice, // 本地设备始终在最前面
+        ...devices,
+      ];
+      debugPrint('🔍 [DeviceProvider] 添加本机设备后的总数量: ${allDevices.length}');
 
-      // 🎯 当设备列表为空时，清除选中的设备ID
-      if (devices.isEmpty) {
-        debugPrint('🎯 [DeviceProvider] 设备列表为空，清除 selectedDeviceId');
+      state = state.copyWith(
+        devices: allDevices,
+        isLoading: false,
+        error: null,
+      );
+
+      // 🎯 设备选择逻辑（使用 allDevices，包含本机设备）
+      if (allDevices.isEmpty) {
+        debugPrint('🎯 [DeviceProvider] 设备列表为空（理论上不应该发生，因为至少有本机设备）');
         state = state.copyWith(selectedDeviceId: null);
-        debugPrint(
-          '🔍 [DeviceProvider] 清除后的 selectedDeviceId: ${state.selectedDeviceId}',
-        );
-      } else if (devices.isNotEmpty && state.selectedDeviceId == null) {
-        // 有设备但没有选中任何设备时，自动选中第一个在线设备
-        final onlineDevice = devices.firstWhere(
+      } else if (state.selectedDeviceId == null) {
+        // 没有选中任何设备时，自动选中第一个在线设备（优先本机设备）
+        final onlineDevice = allDevices.firstWhere(
           (d) => d.isOnline == true,
-          orElse: () => devices.first,
+          orElse: () => allDevices.first,
+        );
+        debugPrint(
+          '🎯 [DeviceProvider] 自动选中设备: ${onlineDevice.name} (${onlineDevice.id})',
         );
         state = state.copyWith(selectedDeviceId: onlineDevice.id);
-      } else if (devices.isNotEmpty && state.selectedDeviceId != null) {
-        // 有设备且已选中设备时，检查该设备是否还在列表中
-        final exists = devices.any((d) => d.id == state.selectedDeviceId);
+      } else {
+        // 已选中设备时，检查该设备是否还在列表中
+        final exists = allDevices.any((d) => d.id == state.selectedDeviceId);
         if (!exists) {
           // 之前选中的设备不在列表中，重新选择一个在线设备
-          final onlineDevice = devices.firstWhere(
+          final onlineDevice = allDevices.firstWhere(
             (d) => d.isOnline == true,
-            orElse: () => devices.first,
+            orElse: () => allDevices.first,
           );
+          debugPrint('🎯 [DeviceProvider] 之前的设备已移除，重新选中: ${onlineDevice.name}');
           state = state.copyWith(selectedDeviceId: onlineDevice.id);
         }
       }

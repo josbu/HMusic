@@ -179,7 +179,12 @@ class NativeMusicSearchService {
           extra: const {},
         );
       }).toList();
-    } catch (_) {
+    } catch (e) {
+      print('❌ [NativeSearch] QQ音乐搜索异常: $e');
+      print('❌ [NativeSearch] 错误类型: ${e.runtimeType}');
+      if (e.toString().contains('HandshakeException')) {
+        print('❌ [NativeSearch] SSL握手失败，可能是网络问题');
+      }
       return <OnlineMusicResult>[];
     }
   }
@@ -269,7 +274,13 @@ class NativeMusicSearchService {
           extra: const {},
         );
       }).toList();
-    } catch (_) {
+    } catch (e) {
+      print('❌ [NativeSearch] 酷我音乐搜索异常: $e');
+      print('❌ [NativeSearch] 错误类型: ${e.runtimeType}');
+      if (e.toString().contains('HandshakeException') ||
+          e.toString().contains('SocketException')) {
+        print('❌ [NativeSearch] 网络连接失败');
+      }
       return <OnlineMusicResult>[];
     }
   }
@@ -395,7 +406,13 @@ class NativeMusicSearchService {
           extra: const {},
         );
       }).toList();
-    } catch (_) {
+    } catch (e) {
+      print('❌ [NativeSearch] 网易云音乐搜索异常: $e');
+      print('❌ [NativeSearch] 错误类型: ${e.runtimeType}');
+      if (e.toString().contains('HandshakeException') ||
+          e.toString().contains('SocketException')) {
+        print('❌ [NativeSearch] 网络连接失败');
+      }
       return <OnlineMusicResult>[];
     }
   }

@@ -496,7 +496,11 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                       final isSelected = state.selectedDeviceId == device.id;
                       return ListTile(
                         leading: Icon(
-                          Icons.speaker_group_rounded,
+                          // 🎯 根据设备类型显示不同图标
+                          device.isLocalDevice
+                              ? Icons
+                                  .phone_android_rounded // 本机设备
+                              : Icons.speaker_group_rounded, // 音箱设备
                           color:
                               (device.isOnline ?? false)
                                   ? Colors.greenAccent

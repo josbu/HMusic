@@ -59,6 +59,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   # 图片保存到相册
   gal: ^2.3.0
+  # 音频播放
+  just_audio: ^0.9.36
+  audio_session: ^0.1.18
 
 dev_dependencies:
   flutter_test:

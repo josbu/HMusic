@@ -251,3 +251,5 @@ lx.on('inited', function(data) {
 ---
 
 **总结**：本次修复的核心是理解并实现了 LX Music 脚本的事件驱动初始化模式。通过触发 `inited` 事件，脚本才能正确设置 `module.exports`。同时完善了 LX 环境和等待机制，确保脚本有足够时间完成异步初始化。
+
+

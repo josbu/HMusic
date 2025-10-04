@@ -451,17 +451,8 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
         }
       } catch (_) {}
 
-      // 最后回退到统一API解析
-      try {
-        final unifiedService = ref.read(unifiedApiServiceProvider);
-        final url = await unifiedService.getMusicUrl(
-          songId: id,
-          platform: platform,
-          quality: '320k',
-        );
-        if (url != null && url.isNotEmpty) return url;
-      } catch (_) {}
-
+      // 🚫 不再回退到统一API，保持 JS 音源的纯净性
+      print('[XMC] ⚠️ [Resolve] 所有JS解析方法均失败，返回null');
       return null;
     } catch (_) {
       return null;
@@ -610,14 +601,66 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
           String? resolvedUrl;
           final jsProxy = ref.read(jsProxyProvider.notifier);
           final jsProxyState = ref.read(jsProxyProvider);
-          if (jsProxyState.isInitialized &&
-              jsProxyState.currentScript != null) {
+
+          // 🎯 严格检查：不仅要初始化，还要有脚本和音源
+          final bool jsReady =
+              jsProxyState.isInitialized &&
+              jsProxyState.currentScript != null &&
+              jsProxyState.supportedSources.isNotEmpty;
+
+          print('[XMC] 🔍 [Play] JS状态检查:');
+          print('  - isInitialized: ${jsProxyState.isInitialized}');
+          print('  - currentScript: ${jsProxyState.currentScript}');
+          print(
+            '  - supportedSources: ${jsProxyState.supportedSources.length}',
+          );
+          print('  - jsReady: $jsReady');
+
+          if (jsReady) {
+            print('[XMC] ✅ [Play] JS已就绪，开始解析音乐链接');
             resolvedUrl = await jsProxy.getMusicUrl(
               source: mapped,
               songId: id,
               quality: '320k',
               musicInfo: {'songmid': id, 'hash': id},
             );
+            print(
+              '[XMC] 🎵 [Play] JS解析结果: ${resolvedUrl?.isNotEmpty == true ? "成功" : "失败"}',
+            );
+          } else {
+            print('[XMC] ⚠️ [Play] JS未就绪，等待自动加载...');
+
+            // 🎯 等待 JS 自动加载（最多3秒）
+            int waitCount = 0;
+            const maxWait = 30; // 30 * 100ms = 3秒
+            while (waitCount < maxWait) {
+              await Future.delayed(const Duration(milliseconds: 100));
+              waitCount++;
+
+              final currentState = ref.read(jsProxyProvider);
+              final nowReady =
+                  currentState.isInitialized &&
+                  currentState.currentScript != null &&
+                  currentState.supportedSources.isNotEmpty;
+
+              if (nowReady) {
+                print('[XMC] ✅ [Play] JS加载完成，等待了 ${waitCount * 100}ms');
+                resolvedUrl = await jsProxy.getMusicUrl(
+                  source: mapped,
+                  songId: id,
+                  quality: '320k',
+                  musicInfo: {'songmid': id, 'hash': id},
+                );
+                print(
+                  '[XMC] 🎵 [Play] JS解析结果: ${resolvedUrl?.isNotEmpty == true ? "成功" : "失败"}',
+                );
+                break;
+              }
+            }
+
+            if (waitCount >= maxWait) {
+              print('[XMC] ❌ [Play] JS加载超时（3秒），继续尝试其他方法');
+            }
           }
           if (resolvedUrl == null || resolvedUrl.isEmpty) {
             final webSvc = await ref.read(
@@ -646,49 +689,35 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
 
           if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
             print('[XMC] 🎵 [Play] 使用解析直链播放');
-            await apiService.playOnlineMusic(
-              did: selectedDeviceId,
-              musicUrl: resolvedUrl,
-              musicTitle: item.title,
-              musicAuthor: item.author,
-            );
-          } else {
-            // 公开版本：使用统一API作为回退
-            print('[XMC] 🎵 [Play] JS解析失败，回退到统一API');
-            try {
-              final unifiedService = ref.read(unifiedApiServiceProvider);
-              final unifiedUrl = await unifiedService.getMusicUrl(
-                songId: id,
-                platform: platform,
-                quality: '320k',
-              );
 
-              if (unifiedUrl != null && unifiedUrl.isNotEmpty) {
-                print('[XMC] ✅ [Play] 统一API回退成功: $unifiedUrl');
-                await apiService.playOnlineMusic(
-                  did: selectedDeviceId,
-                  musicUrl: unifiedUrl,
-                  musicTitle: item.title,
-                  musicAuthor: item.author,
+            // 🎯 通过 PlaybackProvider 播放，自动适配本地/远程模式
+            await ref
+                .read(playbackProvider.notifier)
+                .playMusic(
+                  deviceId: selectedDeviceId,
+                  musicName: '${item.title} - ${item.author}',
+                  url: resolvedUrl,
+                  albumCoverUrl: item.picture, // 🖼️ 传递搜索结果的封面图
                 );
-              } else {
-                throw Exception('统一API也无法解析该歌曲');
-              }
-            } catch (e) {
-              print('[XMC] ❌ [Play] 统一API回退失败: $e');
-              if (mounted) {
-                AppSnackBar.show(
-                  context,
-                  SnackBar(
-                    content: Text('播放失败: 无法获取音乐链接'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
+
+            print('[XMC] ✅ [Play] 播放请求已发送到 PlaybackProvider');
+          } else {
+            // 🚫 JS 音源解析失败：不再回退到统一API
+            print('[XMC] ❌ [Play] JS解析失败，无法获取播放链接');
+            if (mounted) {
+              AppSnackBar.show(
+                context,
+                SnackBar(
+                  content: Text('播放失败: JS脚本无法解析该歌曲\n请尝试其他歌曲或重新加载脚本'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
             }
+            return; // 直接返回，不继续执行
           }
 
-          print('[XMC] ✅ [Play] JS源播放请求成功');
+          print('[XMC] ✅ [Play] JS源播放流程完成');
 
           try {
             print('[XMC] 🔄 [Play] 刷新播放状态...');
@@ -697,14 +726,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
                 .read(playbackProvider.notifier)
                 .refreshStatus(silent: true);
             print('[XMC] ✅ [Play] 播放状态刷新完成');
-
-            // ✨ 更新封面图
-            if (item.picture != null && item.picture!.isNotEmpty) {
-              ref
-                  .read(playbackProvider.notifier)
-                  .updateAlbumCover(item.picture!);
-              print('[XMC] 🖼️  [Play] 封面图已更新: ${item.picture}');
-            }
+            // 🖼️ 封面图已在 playMusic 中统一处理，不需要单独更新
           } catch (e) {
             print('[XMC] ⚠️ [Play] 播放状态刷新失败: $e');
           }
@@ -915,21 +937,17 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
         '[XMC] 🎵 [Play] 开始播放解析后的链接: ${playUrl.substring(0, playUrl.length > 100 ? 100 : playUrl.length)}...',
       );
 
-      // 🎯 对于统一API源，使用传统的playOnlineMusic（不带API标志）
-      if (sourceApi == 'unified') {
-        await apiService.playOnlineMusic(
-          did: selectedDeviceId,
-          musicUrl: playUrl,
-          musicTitle: item.title,
-          musicAuthor: item.author,
-          // 不传headers，使用传统格式
-        );
-      } else {
-        // 🎯 对于其他源，使用智能播放
-        await apiService.playUrlSmart(did: selectedDeviceId, url: playUrl);
-      }
+      // 🎯 通过 PlaybackProvider 播放，自动适配本地/远程模式
+      await ref
+          .read(playbackProvider.notifier)
+          .playMusic(
+            deviceId: selectedDeviceId,
+            musicName: '${item.title} - ${item.author}',
+            url: playUrl,
+            albumCoverUrl: item.picture, // 🖼️ 传递搜索结果的封面图
+          );
 
-      print('[XMC] ✅ [Play] 播放请求成功');
+      print('[XMC] ✅ [Play] 播放请求已发送到 PlaybackProvider');
 
       // 🎯 刷新播放状态
       try {
