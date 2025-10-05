@@ -264,7 +264,7 @@ class _MainPageState extends ConsumerState<MainPage> {
       margin: EdgeInsets.only(
         left: 20,
         right: 20,
-        bottom: hasGesture ? (bottomPadding + 8 - 15) : 20,
+        bottom: hasGesture ? ((bottomPadding + 8 - 15).clamp(0, double.infinity)) : 20,
         top: 10,
       ),
       decoration: BoxDecoration(
