@@ -450,6 +450,7 @@ class SettingsPage extends ConsumerWidget {
           value: settings.defaultDownloadQuality,
           underline: const SizedBox.shrink(),
           isDense: true,
+          alignment: AlignmentDirectional.centerEnd,
           icon: const Icon(Icons.arrow_drop_down),
           items: const [
             DropdownMenuItem(value: 'lossless', child: Text('无损音质')),
