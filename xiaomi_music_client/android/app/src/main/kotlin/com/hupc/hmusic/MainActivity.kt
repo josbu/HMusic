@@ -1,4 +1,4 @@
-package com.hupc.xiaoaimusicbox
+package com.hupc.hmusic
 
 import android.content.Context
 import com.ryanheise.audioservice.AudioServicePlugin

@@ -70,7 +70,7 @@
 }
 
 # 应用特定保留规则
--keep class com.hupc.xiaoaimusicbox.MainActivity { *; }
+-keep class com.hupc.hmusic.MainActivity { *; }
 
 # 第三方库规则
 -dontwarn com.squareup.okhttp.**

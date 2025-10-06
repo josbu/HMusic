@@ -67,6 +67,7 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
   String? _currentMusicName;
   String? _currentMusicUrl;
   String? _currentAlbumCover; // 当前封面图
+  String? _loadingMusicName; // 正在加载的歌曲名
 
   String? get currentMusicName => _currentMusicName;
   String? get currentMusicUrl => _currentMusicUrl;
@@ -268,10 +269,12 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
         debugPrint('🎵 [LocalPlayback] 获取到播放链接: $playUrl');
       }
 
+      // 先更新状态和缓存
       _currentMusicName = musicName;
       _currentMusicUrl = playUrl;
       await _saveCache();
 
+      // 然后调用播放
       await _loadAndMaybePlay(
         url: playUrl,
         name: musicName,
@@ -431,11 +434,20 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
     int offset = 0,
     String artist = '未知艺术家',
   }) async {
-    if (_loading) {
-      debugPrint('⏳ [LocalPlayback] 正在加载，丢弃并发调用');
+    // 如果正在加载且歌曲名相同，跳过重复调用
+    if (_loading && _loadingMusicName == name) {
+      debugPrint('⏳ [LocalPlayback] 正在加载相同歌曲，跳过重复调用');
       return;
     }
+
+    // 如果正在加载但歌曲名不同，说明是切歌操作，取消之前的加载
+    if (_loading) {
+      debugPrint('🔄 [LocalPlayback] 检测到切歌请求，取消上一次加载 ($_loadingMusicName -> $name)');
+      _loadToken++; // 使旧的加载操作失效
+    }
+
     _loading = true;
+    _loadingMusicName = name; // 记录正在加载的歌曲
     await _waitAndAttachAudioHandler();
     final token = ++_loadToken;
     try {
@@ -447,7 +459,10 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
 
       await player.stop();
       await player.setUrl(url);
-      if (token != _loadToken) return;
+      if (token != _loadToken) {
+        debugPrint('⏭️ [LocalPlayback] 加载被新请求取消 (token: $token != $_loadToken)');
+        return;
+      }
       if (offset > 0) {
         await player.seek(Duration(seconds: offset));
       }

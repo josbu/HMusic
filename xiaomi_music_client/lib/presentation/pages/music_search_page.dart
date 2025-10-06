@@ -364,11 +364,32 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
       if (Platform.isIOS) {
         dir = await getApplicationDocumentsDirectory();
       } else {
-        final hasStorage = await Permission.storage.isGranted;
-        if (!hasStorage) {
-          await Permission.storage.request();
-          if (!await Permission.storage.isGranted) return;
+        // Android 11+ 需要 MANAGE_EXTERNAL_STORAGE 权限写入公共目录
+        bool hasPermission = await Permission.storage.isGranted;
+
+        // Android 11+ (API 30+) 检查 MANAGE_EXTERNAL_STORAGE
+        if (!hasPermission && await Permission.manageExternalStorage.isDenied) {
+          hasPermission = await Permission.manageExternalStorage.request().isGranted;
         }
+
+        // 回退到普通存储权限
+        if (!hasPermission) {
+          hasPermission = await Permission.storage.request().isGranted;
+        }
+
+        if (!hasPermission) {
+          if (mounted) {
+            AppSnackBar.show(
+              context,
+              const SnackBar(
+                content: Text('❌ 需要存储权限才能下载到本地'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
         final bases = await getExternalStorageDirectories(type: StorageDirectory.downloads);
         final base = bases?.isNotEmpty == true ? bases!.first : Directory('/storage/emulated/0/Download');
         dir = Directory(p.join(base.path, 'HMusic'));
