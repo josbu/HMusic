@@ -29,7 +29,7 @@ void main() async {
       builder: () => AudioHandlerService(player: player),
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.xiaomi.music.channel.audio',
-        androidNotificationChannelName: '小爱音乐盒',
+        androidNotificationChannelName: 'HMusic',
         androidNotificationOngoing: true,
         androidShowNotificationBadge: true,
         androidStopForegroundOnPause: true,

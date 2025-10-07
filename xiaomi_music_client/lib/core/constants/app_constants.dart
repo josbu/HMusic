@@ -1,5 +1,5 @@
 class AppConstants {
-  static const String appName = '小爱音乐盒';
+  static const String appName = 'HMusic';
   static const String version = '1.0.0';
 
   // 网络配置

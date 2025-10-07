@@ -57,7 +57,7 @@ class SponsorPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    '小爱音乐盒是一个免费的音乐控制应用\n如果这个应用对您有帮助，欢迎赞赏支持开发者',
+                    'HMusic 是一个免费的音乐控制应用\n如果这个应用对您有帮助，欢迎赞赏支持开发者',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: colorScheme.onPrimaryContainer.withOpacity(0.8),
@@ -377,7 +377,7 @@ class SponsorPage extends StatelessWidget {
           (context) => AlertDialog(
             title: const Text('分享应用'),
             content: const Text(
-              '感谢您愿意推荐小爱音乐盒！\n\n您可以将应用分享给朋友，或在社交媒体上推荐。每一次分享都是对开发者的支持！\n\n也欢迎关注我们的公众号"老婆饼里没有饼"获取更多内容！',
+              '感谢您愿意推荐 HMusic！\n\n您可以将应用分享给朋友，或在社交媒体上推荐。每一次分享都是对开发者的支持！\n\n也欢迎关注我们的公众号"老婆饼里没有饼"获取更多内容！',
             ),
             actions: [
               TextButton(
@@ -387,7 +387,7 @@ class SponsorPage extends StatelessWidget {
                   Clipboard.setData(
                     const ClipboardData(
                       text:
-                          '推荐一个好用的小爱音箱音乐控制应用：小爱音乐盒！功能强大，完全免费 🎵\n\n想了解更多可以关注公众号"老婆饼里没有饼"',
+                          '推荐一个好用的音乐控制应用：HMusic！功能强大，完全免费 🎵\n\n想了解更多可以关注公众号"老婆饼里没有饼"'
                     ),
                   );
                   ScaffoldMessenger.of(
