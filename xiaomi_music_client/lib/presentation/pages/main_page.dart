@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'control_panel_page.dart';
 import 'playlist_page.dart';
 import 'music_search_page.dart';
@@ -153,13 +154,12 @@ class _MainPageState extends ConsumerState<MainPage> {
         height: 56.0, // Standard AppBar height
         child: Row(
           children: [
-            Text(
-              'HMusic',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: onSurface,
-                letterSpacing: 0.5,
+            Transform.translate(
+              offset: const Offset(-8, 8),
+              child: SvgPicture.asset(
+                'assets/hmusic-logo.svg',
+                width: 180,
+                fit: BoxFit.fitWidth,
               ),
             ),
             const Spacer(),
