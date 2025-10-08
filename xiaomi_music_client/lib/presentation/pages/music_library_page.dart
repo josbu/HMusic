@@ -79,9 +79,17 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
     }
 
     try {
-      await ref
-          .read(playbackProvider.notifier)
-          .playMusic(deviceId: selectedDid, musicName: musicName);
+      // 🎵 获取当前的音乐列表（用于本地播放的上一曲/下一曲功能）
+      final libraryState = ref.read(musicLibraryProvider);
+      final playlist = libraryState.searchQuery.isEmpty
+          ? libraryState.musicList
+          : libraryState.filteredMusicList;
+
+      await ref.read(playbackProvider.notifier).playMusic(
+            deviceId: selectedDid,
+            musicName: musicName,
+            playlist: playlist, // 🎵 传递播放列表
+          );
 
       if (mounted) {
         AppSnackBar.show(

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/playing_music.dart';
 import '../../data/models/online_music_result.dart';
 import '../../data/models/device.dart';
+import '../../data/models/music.dart';
 import '../../data/services/native_music_search_service.dart';
 import '../../data/services/playback_strategy.dart';
 import '../../data/services/local_playback_strategy.dart';
@@ -539,12 +540,18 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         );
         print('🎵 播放列表API响应: $playlistResponse');
 
-        if (playlistResponse['cur_playlist'] != null) {
-          final songs = playlistResponse['cur_playlist'] as List?;
-          if (songs != null) {
-            playlistSongs = songs.map((s) => s.toString()).toList();
-            print('🎵 当前播放列表有 ${playlistSongs.length} 首歌曲');
+        // 检查响应是否为 Map 类型
+        if (playlistResponse is Map<String, dynamic>) {
+          if (playlistResponse['cur_playlist'] != null) {
+            final songs = playlistResponse['cur_playlist'];
+            if (songs is List) {
+              playlistSongs = songs.map((s) => s.toString()).toList();
+              print('🎵 当前播放列表有 ${playlistSongs.length} 首歌曲');
+            }
           }
+        } else {
+          // 如果返回的是字符串（如 "临时搜索列表"），记录日志但不报错
+          print('🎵 播放列表响应为字符串: $playlistResponse');
         }
       } catch (e) {
         print('🎵 获取播放列表失败: $e');
@@ -977,6 +984,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     String? searchKey,
     String? url, // 新增：支持直接传入 URL（在线音乐）
     String? albumCoverUrl, // 🖼️ 新增：支持直接传入封面图URL（搜索音乐）
+    List<Music>? playlist, // 🎵 新增：播放列表（用于本地播放上一曲/下一曲）
+    int? startIndex, // 🎵 新增：开始播放的索引
   }) async {
     // 🎵 使用策略模式播放
     if (_currentStrategy == null) {
@@ -998,6 +1007,27 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       // 🖼️ 切歌时重置防抖标记，允许新歌曲搜索封面
       _lastCoverSearchSong = null;
+
+      // 🎵 如果是本地播放模式且提供了播放列表，设置到策略中
+      if (_currentStrategy != null &&
+          _currentStrategy!.isLocalMode &&
+          playlist != null &&
+          playlist.isNotEmpty) {
+        debugPrint('🎵 [PlaybackProvider] 设置本地播放列表: ${playlist.length} 首歌曲');
+        final localStrategy = _currentStrategy as LocalPlaybackStrategy;
+
+        // 如果没有指定索引，尝试找到当前播放歌曲的索引
+        int playIndex = startIndex ?? 0;
+        if (musicName != null && musicName.isNotEmpty && startIndex == null) {
+          final index = playlist.indexWhere((m) => m.name == musicName);
+          if (index >= 0) {
+            playIndex = index;
+          }
+        }
+
+        localStrategy.setPlaylist(playlist, startIndex: playIndex);
+        debugPrint('🎵 [PlaybackProvider] 播放列表已设置，开始索引: $playIndex');
+      }
 
       // 使用策略播放
       await _currentStrategy!.playMusic(musicName: musicName ?? '', url: url);

@@ -6,6 +6,7 @@ import '../providers/playback_provider.dart';
 import '../providers/device_provider.dart';
 import '../widgets/app_snackbar.dart';
 import '../widgets/app_layout.dart';
+import '../../data/models/music.dart';
 
 class PlaylistDetailPage extends ConsumerStatefulWidget {
   final String playlistName;
@@ -47,9 +48,20 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       }
       return;
     }
-    await ref
-        .read(playbackProvider.notifier)
-        .playMusic(deviceId: did, musicName: musicName);
+
+    // 🎵 获取当前播放列表的歌曲，并转换为 Music 对象列表
+    final state = ref.read(playlistProvider);
+    final musicNames = state.currentPlaylist == widget.playlistName
+        ? state.currentPlaylistMusics
+        : <String>[];
+
+    final playlist = musicNames.map((name) => Music(name: name)).toList();
+
+    await ref.read(playbackProvider.notifier).playMusic(
+          deviceId: did,
+          musicName: musicName,
+          playlist: playlist, // 🎵 传递播放列表
+        );
   }
 
   @override
