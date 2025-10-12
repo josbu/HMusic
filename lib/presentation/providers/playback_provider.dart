@@ -1372,12 +1372,26 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       if (cacheJson != null && cacheJson.isNotEmpty) {
         final Map<String, dynamic> decoded = jsonDecode(cacheJson);
         _coverCache.clear();
+
+        // 🔧 加载时验证 URL，过滤掉无效的缓存
+        int invalidCount = 0;
         decoded.forEach((key, value) {
           if (value is String) {
-            _coverCache[key] = value;
+            if (_isValidCoverUrl(value)) {
+              _coverCache[key] = value;
+            } else {
+              invalidCount++;
+              debugPrint('⚠️ [CoverCache] 跳过无效缓存: $key -> $value');
+            }
           }
         });
-        print('🖼️ [CoverCache] 已加载 ${_coverCache.length} 条封面缓存');
+
+        print('🖼️ [CoverCache] 已加载 ${_coverCache.length} 条有效缓存');
+        if (invalidCount > 0) {
+          print('🖼️ [CoverCache] 过滤掉 $invalidCount 条无效缓存');
+          // 立即保存清理后的缓存
+          _saveCoverCache();
+        }
       }
     } catch (e) {
       print('🖼️ [CoverCache] 加载缓存失败: $e');
@@ -1406,14 +1420,40 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     }
   }
 
+  /// 🔧 验证封面 URL 是否有效
+  bool _isValidCoverUrl(String url) {
+    if (url.isEmpty) return false;
+
+    // 检查 QQ 音乐封面 URL
+    // 格式：https://y.gtimg.cn/music/photo_new/T002R300x300M000{albumId}.jpg
+    // 无效格式：https://y.gtimg.cn/music/photo_new/T002R300x300M000.jpg（缺少 albumId）
+    if (url.contains('y.gtimg.cn/music/photo_new/T002R300x300M000')) {
+      // 检查是否直接以 M000.jpg 结尾（说明缺少 albumId）
+      if (url.endsWith('M000.jpg')) {
+        debugPrint('⚠️ [CoverURL] QQ音乐封面URL缺少albumId: $url');
+        return false;
+      }
+    }
+
+    // 其他 URL 认为有效
+    return true;
+  }
+
   /// 🖼️ 自动搜索并获取歌曲封面图（新版：支持上传到服务器）
   Future<void> _autoFetchAlbumCover(String songName) async {
     // 🎯 先检查内存缓存
     if (_coverCache.containsKey(songName)) {
       final cachedUrl = _coverCache[songName]!;
-      debugPrint('🖼️ [AutoCover] 从内存缓存加载封面: $songName');
-      updateAlbumCover(cachedUrl);
-      return;
+
+      // 🔧 验证缓存的 URL 是否有效
+      if (_isValidCoverUrl(cachedUrl)) {
+        debugPrint('🖼️ [AutoCover] 从内存缓存加载封面: $songName');
+        updateAlbumCover(cachedUrl);
+        return;
+      } else {
+        debugPrint('⚠️ [AutoCover] 缓存的封面URL无效，重新获取: $cachedUrl');
+        _coverCache.remove(songName); // 移除无效缓存
+      }
     }
 
     try {

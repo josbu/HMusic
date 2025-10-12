@@ -155,9 +155,18 @@ class NativeMusicSearchService {
           // ✨ 提取专辑封面图
           // QQ音乐封面图格式：https://y.gtimg.cn/music/photo_new/T002R300x300M000{pmid}.jpg
           final pmid = al['pmid']?.toString() ?? al['mid']?.toString();
+
+          // 🔧 添加调试日志
+          debugPrint('🖼️ [QQ音乐] 歌曲: $title, 专辑: $album');
+          debugPrint('🖼️ [QQ音乐] album 对象: $al');
+          debugPrint('🖼️ [QQ音乐] pmid: $pmid');
+
           if (pmid != null && pmid.isNotEmpty) {
             albumPicUrl =
                 'https://y.gtimg.cn/music/photo_new/T002R300x300M000$pmid.jpg';
+            debugPrint('✅ [QQ音乐] 生成封面URL: $albumPicUrl');
+          } else {
+            debugPrint('⚠️ [QQ音乐] pmid/mid 为空，无法生成封面URL');
           }
         }
 
