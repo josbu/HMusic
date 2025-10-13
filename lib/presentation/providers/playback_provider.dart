@@ -384,6 +384,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
               debugPrint('✅ [PlaybackProvider] 封面已恢复');
             }
 
+            // 🔊 恢复音量状态到UI
+            try {
+              final volume = await localStrategy.getVolume();
+              state = state.copyWith(volume: volume);
+              debugPrint('🔊 [PlaybackProvider] 音量已恢复到UI: $volume');
+            } catch (e) {
+              debugPrint('❌ [PlaybackProvider] 恢复音量失败: $e');
+            }
+
             // 🔧 立即刷新通知栏,确保显示本地播放状态
             if (_currentStrategy is LocalPlaybackStrategy) {
               (_currentStrategy as LocalPlaybackStrategy).refreshNotification();

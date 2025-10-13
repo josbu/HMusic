@@ -60,6 +60,7 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
   // SharedPreferences 缓存 key（与 PlaybackProvider 保持一致）
   static const String _cacheKeyUrl = 'local_playback_url';
   static const String _cacheKeyName = 'local_playback_current_name';
+  static const String _cacheKeyVolume = 'local_playback_volume'; // 🔊 音量缓存key
 
   // 播放列表
   List<Music> _playlist = [];
@@ -296,6 +297,9 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
       // 音量范围 0-100 转换为 0.0-1.0
       final normalizedVolume = volume / 100.0;
       await player.setVolume(normalizedVolume.clamp(0.0, 1.0));
+
+      // 🔊 保存音量到缓存
+      await _saveVolume(volume);
     }
   }
 
@@ -615,6 +619,9 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
       debugPrint('🔧 [LocalPlayback] 从缓存加载:');
       debugPrint('   - 歌曲名: ${_currentMusicName ?? "null"}');
       debugPrint('   - URL: ${_currentMusicUrl ?? "null"}');
+
+      // 🔊 恢复音量
+      await _loadVolume();
     } catch (e) {
       debugPrint('❌ [LocalPlayback] 加载缓存失败: $e');
     }
@@ -674,6 +681,38 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
       debugPrint('❌ [LocalPlayback] URL替换失败: $e');
       // 替换失败时返回原URL
       return nasUrl;
+    }
+  }
+
+  /// 🔊 保存音量到本地存储
+  Future<void> _saveVolume(int volume) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_cacheKeyVolume, volume);
+      debugPrint('💾 [LocalPlayback] 已保存音量: $volume');
+    } catch (e) {
+      debugPrint('❌ [LocalPlayback] 保存音量失败: $e');
+    }
+  }
+
+  /// 🔊 从本地存储加载音量
+  Future<void> _loadVolume() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedVolume = prefs.getInt(_cacheKeyVolume);
+
+      if (savedVolume != null) {
+        final player = _ensurePlayer;
+        if (player != null) {
+          final normalizedVolume = savedVolume / 100.0;
+          await player.setVolume(normalizedVolume.clamp(0.0, 1.0));
+          debugPrint('🔊 [LocalPlayback] 已恢复音量: $savedVolume');
+        }
+      } else {
+        debugPrint('🔊 [LocalPlayback] 没有保存的音量，使用默认值');
+      }
+    } catch (e) {
+      debugPrint('❌ [LocalPlayback] 加载音量失败: $e');
     }
   }
 }
