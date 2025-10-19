@@ -26,6 +26,7 @@ class JSProxyState {
   final bool isLoading;
   final String? currentScript;
   final Map<String, dynamic> supportedSources;
+  final bool hasRequestHandler; // 🎯 是否有 request 处理器注册
   final String? error;
 
   const JSProxyState({
@@ -33,6 +34,7 @@ class JSProxyState {
     this.isLoading = false,
     this.currentScript,
     this.supportedSources = const {},
+    this.hasRequestHandler = false, // 🎯 默认为 false
     this.error,
   });
 
@@ -41,6 +43,7 @@ class JSProxyState {
     bool? isLoading,
     String? currentScript,
     Map<String, dynamic>? supportedSources,
+    bool? hasRequestHandler, // 🎯 添加到 copyWith
     String? error,
   }) {
     return JSProxyState(
@@ -48,6 +51,7 @@ class JSProxyState {
       isLoading: isLoading ?? this.isLoading,
       currentScript: currentScript ?? this.currentScript,
       supportedSources: supportedSources ?? this.supportedSources,
+      hasRequestHandler: hasRequestHandler ?? this.hasRequestHandler, // 🎯 复制逻辑
       error: error,
     );
   }
@@ -135,16 +139,19 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
 
       if (success) {
         final sources = _service.getSupportedSources();
+        final hasHandler = _service.hasRequestHandler(); // 🎯 检查是否有 request 处理器
 
         state = state.copyWith(
           isLoading: false,
           currentScript: scriptName ?? '已加载脚本',
           supportedSources: sources,
+          hasRequestHandler: hasHandler, // 🎯 更新状态
           error: null,
         );
 
         print('[JSProxyProvider] ✅ 脚本加载成功: ${scriptName ?? '未命名脚本'}');
         print('[JSProxyProvider] 📋 支持的音源: ${sources.keys.join(', ')}');
+        print('[JSProxyProvider] 🔍 有 request 处理器: $hasHandler'); // 🎯 日志
         return true;
       } else {
         state = state.copyWith(isLoading: false, error: '脚本加载失败');

@@ -1556,6 +1556,47 @@ class EnhancedJSProxyExecutorService {
     }
   }
 
+  /// 检查是否有 request 处理器注册
+  /// 🎯 用于判断脚本是否真正可用（某些脚本不调用 registerScript，但会注册 request 处理器）
+  bool hasRequestHandler() {
+    if (!_isInitialized || _currentScript == null) {
+      return false;
+    }
+
+    try {
+      final result = _runtime!.evaluate('''
+        (function() {
+          try {
+            // 检查是否有注册的 request 事件处理器
+            const handlers = globalThis._lxHandlers && globalThis._lxHandlers.request;
+            if (!handlers) return false;
+
+            // 如果是数组，检查长度
+            if (Array.isArray(handlers)) {
+              return handlers.length > 0;
+            }
+
+            // 如果是单个函数，返回 true
+            if (typeof handlers === 'function') {
+              return true;
+            }
+
+            return false;
+          } catch (e) {
+            return false;
+          }
+        })()
+      ''');
+
+      final hasHandler = result.rawResult == true;
+      print('[EnhancedJSProxy] 🔍 检查 request 处理器: $hasHandler');
+      return hasHandler;
+    } catch (e) {
+      print('[EnhancedJSProxy] ❌ 检查 request 处理器失败: $e');
+      return false;
+    }
+  }
+
   /// 释放资源
   void dispose() {
     _runtime?.dispose();

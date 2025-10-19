@@ -715,11 +715,13 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
           final jsProxy = ref.read(jsProxyProvider.notifier);
           final jsProxyState = ref.read(jsProxyProvider);
 
-          // 🎯 严格检查：不仅要初始化，还要有脚本和音源
+          // 🎯 严格检查：脚本已初始化、已加载、且有request处理器注册
+          // 不再检查 supportedSources，因为某些脚本不显式调用 registerScript()
+          // 而是直接注册 request 事件处理器
           final bool jsReady =
               jsProxyState.isInitialized &&
               jsProxyState.currentScript != null &&
-              jsProxyState.supportedSources.isNotEmpty;
+              jsProxyState.hasRequestHandler; // 🔧 改为检查 request 处理器
 
           print('[XMC] 🔍 [Play] JS状态检查:');
           print('  - isInitialized: ${jsProxyState.isInitialized}');
@@ -727,6 +729,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
           print(
             '  - supportedSources: ${jsProxyState.supportedSources.length}',
           );
+          print('  - hasRequestHandler: ${jsProxyState.hasRequestHandler}'); // 🎯 显示 request 处理器状态
           print('  - jsReady: $jsReady');
 
           if (jsReady) {
@@ -754,7 +757,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
               final nowReady =
                   currentState.isInitialized &&
                   currentState.currentScript != null &&
-                  currentState.supportedSources.isNotEmpty;
+                  currentState.hasRequestHandler; // 🎯 改为检查 request 处理器
 
               if (nowReady) {
                 print('[XMC] ✅ [Play] JS加载完成，等待了 ${waitCount * 100}ms');
