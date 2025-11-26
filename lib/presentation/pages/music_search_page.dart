@@ -22,7 +22,12 @@ import '../providers/dio_provider.dart';
 import '../../data/models/device.dart';
 import '../providers/playback_provider.dart';
 import '../providers/direct_mode_provider.dart';
-import '../../data/services/mi_iot_direct_playback_strategy.dart';
+import '../providers/playback_queue_provider.dart'; // 🎯 播放队列Provider
+import '../../data/models/playlist_item.dart'; // 🎯 播放列表项模型
+import '../../data/models/playlist_queue.dart'; // 🎯 播放队列模型
+import '../providers/playlist_provider.dart'; // 🎯 播放列表Provider
+import '../providers/local_playlist_provider.dart'; // 🎯 本地播放列表Provider
+import '../../data/models/local_playlist.dart'; // 🎯 本地播放列表模型
 
 class MusicSearchPage extends ConsumerStatefulWidget {
   const MusicSearchPage({super.key});
@@ -253,6 +258,12 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
               onSelected: (value) async {
                 FocusManager.instance.primaryFocus?.unfocus();
                 switch (value) {
+                  case 'add_to_queue':
+                    await _addToQueue(item);
+                    break;
+                  case 'add_to_playlist':
+                    await _addToPlaylist(item);
+                    break;
                   case 'server':
                     await _downloadToServer(item);
                     break;
@@ -265,11 +276,22 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
                 }
               },
               itemBuilder:
-                  (context) => const [
-                    PopupMenuItem(value: 'play', child: Text('解析直链并播放')),
-                    PopupMenuItem(value: 'server', child: Text('下载到服务器')),
-                    PopupMenuItem(value: 'local', child: Text('下载到本地')),
-                  ],
+                  (context) {
+                    // 🎯 根据播放模式显示不同的菜单项
+                    final playbackMode = ref.watch(playbackModeProvider);
+                    final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
+
+                    return [
+                      const PopupMenuItem(value: 'play', child: Text('解析直链并播放')),
+                      // 🎯 两种模式都显示"加入歌单"
+                      const PopupMenuItem(value: 'add_to_playlist', child: Text('📋 加入歌单')),
+                      // 🎯 直连模式额外显示"加入播放队列"（用于当前播放队列）
+                      if (isDirectMode)
+                        const PopupMenuItem(value: 'add_to_queue', child: Text('➕ 加入播放队列')),
+                      const PopupMenuItem(value: 'server', child: Text('下载到服务器')),
+                      const PopupMenuItem(value: 'local', child: Text('下载到本地')),
+                    ];
+                  },
               icon: Icon(
                 Icons.more_vert_rounded,
                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
@@ -563,6 +585,206 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
     }
   }
 
+  /// 🎵 添加到播放队列
+  Future<void> _addToQueue(OnlineMusicResult item) async {
+    try {
+      // 🎯 检查播放模式
+      final playbackMode = ref.read(playbackModeProvider);
+
+      // 只在直连模式下支持队列功能
+      if (playbackMode != PlaybackMode.miIoTDirect) {
+        if (mounted) {
+          AppSnackBar.show(
+            context,
+            const SnackBar(
+              content: Text('⚠️ 播放队列功能仅在直连模式下可用'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // 创建 PlaylistItem
+      final playlistItem = PlaylistItem.fromOnlineMusic(
+        title: item.title,
+        artist: item.author,
+        album: item.album,
+        duration: item.duration ?? 0,
+        platform: item.platform,
+        songId: item.songId,
+        coverUrl: item.picture,
+      );
+
+      // 添加到队列
+      ref.read(playbackQueueProvider.notifier).addToQueue(playlistItem);
+
+      // 显示成功提示
+      if (mounted) {
+        final queueState = ref.read(playbackQueueProvider);
+        final queueLength = queueState.queue?.items.length ?? 1;
+
+        AppSnackBar.show(
+          context,
+          SnackBar(
+            content: Text('✅ 已加入播放队列: ${item.title}\n当前队列: $queueLength 首歌'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ [MusicSearch] 添加到队列失败: $e');
+      if (mounted) {
+        AppSnackBar.show(
+          context,
+          SnackBar(
+            content: Text('❌ 添加失败: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  /// 📋 添加到歌单（支持两种模式）
+  Future<void> _addToPlaylist(OnlineMusicResult item) async {
+    try {
+      // 🎯 检查当前播放模式
+      final playbackMode = ref.read(playbackModeProvider);
+      final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
+
+      // 🎯 根据模式获取歌单
+      final playlists = isDirectMode
+          ? ref.read(localPlaylistProvider).playlists
+          : ref.read(playlistProvider).playlists;
+
+      if (playlists.isEmpty) {
+        // 没有歌单，提示用户先创建
+        if (mounted) {
+          final shouldCreate = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Text(
+                '还没有歌单',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: Text(
+                '请先创建一个歌单',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(
+                    '取消',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('去创建'),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldCreate == true) {
+            // 跳转到歌单页面
+            context.push('/playlist');
+          }
+        }
+        return;
+      }
+
+      // 显示歌单选择对话框
+      if (mounted) {
+        final selectedPlaylist = await showDialog<String>(
+          context: context,
+          builder: (context) => _PlaylistSelectionDialog(
+            playlists: playlists.map((p) => (p as dynamic).name as String).toList(),
+          ),
+        );
+
+        if (selectedPlaylist != null && selectedPlaylist.isNotEmpty) {
+          debugPrint('📋 [MusicSearch] 添加到歌单: $selectedPlaylist (模式: ${isDirectMode ? "直连" : "xiaomusic"})');
+
+          // 🎯 根据模式调用不同的添加方法
+          if (isDirectMode) {
+            // 直连模式：转换为 LocalPlaylistSong
+            // 🎯 只保存元数据（platform + songId + title + artist），不保存URL
+            // 播放时才根据这些元数据解析URL，解析后缓存6小时
+            final song = LocalPlaylistSong.fromOnlineMusic(
+              title: item.title,
+              artist: item.author,
+              platform: item.platform ?? 'unknown',
+              songId: item.songId ?? '',
+              coverUrl: item.picture,
+            );
+
+            await ref.read(localPlaylistProvider.notifier).addMusicToPlaylist(
+              playlistName: selectedPlaylist,
+              songs: [song],
+            );
+          } else {
+            // xiaomusic 模式：使用"歌名 - 歌手"格式
+            final musicName = '${item.title} - ${item.author}';
+
+            await ref.read(playlistProvider.notifier).addMusicToPlaylist(
+              musicNames: [musicName],
+              playlistName: selectedPlaylist,
+            );
+          }
+
+          if (mounted) {
+            AppSnackBar.show(
+              context,
+              SnackBar(
+                content: Text('✅ 已添加到 "$selectedPlaylist"'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 3),
+                action: SnackBarAction(
+                  label: '查看',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    // 跳转到歌单页面
+                    context.push('/playlist');
+                  },
+                ),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ [MusicSearch] 添加到歌单失败: $e');
+      if (mounted) {
+        AppSnackBar.show(
+          context,
+          SnackBar(
+            content: Text('❌ 添加失败: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   /// 🎵 直连模式播放音乐
   Future<void> _playViaDirectMode(OnlineMusicResult item) async {
     try {
@@ -623,6 +845,40 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
       }
 
       debugPrint('[DirectMode] ✅ 播放链接已准备: ${playUrl.substring(0, playUrl.length > 100 ? 100 : playUrl.length)}...');
+
+      // 🎯 创建播放队列（仅直连模式）
+      final searchState = ref.read(musicSearchProvider);
+      if (searchState.onlineResults.isNotEmpty) {
+        debugPrint('[DirectMode] 🎵 创建播放队列: ${searchState.onlineResults.length} 首');
+
+        // 转换为 PlaylistItem 列表
+        final playlistItems = searchState.onlineResults.map((result) {
+          return PlaylistItem.fromOnlineMusic(
+            title: result.title,
+            artist: result.author,
+            album: result.album,
+            duration: result.duration ?? 0,
+            platform: result.platform,
+            songId: result.songId,
+            coverUrl: result.picture,
+          );
+        }).toList();
+
+        // 找到当前点击歌曲的索引
+        final startIndex = searchState.onlineResults.indexWhere(
+          (r) => r.songId == item.songId && r.title == item.title,
+        );
+
+        // 设置队列
+        ref.read(playbackQueueProvider.notifier).setQueue(
+          queueName: '搜索结果: ${searchState.searchQuery}',
+          source: PlaylistSource.searchResult,
+          items: playlistItems,
+          startIndex: startIndex >= 0 ? startIndex : 0,
+        );
+
+        debugPrint('[DirectMode] ✅ 播放队列已创建，起始索引: ${startIndex >= 0 ? startIndex : 0}');
+      }
 
       // 4. 显示播放提示
       if (mounted) {
@@ -1286,6 +1542,66 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
 
     return false;
   }
+}
 
-  // 🎯 新增：显示下载确认对话框
+/// 📋 歌单选择对话框
+class _PlaylistSelectionDialog extends StatelessWidget {
+  final List<String> playlists;
+
+  const _PlaylistSelectionDialog({
+    required this.playlists,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      title: Text(
+        '选择歌单',
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurface,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: playlists.length,
+          itemBuilder: (context, index) {
+            final playlist = playlists[index];
+            return ListTile(
+              leading: Icon(
+                Icons.queue_music_rounded,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              title: Text(
+                playlist,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              onTap: () => Navigator.of(context).pop(playlist),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            '取消',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

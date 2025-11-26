@@ -18,6 +18,12 @@ import 'dio_provider.dart';
 import 'device_provider.dart';
 import 'music_library_provider.dart';
 import 'direct_mode_provider.dart'; // 🎯 直连模式Provider
+import 'playback_queue_provider.dart'; // 🎯 播放队列Provider
+import 'lyric_provider.dart'; // 🎯 歌词Provider
+import 'js_proxy_provider.dart'; // 🎯 QuickJS代理
+import 'js_source_provider.dart'; // 🎯 WebView JS 和 LocalJS 解析（两个都在这里）
+import '../../data/models/playlist_item.dart'; // 🎯 播放列表项模型
+import '../../data/models/playlist_queue.dart'; // 🎯 播放队列模型
 
 // 用于区分"未传入参数"和"传入 null"
 const _undefined = Object();
@@ -1306,7 +1312,36 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       state = state.copyWith(isLoading: true);
       debugPrint('🎵 执行上一首命令');
 
-      await _currentStrategy!.previous();
+      // 🎯 优先级1：直连模式 + 有播放队列 → 使用新队列逻辑
+      final playbackMode = ref.read(playbackModeProvider);
+      if (playbackMode == PlaybackMode.miIoTDirect) {
+        final queueState = ref.read(playbackQueueProvider);
+        if (queueState.queue != null && queueState.queue!.items.isNotEmpty) {
+          debugPrint('🎵 [PlaybackProvider] 直连模式检测到播放队列');
+          final prevItem = ref.read(playbackQueueProvider.notifier).previous();
+          if (prevItem != null) {
+            debugPrint('🎵 [PlaybackProvider] 使用队列播放上一首: ${prevItem.title}');
+            await _playFromQueueItem(prevItem);
+
+            // 等待播放状态更新
+            await Future.delayed(const Duration(milliseconds: 1000));
+            await refreshStatus();
+
+            state = state.copyWith(isLoading: false);
+            return; // ✅ 使用新逻辑成功，直接返回
+          } else {
+            debugPrint('⚠️ [PlaybackProvider] 队列已到开头（顺序播放模式）');
+            state = state.copyWith(isLoading: false, error: '已是第一首');
+            return;
+          }
+        } else {
+          debugPrint('🎵 [PlaybackProvider] 直连模式无队列，使用旧逻辑');
+        }
+      }
+
+      // 🎯 优先级2：使用旧的策略逻辑（xiaomusic/本地播放/旧逻辑）
+      debugPrint('🎵 [PlaybackProvider] 使用策略模式播放（xiaomusic/本地/旧逻辑）');
+      await _currentStrategy!.previous(); // ✅ xiaomusic 和本地播放完全不受影响
 
       // 等待命令执行后刷新状态
       await Future.delayed(const Duration(milliseconds: 1000));
@@ -1343,7 +1378,36 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       state = state.copyWith(isLoading: true);
       debugPrint('🎵 执行下一首命令');
 
-      await _currentStrategy!.next();
+      // 🎯 优先级1：直连模式 + 有播放队列 → 使用新队列逻辑
+      final playbackMode = ref.read(playbackModeProvider);
+      if (playbackMode == PlaybackMode.miIoTDirect) {
+        final queueState = ref.read(playbackQueueProvider);
+        if (queueState.queue != null && queueState.queue!.items.isNotEmpty) {
+          debugPrint('🎵 [PlaybackProvider] 直连模式检测到播放队列');
+          final nextItem = ref.read(playbackQueueProvider.notifier).next();
+          if (nextItem != null) {
+            debugPrint('🎵 [PlaybackProvider] 使用队列播放下一首: ${nextItem.title}');
+            await _playFromQueueItem(nextItem);
+
+            // 等待播放状态更新
+            await Future.delayed(const Duration(milliseconds: 1000));
+            await refreshStatus();
+
+            state = state.copyWith(isLoading: false);
+            return; // ✅ 使用新逻辑成功，直接返回
+          } else {
+            debugPrint('⚠️ [PlaybackProvider] 队列已到末尾（顺序播放模式）');
+            state = state.copyWith(isLoading: false, error: '已是最后一首');
+            return;
+          }
+        } else {
+          debugPrint('🎵 [PlaybackProvider] 直连模式无队列，使用旧逻辑');
+        }
+      }
+
+      // 🎯 优先级2：使用旧的策略逻辑（xiaomusic/本地播放/旧逻辑）
+      debugPrint('🎵 [PlaybackProvider] 使用策略模式播放（xiaomusic/本地/旧逻辑）');
+      await _currentStrategy!.next(); // ✅ xiaomusic 和本地播放完全不受影响
 
       // 等待命令执行后刷新状态
       await Future.delayed(const Duration(milliseconds: 1000));
@@ -2290,6 +2354,215 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     debugPrint('⏰ 快速取消定时关机');
     _timerCountdown?.cancel(); // 取消APP本地定时器
     state = state.copyWith(timerMinutes: 0);
+  }
+
+  // ========================================
+  // 🎯 播放队列支持（仅直连模式使用）
+  // ========================================
+
+  /// 🎵 使用公用JS服务解析音乐URL
+  ///
+  /// 这是一个公用方法，不依赖xiaomusic服务器
+  /// 支持所有模式使用（本地/xiaomusic/直连）
+  Future<String?> _resolveUrlByJS({
+    required String platform,
+    required String songId,
+    String quality = '320k',
+  }) async {
+    try {
+      debugPrint('🔍 [JS解析] 开始解析: platform=$platform, songId=$songId, quality=$quality');
+
+      // 优先级1：QuickJS代理解析
+      try {
+        final jsProxyState = ref.read(jsProxyProvider);
+        if (jsProxyState.isInitialized && jsProxyState.currentScript != null) {
+          debugPrint('🔍 [JS解析] 尝试使用QuickJS...');
+          final jsProxy = ref.read(jsProxyProvider.notifier);
+          final mapped = _mapPlatformName(platform);
+          final url = await jsProxy.getMusicUrl(
+            source: mapped,
+            songId: songId,
+            quality: quality,
+            musicInfo: {'songmid': songId, 'hash': songId},
+          );
+          if (url != null && url.isNotEmpty) {
+            debugPrint('✅ [JS解析] QuickJS成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...');
+            return url;
+          }
+          debugPrint('⚠️ [JS解析] QuickJS返回空URL');
+        }
+      } catch (e) {
+        debugPrint('⚠️ [JS解析] QuickJS失败: $e');
+      }
+
+      // 优先级2：WebView JS解析
+      try {
+        debugPrint('🔍 [JS解析] 尝试使用WebView JS...');
+        final webSvc = await ref.read(webviewJsSourceServiceProvider.future);
+        if (webSvc != null) {
+          final url = await webSvc.resolveMusicUrl(
+            platform: platform,
+            songId: songId,
+            quality: quality,
+          );
+          if (url != null && url.isNotEmpty) {
+            debugPrint('✅ [JS解析] WebView成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...');
+            return url;
+          }
+          debugPrint('⚠️ [JS解析] WebView返回空URL');
+        }
+      } catch (e) {
+        debugPrint('⚠️ [JS解析] WebView失败: $e');
+      }
+
+      // 优先级3：内置LocalJS解析
+      try {
+        debugPrint('🔍 [JS解析] 尝试使用LocalJS...');
+        final jsSvc = await ref.read(jsSourceServiceProvider.future);
+        if (jsSvc != null && jsSvc.isReady) {
+          final mapped = _mapPlatformName(platform);
+          final js = """
+            (function(){
+              try{
+                if (!lx || !lx.EVENT_NAMES) return '';
+                function mapPlat(p){
+                  p=(p||'').toLowerCase();
+                  if(p==='qq'||p==='tencent') return 'tx';
+                  if(p==='netease'||p==='163') return 'wy';
+                  if(p==='kuwo') return 'kw';
+                  if(p==='kugou') return 'kg';
+                  if(p==='migu') return 'mg';
+                  return p;
+                }
+                var payload = {
+                  action: 'musicUrl',
+                  source: mapPlat('$platform'),
+                  info: { type: '$quality', musicInfo: { songmid: '$songId', hash: '$songId' } }
+                };
+                var res = lx.emit(lx.EVENT_NAMES.request, payload);
+                if (res && typeof res.then === 'function') return '';
+                if (typeof res === 'string') return res;
+                if (res && res.url) return res.url;
+                return '';
+              }catch(e){ return '' }
+            })()
+          """;
+          final url = jsSvc.evaluateToString(js);
+          if (url.isNotEmpty) {
+            debugPrint('✅ [JS解析] LocalJS成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...');
+            return url;
+          }
+          debugPrint('⚠️ [JS解析] LocalJS返回空URL');
+        }
+      } catch (e) {
+        debugPrint('⚠️ [JS解析] LocalJS失败: $e');
+      }
+
+      debugPrint('❌ [JS解析] 所有解析方式均失败');
+      return null;
+    } catch (e) {
+      debugPrint('❌ [JS解析] 异常: $e');
+      return null;
+    }
+  }
+
+  /// 映射平台名称（用于JS解析）
+  String _mapPlatformName(String platform) {
+    final p = platform.toLowerCase();
+    if (p == 'qq' || p == 'tencent') return 'tx';
+    if (p == 'netease' || p == '163') return 'wy';
+    if (p == 'kuwo') return 'kw';
+    if (p == 'kugou') return 'kg';
+    if (p == 'migu') return 'mg';
+    return p;
+  }
+
+  /// 🎵 从播放队列播放指定项目
+  ///
+  /// 仅在直连模式使用，支持在线音乐、本地音乐、服务器音乐
+  Future<void> _playFromQueueItem(PlaylistItem item) async {
+    try {
+      debugPrint('🎵 [队列播放] 开始播放: ${item.title} - ${item.artist}');
+      debugPrint('🎵 [队列播放] 来源类型: ${item.sourceType}');
+
+      String? url;
+
+      // 根据来源类型获取播放URL
+      if (item.isOnline) {
+        // 在线音乐：使用公用的JS解析服务
+        if (item.platform == null || item.songId == null) {
+          throw Exception('在线音乐缺少platform或songId');
+        }
+        debugPrint('🎵 [队列播放] 在线音乐，使用JS解析: ${item.platform}/${item.songId}');
+        url = await _resolveUrlByJS(
+          platform: item.platform!,
+          songId: item.songId!,
+          quality: '320k',
+        );
+      } else if (item.isLocal) {
+        // 本地音乐：直接使用文件路径
+        url = item.localPath;
+        debugPrint('🎵 [队列播放] 本地音乐: $url');
+      } else if (item.isServer) {
+        // 服务器音乐：调用xiaomusic服务器API
+        final apiService = ref.read(apiServiceProvider);
+        if (apiService != null) {
+          debugPrint('🎵 [队列播放] 服务器音乐，查询xiaomusic API');
+          final musicInfo = await apiService.getMusicInfo(item.displayName);
+          url = musicInfo['url']?.toString();
+        } else {
+          throw Exception('服务器音乐但API服务不可用');
+        }
+      }
+
+      if (url == null || url.isEmpty) {
+        throw Exception('无法获取播放URL');
+      }
+
+      debugPrint('✅ [队列播放] URL获取成功');
+
+      // 使用策略播放
+      await _currentStrategy!.playMusic(
+        musicName: item.displayName,
+        url: url,
+      );
+
+      debugPrint('✅ [队列播放] 播放命令已发送');
+
+      // 更新UI状态（使用缓存的封面和歌词）
+      if (item.coverUrl != null && item.coverUrl!.isNotEmpty) {
+        debugPrint('🖼️ [队列播放] 使用缓存的封面图');
+        updateAlbumCover(item.coverUrl!);
+      } else {
+        // 如果队列没有封面，自动搜索并缓存
+        debugPrint('🖼️ [队列播放] 封面未缓存，开始搜索');
+        _autoFetchAlbumCover(item.displayName).then((coverUrl) {
+          // 搜索成功后缓存到队列
+          if (state.albumCoverUrl != null && state.albumCoverUrl!.isNotEmpty) {
+            ref.read(playbackQueueProvider.notifier).updateCurrentCover(state.albumCoverUrl!);
+            debugPrint('✅ [队列播放] 封面已缓存到队列');
+          }
+        }).catchError((e) {
+          debugPrint('⚠️ [队列播放] 封面搜索失败: $e');
+        });
+      }
+
+      // 🔧 歌词处理：LyricProvider 会自动监听 currentMusic 变化并获取歌词
+      // 如果队列中有缓存的歌词，之后获取时会自动使用缓存
+      if (item.lrc != null && item.lrc!.isNotEmpty) {
+        debugPrint('📝 [队列播放] 队列中已有歌词缓存');
+        // 注：LyricProvider 会自动处理歌词获取，这里只是记录日志
+      } else {
+        debugPrint('📝 [队列播放] 歌词未缓存，LyricProvider 会自动获取');
+      }
+
+      debugPrint('✅ [队列播放] 播放成功');
+    } catch (e, stackTrace) {
+      debugPrint('❌ [队列播放] 播放失败: $e');
+      debugPrint('❌ [队列播放] 堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+      state = state.copyWith(error: '队列播放失败: ${e.toString()}');
+      rethrow;
+    }
   }
 }
 

@@ -71,8 +71,16 @@ class PlaylistNotifier extends StateNotifier<PlaylistState> {
 
       final resp = await apiService.getPlaylistNames();
       final fullMap = await apiService.getMusicList();
+
+      // 🔧 添加调试日志
+      debugPrint('📋 [PlaylistProvider] getPlaylistNames响应: $resp');
+      debugPrint('📋 [PlaylistProvider] getMusicList响应: ${fullMap.keys.toList()}');
+
       final playlists = PlaylistAdapter.mergeToPlaylists(resp, fullMap);
       final deletable = PlaylistAdapter.extractNames(resp).toSet();
+
+      debugPrint('📋 [PlaylistProvider] 合并后的播放列表: ${playlists.map((p) => p.name).toList()}');
+      debugPrint('📋 [PlaylistProvider] 可删除播放列表: $deletable');
 
       state = state.copyWith(
         playlists: playlists,

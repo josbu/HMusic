@@ -562,14 +562,50 @@ class LocalJsSourceService {
   /// 验证脚本加载结果
   Future<Map<String, dynamic>> _validateScriptLoading() async {
     try {
-      // 检查基本函数可用性
-      final checkResult = await detectAdapterFunctions();
-      if (checkResult['ok'] == true) {
-        final functions = checkResult['functions'] as List<String>;
-        return {'success': true, 'functions': functions};
+      List<String> availableFeatures = [];
+
+      // 1️⃣ 检查搜索功能
+      final searchCheck = await detectAdapterFunctions();
+      if (searchCheck['ok'] == true) {
+        final functions = searchCheck['functions'] as List<String>;
+        availableFeatures.add('搜索功能 (${functions.join(', ')})');
       }
 
-      return {'success': false, 'error': '未找到可用的搜索函数'};
+      // 2️⃣ 检查URL解析功能（request 事件处理器）
+      try {
+        final requestCheckJs = """
+          (function(){
+            try {
+              var g = (typeof globalThis !== 'undefined') ? globalThis : (typeof window !== 'undefined' ? window : this);
+              // 检查 lx.EVENT_NAMES.request 是否有处理器
+              if (g.__lx_events && typeof g.__lx_events['request'] === 'function') {
+                return 'yes';
+              }
+              // 检查全局 request 函数
+              if (typeof g.request === 'function') {
+                return 'yes';
+              }
+              return 'no';
+            } catch(e) {
+              return 'no';
+            }
+          })()
+        """;
+        final res = _rt.evaluate(requestCheckJs);
+        if (res.stringResult == 'yes') {
+          availableFeatures.add('URL解析功能 (request事件)');
+        }
+      } catch (_) {}
+
+      // 3️⃣ 只要有任意一种功能，就认为脚本可用
+      if (availableFeatures.isNotEmpty) {
+        return {
+          'success': true,
+          'functions': availableFeatures,
+        };
+      }
+
+      return {'success': false, 'error': '未找到可用的搜索或URL解析功能'};
     } catch (e) {
       return {'success': false, 'error': '验证过程异常: $e'};
     }

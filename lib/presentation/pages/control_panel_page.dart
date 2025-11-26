@@ -170,7 +170,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                     playbackMode,
                   ),
                   const SizedBox(height: 12),
-                  // 🎵 显示当前播放列表
+                  // 🎵 显示当前歌单
                   if (playbackState.currentPlaylistSongs.isNotEmpty)
                     _buildCurrentPlaylist(playbackState),
                   if (playbackState.currentPlaylistSongs.isNotEmpty)
@@ -1257,7 +1257,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     );
   }
 
-  /// 🎵 显示当前播放列表
+  /// 🎵 显示当前歌单
   Widget _buildCurrentPlaylist(PlaybackState state) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final onSurface = Theme.of(context).colorScheme.onSurface;
@@ -1292,7 +1292,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
               ),
               const SizedBox(width: 8),
               Text(
-                '当前播放列表',
+                '当前歌单',
                 style: TextStyle(
                   color: onSurface,
                   fontSize: 16,

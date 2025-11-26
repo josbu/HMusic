@@ -2,11 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/playlist_provider.dart';
+import '../providers/local_playlist_provider.dart'; // 🎯 本地播放列表
+import '../providers/direct_mode_provider.dart'; // 🎯 播放模式
 import '../providers/playback_provider.dart';
 import '../providers/device_provider.dart';
+import '../providers/js_proxy_provider.dart'; // 🎯 JS代理（QuickJS）
+import '../providers/js_source_provider.dart'; // 🎯 JS音源服务
+import '../providers/source_settings_provider.dart'; // 🎯 音源设置
 import '../widgets/app_snackbar.dart';
 import '../widgets/app_layout.dart';
 import '../../data/models/music.dart';
+import '../../data/models/local_playlist.dart'; // 🎯 本地播放列表模型
 
 class PlaylistDetailPage extends ConsumerStatefulWidget {
   final String playlistName;
@@ -21,51 +27,280 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   void initState() {
     super.initState();
     Future.microtask(() {
-      ref
-          .read(playlistProvider.notifier)
-          .loadPlaylistMusics(widget.playlistName);
+      // 🎯 根据播放模式加载对应的数据
+      final mode = ref.read(playbackModeProvider);
+      if (mode == PlaybackMode.miIoTDirect) {
+        // 直连模式：本地播放列表已经在 provider 初始化时加载了
+        // 不需要额外加载
+      } else {
+        // xiaomusic 模式：加载服务器播放列表
+        ref
+            .read(playlistProvider.notifier)
+            .loadPlaylistMusics(widget.playlistName);
+      }
     });
   }
 
   Future<void> _playWholePlaylist() async {
-    final did = ref.read(deviceProvider).selectedDeviceId;
-    if (did == null) {
-      if (mounted) {
-        AppSnackBar.showText(context, '请先在设置中配置 NAS 服务器');
+    // 🎯 根据播放模式选择不同的播放逻辑
+    final playbackMode = ref.read(playbackModeProvider);
+
+    if (playbackMode == PlaybackMode.miIoTDirect) {
+      // 🎵 直连模式：播放本地歌单
+      debugPrint('🎵 [PlaylistDetail] 直连模式播放整个歌单: ${widget.playlistName}');
+
+      // 获取歌单歌曲列表
+      final localState = ref.read(localPlaylistProvider);
+      try {
+        final playlist = localState.playlists.firstWhere(
+          (p) => p.name == widget.playlistName,
+        );
+
+        if (playlist.songs.isEmpty) {
+          if (mounted) {
+            AppSnackBar.showText(context, '歌单为空');
+          }
+          return;
+        }
+
+        // 🎯 检查是否有选中的设备
+        final directState = ref.read(directModeProvider);
+        if (directState is! DirectModeAuthenticated ||
+            directState.selectedDeviceId == null) {
+          if (mounted) {
+            AppSnackBar.showText(context, '请先在控制页选择播放设备');
+          }
+          return;
+        }
+
+        // 🎯 播放第一首歌曲（带URL缓存和自动重试）
+        final firstSong = playlist.songs.first;
+
+        // 🎯 解析URL（自动使用缓存或重新解析）
+        String? playUrl = await _resolveUrlWithCache(firstSong, 0);
+
+        if (playUrl == null || playUrl.isEmpty) {
+          if (mounted) {
+            AppSnackBar.showText(
+              context,
+              '无法解析播放链接: ${firstSong.displayName}',
+              backgroundColor: Colors.red,
+            );
+          }
+          return;
+        }
+
+        // 🎵 使用解析到的URL播放
+        try {
+          await ref.read(playbackProvider.notifier).playMusic(
+            deviceId: directState.selectedDeviceId!,
+            musicName: firstSong.displayName,
+            url: playUrl,
+            albumCoverUrl: firstSong.coverUrl,
+          );
+
+          if (mounted) {
+            AppSnackBar.showText(
+              context,
+              '正在播放: ${firstSong.displayName}',
+              backgroundColor: Colors.green,
+            );
+          }
+        } catch (e) {
+          // 🔄 播放失败，可能是缓存URL失效，尝试强制刷新重试
+          debugPrint('❌ [PlaylistDetail] 播放失败，尝试强制刷新缓存: $e');
+
+          playUrl = await _resolveUrlWithCache(firstSong, 0, forceRefresh: true);
+
+          if (playUrl == null || playUrl.isEmpty) {
+            if (mounted) {
+              AppSnackBar.showText(
+                context,
+                '无法解析播放链接: ${firstSong.displayName}',
+                backgroundColor: Colors.red,
+              );
+            }
+            return;
+          }
+
+          // 🔁 使用新解析的URL重试播放
+          try {
+            await ref.read(playbackProvider.notifier).playMusic(
+              deviceId: directState.selectedDeviceId!,
+              musicName: firstSong.displayName,
+              url: playUrl,
+              albumCoverUrl: firstSong.coverUrl,
+            );
+
+            if (mounted) {
+              AppSnackBar.showText(
+                context,
+                '正在播放: ${firstSong.displayName}',
+                backgroundColor: Colors.green,
+              );
+            }
+          } catch (e2) {
+            // 第二次也失败，显示错误
+            debugPrint('❌ [PlaylistDetail] 重试播放仍失败: $e2');
+            if (mounted) {
+              AppSnackBar.showText(
+                context,
+                '播放失败: ${e2.toString()}',
+                backgroundColor: Colors.red,
+              );
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('❌ [PlaylistDetail] 播放歌单失败: $e');
+        if (mounted) {
+          AppSnackBar.showText(context, '播放失败: $e');
+        }
       }
-      return;
+    } else {
+      // 🎵 xiaomusic 模式：使用原有逻辑
+      final did = ref.read(deviceProvider).selectedDeviceId;
+      if (did == null) {
+        if (mounted) {
+          AppSnackBar.showText(context, '请先在设置中配置 NAS 服务器');
+        }
+        return;
+      }
+      await ref
+          .read(playlistProvider.notifier)
+          .playPlaylist(deviceId: did, playlistName: widget.playlistName);
     }
-    await ref
-        .read(playlistProvider.notifier)
-        .playPlaylist(deviceId: did, playlistName: widget.playlistName);
   }
 
   Future<void> _playSingle(String musicName) async {
-    final did = ref.read(deviceProvider).selectedDeviceId;
-    if (did == null) {
-      if (mounted) {
-        AppSnackBar.showText(context, '请先在控制页选择播放设备');
+    // 🎯 根据播放模式选择不同的播放逻辑
+    final playbackMode = ref.read(playbackModeProvider);
+
+    if (playbackMode == PlaybackMode.miIoTDirect) {
+      // 🎵 直连模式：播放本地歌单中的歌曲
+      debugPrint('🎵 [PlaylistDetail] 直连模式播放歌曲: $musicName');
+
+      // 🎯 检查是否有选中的设备
+      final directState = ref.read(directModeProvider);
+      if (directState is! DirectModeAuthenticated ||
+          directState.selectedDeviceId == null) {
+        if (mounted) {
+          AppSnackBar.showText(context, '请先在控制页选择播放设备');
+        }
+        return;
       }
-      return;
-    }
 
-    // 🎵 获取当前播放列表的歌曲，并转换为 Music 对象列表
-    final state = ref.read(playlistProvider);
-    final musicNames = state.currentPlaylist == widget.playlistName
-        ? state.currentPlaylistMusics
-        : <String>[];
-
-    final playlist = musicNames.map((name) => Music(name: name)).toList();
-
-    await ref.read(playbackProvider.notifier).playMusic(
-          deviceId: did,
-          musicName: musicName,
-          playlist: playlist, // 🎵 传递播放列表
+      // 🎯 获取歌曲信息和索引
+      final localState = ref.read(localPlaylistProvider);
+      try {
+        final playlist = localState.playlists.firstWhere(
+          (p) => p.name == widget.playlistName,
         );
+
+        // 找到对应歌曲的索引
+        final songIndex = playlist.songs.indexWhere(
+          (s) => s.displayName == musicName,
+        );
+
+        if (songIndex == -1) {
+          throw Exception('歌曲不存在: $musicName');
+        }
+
+        final song = playlist.songs[songIndex];
+
+        // 🎯 解析URL（自动使用缓存或重新解析）
+        String? playUrl = await _resolveUrlWithCache(song, songIndex);
+
+        if (playUrl == null || playUrl.isEmpty) {
+          if (mounted) {
+            AppSnackBar.showText(
+              context,
+              '无法解析播放链接: $musicName',
+              backgroundColor: Colors.red,
+            );
+          }
+          return;
+        }
+
+        // 🎵 使用解析到的URL播放
+        try {
+          await ref.read(playbackProvider.notifier).playMusic(
+            deviceId: directState.selectedDeviceId!,
+            musicName: musicName,
+            url: playUrl,
+            albumCoverUrl: song.coverUrl,
+          );
+        } catch (e) {
+          // 🔄 播放失败，可能是缓存URL失效，尝试强制刷新重试
+          debugPrint('❌ [PlaylistDetail] 播放失败，尝试强制刷新缓存: $e');
+
+          playUrl = await _resolveUrlWithCache(song, songIndex, forceRefresh: true);
+
+          if (playUrl == null || playUrl.isEmpty) {
+            if (mounted) {
+              AppSnackBar.showText(
+                context,
+                '无法解析播放链接: $musicName',
+                backgroundColor: Colors.red,
+              );
+            }
+            return;
+          }
+
+          // 🔁 使用新解析的URL重试播放
+          try {
+            await ref.read(playbackProvider.notifier).playMusic(
+              deviceId: directState.selectedDeviceId!,
+              musicName: musicName,
+              url: playUrl,
+              albumCoverUrl: song.coverUrl,
+            );
+          } catch (e2) {
+            // 第二次也失败，显示错误
+            debugPrint('❌ [PlaylistDetail] 重试播放仍失败: $e2');
+            if (mounted) {
+              AppSnackBar.showText(
+                context,
+                '播放失败: ${e2.toString()}',
+                backgroundColor: Colors.red,
+              );
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('❌ [PlaylistDetail] 播放歌曲失败: $e');
+        if (mounted) {
+          AppSnackBar.showText(context, '播放失败: $e');
+        }
+      }
+    } else {
+      // 🎵 xiaomusic 模式：使用原有逻辑
+      final did = ref.read(deviceProvider).selectedDeviceId;
+      if (did == null) {
+        if (mounted) {
+          AppSnackBar.showText(context, '请先在控制页选择播放设备');
+        }
+        return;
+      }
+
+      // 🎵 获取当前歌单的歌曲，并转换为 Music 对象列表
+      final state = ref.read(playlistProvider);
+      final musicNames = state.currentPlaylist == widget.playlistName
+          ? state.currentPlaylistMusics
+          : <String>[];
+
+      final playlist = musicNames.map((name) => Music(name: name)).toList();
+
+      await ref.read(playbackProvider.notifier).playMusic(
+            deviceId: did,
+            musicName: musicName,
+            playlist: playlist, // 🎵 传递播放列表
+          );
+    }
   }
 
   /// 显示歌曲操作菜单
-  Future<void> _showMusicOptionsMenu(String musicName) async {
+  Future<void> _showMusicOptionsMenu(String musicName, int index) async {
     if (!mounted) return;
 
     // 检查是否为虚拟播放列表(无法从中移除歌曲引用)
@@ -137,7 +372,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
         await _showPlaylistSelector(musicName, isMove: false);
         break;
       case 'delete':
-        await _deleteMusicFromPlaylist(musicName);
+        await _deleteMusicFromPlaylist(musicName, index);
         break;
     }
   }
@@ -253,7 +488,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   }
 
   /// 从播放列表删除歌曲
-  Future<void> _deleteMusicFromPlaylist(String musicName) async {
+  Future<void> _deleteMusicFromPlaylist(String musicName, int index) async {
     if (!mounted) return;
 
     // 确认删除
@@ -261,7 +496,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('确认删除'),
-        content: Text('确定要从播放列表"${widget.playlistName}"中删除"$musicName"吗？'),
+        content: Text('确定要从歌单"${widget.playlistName}"中删除"$musicName"吗？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -278,10 +513,22 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     if (confirm != true || !mounted) return;
 
     try {
-      await ref.read(playlistProvider.notifier).removeMusicFromPlaylist(
-            musicNames: [musicName],
-            playlistName: widget.playlistName,
-          );
+      // 🎯 根据模式调用不同的删除方法
+      final playbackMode = ref.read(playbackModeProvider);
+      if (playbackMode == PlaybackMode.miIoTDirect) {
+        // 直连模式：使用索引删除
+        await ref.read(localPlaylistProvider.notifier).removeMusicFromPlaylist(
+              playlistName: widget.playlistName,
+              songIndices: [index],
+            );
+      } else {
+        // xiaomusic 模式：使用歌曲名删除
+        await ref.read(playlistProvider.notifier).removeMusicFromPlaylist(
+              musicNames: [musicName],
+              playlistName: widget.playlistName,
+            );
+      }
+
       if (mounted) {
         AppSnackBar.showText(context, '已删除');
       }
@@ -292,15 +539,237 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     }
   }
 
+  /// 🎯 解析播放URL（带缓存逻辑）
+  /// [song] 要播放的歌曲
+  /// [songIndex] 歌曲在歌单中的索引（用于更新缓存）
+  /// [forceRefresh] 强制刷新缓存（播放失败时使用）
+  Future<String?> _resolveUrlWithCache(
+    LocalPlaylistSong song,
+    int songIndex, {
+    bool forceRefresh = false,
+  }) async {
+    // 1. 检查缓存是否有效（除非强制刷新）
+    if (!forceRefresh && song.isCacheValid) {
+      debugPrint('✅ [PlaylistDetail] 使用缓存URL: ${song.displayName}');
+      debugPrint('   缓存过期时间: ${song.urlExpireTime}');
+      return song.cachedUrl;
+    }
+
+    // 强制刷新时记录日志
+    if (forceRefresh) {
+      debugPrint('🔄 [PlaylistDetail] 强制刷新缓存: ${song.displayName}');
+    }
+
+    // 2. 缓存无效或不存在，解析新URL
+    debugPrint('🔍 [PlaylistDetail] 缓存无效，开始解析URL: ${song.displayName}');
+    final platform = song.platform ?? 'qq';
+    final songId = song.songId ?? '';
+
+    if (songId.isEmpty) {
+      debugPrint('❌ [PlaylistDetail] 歌曲ID为空，无法解析');
+      return null;
+    }
+
+    try {
+      // 获取默认音质
+      final settings = ref.read(sourceSettingsProvider);
+      final quality = settings.defaultDownloadQuality == 'lossless' ? '320k' : '320k';
+
+      debugPrint('🔧 [PlaylistDetail] 开始URL解析');
+      debugPrint('   平台: $platform, 歌曲ID: $songId, 音质: $quality');
+
+      String? resolvedUrl;
+
+      // 3. 尝试使用 QuickJS 解析
+      try {
+        debugPrint('🔍 [PlaylistDetail] 方法1: 尝试QuickJS解析');
+        final jsProxy = ref.read(jsProxyProvider.notifier);
+        final jsProxyState = ref.read(jsProxyProvider);
+
+        debugPrint('   QuickJS状态:');
+        debugPrint('     - isInitialized: ${jsProxyState.isInitialized}');
+        debugPrint('     - currentScript: ${jsProxyState.currentScript}');
+        debugPrint('     - hasRequestHandler: ${jsProxyState.hasRequestHandler}');
+
+        if (jsProxyState.isInitialized && jsProxyState.currentScript != null) {
+          debugPrint('   ✅ QuickJS已就绪，开始调用 getMusicUrl()');
+
+          final mapped = (platform == 'qq')
+              ? 'tx'
+              : (platform == 'netease' || platform == '163')
+                  ? 'wy'
+                  : platform;
+
+          debugPrint('   调用参数: source=$mapped, songId=$songId, quality=$quality');
+
+          resolvedUrl = await jsProxy.getMusicUrl(
+            source: mapped,
+            songId: songId,
+            quality: quality,
+            musicInfo: {'songmid': songId, 'hash': songId},
+          );
+
+          if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
+            debugPrint('✅ [PlaylistDetail] QuickJS解析成功: ${resolvedUrl.substring(0, resolvedUrl.length > 100 ? 100 : resolvedUrl.length)}...');
+          } else {
+            debugPrint('❌ [PlaylistDetail] QuickJS解析失败：返回空结果');
+          }
+        } else {
+          debugPrint('⚠️ [PlaylistDetail] QuickJS未就绪，跳过此方法');
+          if (!jsProxyState.isInitialized) {
+            debugPrint('     原因: 未初始化');
+          }
+          if (jsProxyState.currentScript == null) {
+            debugPrint('     原因: 未加载脚本');
+          }
+        }
+      } catch (e, stackTrace) {
+        debugPrint('❌ [PlaylistDetail] QuickJS解析异常: $e');
+        debugPrint('   堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+      }
+
+      // 4. 回退到 WebView JS解析
+      if (resolvedUrl == null || resolvedUrl.isEmpty) {
+        try {
+          debugPrint('🔍 [PlaylistDetail] 方法2: 尝试WebView JS解析');
+          final webSvc = await ref.read(webviewJsSourceServiceProvider.future);
+
+          if (webSvc != null) {
+            debugPrint('   ✅ WebView服务可用，开始解析');
+            resolvedUrl = await webSvc.resolveMusicUrl(
+              platform: platform,
+              songId: songId,
+              quality: quality,
+            );
+
+            if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
+              debugPrint('✅ [PlaylistDetail] WebView JS解析成功: ${resolvedUrl.substring(0, resolvedUrl.length > 100 ? 100 : resolvedUrl.length)}...');
+            } else {
+              debugPrint('❌ [PlaylistDetail] WebView JS解析失败：返回空结果');
+            }
+          } else {
+            debugPrint('⚠️ [PlaylistDetail] WebView服务不可用');
+          }
+        } catch (e, stackTrace) {
+          debugPrint('❌ [PlaylistDetail] WebView JS解析异常: $e');
+          debugPrint('   堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+        }
+      }
+
+      // 5. 回退到内置 JS解析
+      if (resolvedUrl == null || resolvedUrl.isEmpty) {
+        try {
+          debugPrint('🔍 [PlaylistDetail] 方法3: 尝试内置JS解析');
+          final jsSvc = await ref.read(jsSourceServiceProvider.future);
+
+          if (jsSvc != null && jsSvc.isReady) {
+            debugPrint('   ✅ 内置JS服务可用，开始解析');
+            final js = """
+              (function(){
+                try{
+                  console.log('[PlaylistDetail] 内置JS: 开始解析');
+                  if (!lx || !lx.EVENT_NAMES) {
+                    console.log('[PlaylistDetail] 内置JS: lx 环境不存在');
+                    return '';
+                  }
+                  function mapPlat(p){ p=(p||'').toLowerCase(); if(p==='qq'||p==='tencent') return 'tx'; if(p==='netease'||p==='163') return 'wy'; if(p==='kuwo') return 'kw'; if(p==='kugou') return 'kg'; if(p==='migu') return 'mg'; return p; }
+                  var payload = { action: 'musicUrl', source: mapPlat('$platform'), info: { type: '$quality', musicInfo: { songmid: '$songId', hash: '$songId' } } };
+                  console.log('[PlaylistDetail] 内置JS: 调用 lx.emit，参数:', payload);
+                  var res = lx.emit(lx.EVENT_NAMES.request, payload);
+                  console.log('[PlaylistDetail] 内置JS: lx.emit 返回:', typeof res, res);
+                  if (res && typeof res.then === 'function') {
+                    console.log('[PlaylistDetail] 内置JS: 返回了Promise，不支持');
+                    return '';
+                  }
+                  if (typeof res === 'string') {
+                    console.log('[PlaylistDetail] 内置JS: 返回字符串:', res);
+                    return res;
+                  }
+                  if (res && res.url) {
+                    console.log('[PlaylistDetail] 内置JS: 返回对象url字段:', res.url);
+                    return res.url;
+                  }
+                  console.log('[PlaylistDetail] 内置JS: 未返回有效结果');
+                  return '';
+                }catch(e){
+                  console.log('[PlaylistDetail] 内置JS: 异常:', e);
+                  return '';
+                }
+              })()
+            """;
+            resolvedUrl = jsSvc.evaluateToString(js);
+
+            if (resolvedUrl.isNotEmpty) {
+              debugPrint('✅ [PlaylistDetail] 内置JS解析成功: ${resolvedUrl.substring(0, resolvedUrl.length > 100 ? 100 : resolvedUrl.length)}...');
+            } else {
+              debugPrint('❌ [PlaylistDetail] 内置JS解析失败：返回空结果');
+            }
+          } else {
+            debugPrint('⚠️ [PlaylistDetail] 内置JS服务不可用');
+            if (jsSvc == null) {
+              debugPrint('     原因: 服务为null');
+            } else if (!jsSvc.isReady) {
+              debugPrint('     原因: 服务未就绪');
+            }
+          }
+        } catch (e, stackTrace) {
+          debugPrint('❌ [PlaylistDetail] 内置JS解析异常: $e');
+          debugPrint('   堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+        }
+      }
+
+      // 6. 解析成功，更新缓存
+      if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
+        await ref.read(localPlaylistProvider.notifier).updateSongCache(
+              playlistName: widget.playlistName,
+              songIndex: songIndex,
+              cachedUrl: resolvedUrl,
+            );
+        return resolvedUrl;
+      }
+
+      debugPrint('❌ [PlaylistDetail] 所有解析方法均失败');
+      return null;
+    } catch (e) {
+      debugPrint('❌ [PlaylistDetail] URL解析失败: $e');
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(playlistProvider);
+    // 🎯 根据播放模式选择数据源
+    final playbackMode = ref.watch(playbackModeProvider);
+    final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
+
     final onSurface = Theme.of(context).colorScheme.onSurface;
 
-    final musics =
-        state.currentPlaylist == widget.playlistName
-            ? state.currentPlaylistMusics
-            : <String>[];
+    // 🎯 根据模式获取歌曲列表
+    List<String> musics;
+    bool isLoading;
+
+    if (isDirectMode) {
+      // 直连模式：从本地播放列表获取歌曲
+      final localState = ref.watch(localPlaylistProvider);
+      isLoading = localState.isLoading;
+
+      try {
+        final playlist = localState.playlists.firstWhere(
+          (p) => p.name == widget.playlistName,
+        );
+        musics = playlist.songs.map((s) => s.displayName).toList();
+      } catch (e) {
+        // 播放列表不存在
+        musics = [];
+      }
+    } else {
+      // xiaomusic 模式：从服务器播放列表获取歌曲
+      final state = ref.watch(playlistProvider);
+      isLoading = state.isLoading;
+      musics = state.currentPlaylist == widget.playlistName
+          ? state.currentPlaylistMusics
+          : <String>[];
+    }
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -314,12 +783,12 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
         ],
       ),
       body:
-          state.isLoading && musics.isEmpty
+          isLoading && musics.isEmpty
               ? const Center(child: CircularProgressIndicator())
               : musics.isEmpty
               ? Center(
                 child: Text(
-                  '此列表暂无歌曲',
+                  '此歌单暂无歌曲',
                   style: TextStyle(color: onSurface.withOpacity(0.6)),
                 ),
               )
@@ -376,7 +845,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                         onPressed: () => _playSingle(musicName),
                       ),
                       onTap: () => _playSingle(musicName),
-                      onLongPress: () => _showMusicOptionsMenu(musicName),
+                      onLongPress: () => _showMusicOptionsMenu(musicName, index),
                     ),
                   );
                 },

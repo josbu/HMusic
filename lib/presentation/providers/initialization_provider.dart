@@ -283,19 +283,56 @@ class InitializationNotifier extends StateNotifier<InitializationState> {
     try {
       debugPrint('🎯 [Initialization] 开始预加载JS脚本...');
 
-      // 1. 等待JS脚本管理器初始化完成
-      final scripts = ref.read(jsScriptManagerProvider);
-      debugPrint('🎯 [Initialization] 脚本管理器已加载: ${scripts.length} 个脚本');
+      // 0. 🔧 先等待音源设置Provider初始化完成（关键！）
+      // 因为 sourceSettingsProvider 从 SharedPreferences 异步加载，
+      // 如果直接 ref.read() 可能读到默认值 'unified' 而非实际配置 'js_external'
+      debugPrint('🎯 [Initialization] 等待音源设置Provider初始化...');
+      int settingsWaitCount = 0;
+      const maxSettingsWait = 30; // 3秒
 
-      if (scripts.isEmpty) {
-        debugPrint('🎯 [Initialization] 没有JS脚本，跳过预加载');
-        return;
+      while (settingsWaitCount < maxSettingsWait) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        settingsWaitCount++;
+
+        final settings = ref.read(sourceSettingsProvider);
+        debugPrint('   音源设置检查 (${settingsWaitCount * 100}ms): primarySource=${settings.primarySource}');
+
+        if (settings.primarySource == 'js_external') {
+          debugPrint('✅ [Initialization] 音源设置已加载: primarySource=${settings.primarySource}');
+          break;
+        }
       }
 
       // 2. 检查音源设置，确认是否需要JS音源
       final settings = ref.read(sourceSettingsProvider);
       if (settings.primarySource != 'js_external') {
-        debugPrint('🎯 [Initialization] 当前不是JS音源模式，跳过预加载');
+        debugPrint('🎯 [Initialization] 当前不是JS音源模式 (${settings.primarySource})，跳过预加载');
+        return;
+      }
+
+      // 1. 等待JS脚本管理器初始化完成（增加等待逻辑）
+      // 因为 jsScriptManagerProvider 从存储异步加载脚本列表，
+      // 如果直接 ref.read() 可能读到空列表
+      debugPrint('🎯 [Initialization] 等待JS脚本管理器初始化...');
+      int scriptsWaitCount = 0;
+      const maxScriptsWait = 30; // 3秒
+      List<dynamic> scripts = [];
+
+      while (scriptsWaitCount < maxScriptsWait) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        scriptsWaitCount++;
+
+        scripts = ref.read(jsScriptManagerProvider);
+        debugPrint('   脚本管理器检查 (${scriptsWaitCount * 100}ms): ${scripts.length} 个脚本');
+
+        if (scripts.isNotEmpty) {
+          debugPrint('✅ [Initialization] 脚本管理器已加载: ${scripts.length} 个脚本');
+          break;
+        }
+      }
+
+      if (scripts.isEmpty) {
+        debugPrint('🎯 [Initialization] 没有JS脚本（等待超时或确实没有），跳过预加载');
         return;
       }
 
@@ -350,6 +387,17 @@ class InitializationNotifier extends StateNotifier<InitializationState> {
 
       if (success) {
         debugPrint('✅ [Initialization] JS脚本预加载成功: ${selectedScript.name}');
+
+        // 🎯 验证脚本是否真的加载到了QuickJS环境中
+        final finalState = ref.read(jsProxyProvider);
+        debugPrint('✅ [Initialization] 预加载验证:');
+        debugPrint('     - currentScript: ${finalState.currentScript}');
+        debugPrint('     - hasRequestHandler: ${finalState.hasRequestHandler}');
+        debugPrint('     - supportedSources: ${finalState.supportedSources.keys.join(', ')}');
+
+        if (finalState.currentScript == null || !finalState.hasRequestHandler) {
+          debugPrint('⚠️ [Initialization] 预加载验证失败: 脚本未正确加载到QuickJS');
+        }
       } else {
         debugPrint('❌ [Initialization] JS脚本预加载失败: ${selectedScript.name}');
       }

@@ -6,8 +6,11 @@ import '../providers/music_library_provider.dart';
 import '../providers/playback_provider.dart';
 import '../providers/device_provider.dart';
 import '../providers/playlist_provider.dart';
+import '../providers/local_playlist_provider.dart'; // 🎯 本地歌单Provider
+import '../providers/direct_mode_provider.dart'; // 🎯 播放模式Provider
 import '../widgets/music_list_item.dart';
 import '../widgets/app_layout.dart';
+import '../../data/models/music.dart'; // 🎯 Music模型
 
 class MusicLibraryPage extends ConsumerStatefulWidget {
   const MusicLibraryPage({super.key});
@@ -36,14 +39,22 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
 
     // 启动列表动画
     _listAnimationController.forward();
-    
-    // 手动触发音乐库加载作为临时解决方案
+
+    // 🎯 根据播放模式加载对应的数据
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // 检查音乐库是否为空且没有正在加载
-      final libraryState = ref.read(musicLibraryProvider);
-      if (libraryState.musicList.isEmpty && !libraryState.isLoading) {
-        debugPrint('MusicLibraryPage: 手动触发音乐库加载');
-        ref.read(musicLibraryProvider.notifier).refreshLibrary();
+      final playbackMode = ref.read(playbackModeProvider);
+      final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
+
+      if (isDirectMode) {
+        // 直连模式：加载本地歌单（已在 LocalPlaylistProvider 初始化时自动加载）
+        debugPrint('🎯 [MusicLibrary] 直连模式：显示所有歌单音乐');
+      } else {
+        // xiaomusic 模式：检查音乐库是否需要加载
+        final libraryState = ref.read(musicLibraryProvider);
+        if (libraryState.musicList.isEmpty && !libraryState.isLoading) {
+          debugPrint('🎯 [MusicLibrary] xiaomusic 模式：手动触发音乐库加载');
+          ref.read(musicLibraryProvider.notifier).refreshLibrary();
+        }
       }
     });
   }
@@ -156,7 +167,15 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
 
   @override
   Widget build(BuildContext context) {
-    final libraryState = ref.watch(musicLibraryProvider);
+    // 🎯 检测当前播放模式
+    final playbackMode = ref.watch(playbackModeProvider);
+    final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
+
+    // 🎯 根据模式选择数据源
+    final libraryState = isDirectMode
+        ? _buildDirectModeLibraryState() // 直连模式：从本地歌单收集
+        : ref.watch(musicLibraryProvider); // xiaomusic 模式：从服务器读取
+
     final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Scaffold(
@@ -174,7 +193,12 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
         onRefresh: () async {
           _refreshController.repeat();
           try {
-            await ref.read(musicLibraryProvider.notifier).refreshLibrary();
+            // 🎯 根据模式刷新不同的数据源
+            if (isDirectMode) {
+              await ref.read(localPlaylistProvider.notifier).refreshPlaylists();
+            } else {
+              await ref.read(musicLibraryProvider.notifier).refreshLibrary();
+            }
           } finally {
             _refreshController.reset();
           }
@@ -195,6 +219,42 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
           ),
         ),
       ),
+    );
+  }
+
+  /// 🎯 直连模式：从所有本地歌单收集歌曲，构建虚拟的 MusicLibraryState
+  MusicLibraryState _buildDirectModeLibraryState() {
+    final localState = ref.watch(localPlaylistProvider);
+
+    // 从所有歌单中收集歌曲
+    final allSongs = <Music>[];
+    final seenSongs = <String>{}; // 去重
+
+    for (final playlist in localState.playlists) {
+      for (final song in playlist.songs) {
+        // 使用歌曲的唯一标识去重（歌名 + 歌手）
+        final key = '${song.title}_${song.artist}';
+        if (!seenSongs.contains(key)) {
+          seenSongs.add(key);
+          allSongs.add(Music(
+            name: song.displayName, // 显示名称（标题 - 歌手）
+            title: song.title,
+            artist: song.artist,
+            picture: song.coverUrl,
+          ));
+        }
+      }
+    }
+
+    // 构建虚拟的 MusicLibraryState
+    return MusicLibraryState(
+      musicList: allSongs,
+      filteredMusicList: allSongs, // 初始不过滤
+      isLoading: localState.isLoading,
+      error: localState.error,
+      searchQuery: '',
+      isSelectionMode: false,
+      selectedMusicNames: const {},
     );
   }
 
@@ -805,21 +865,21 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
     return virtualPlaylists.contains(playlistName);
   }
 
-  /// 显示添加到播放列表的对话框
+  /// 显示添加到歌单的对话框
   Future<void> _showAddToPlaylistDialog(String musicName) async {
     if (!mounted) return;
 
     final playlistState = ref.read(playlistProvider);
     final allPlaylists = playlistState.playlists;
 
-    // 过滤掉虚拟播放列表(虚拟列表不能作为目标)
+    // 过滤掉虚拟歌单(虚拟列表不能作为目标)
     final availablePlaylists = allPlaylists
         .where((p) => !_isVirtualPlaylist(p.name))
         .toList();
 
     if (availablePlaylists.isEmpty) {
       if (mounted) {
-        AppSnackBar.showText(context, '没有可用的播放列表,请先创建一个播放列表');
+        AppSnackBar.showText(context, '没有可用的歌单,请先创建一个歌单');
       }
       return;
     }
@@ -834,7 +894,7 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  '添加到播放列表',
+                  '添加到歌单',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
@@ -865,7 +925,7 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
 
     if (selectedPlaylist == null || !mounted) return;
 
-    // 添加到播放列表
+    // 添加到歌单
     try {
       await ref.read(playlistProvider.notifier).addMusicToPlaylist(
             musicNames: [musicName],
@@ -885,17 +945,17 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
     }
   }
 
-  /// 获取包含指定歌曲的播放列表(从当前已加载的播放列表数据中查找)
+  /// 获取包含指定歌曲的歌单(从当前已加载的歌单数据中查找)
   List<String> _getPlaylistsContainingMusic(String musicName, PlaylistState playlistState) {
     final containingPlaylists = <String>[];
 
     for (final playlist in playlistState.playlists) {
-      // 跳过虚拟播放列表,不显示在结果中
+      // 跳过虚拟歌单,不显示在结果中
       if (_isVirtualPlaylist(playlist.name)) {
         continue;
       }
 
-      // 检查播放列表的歌曲列表中是否包含此歌曲
+      // 检查歌单的歌曲列表中是否包含此歌曲
       if (playlist.musicList != null && playlist.musicList!.contains(musicName)) {
         containingPlaylists.add(playlist.name);
       }
@@ -908,7 +968,7 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
     final primary = Theme.of(context).colorScheme.primary;
     final ext = music.name.contains('.') ? music.name.split('.').last : '未知';
 
-    // 获取包含此歌曲的播放列表
+    // 获取包含此歌曲的歌单
     final playlistState = ref.read(playlistProvider);
     final containingPlaylists = _getPlaylistsContainingMusic(music.name, playlistState);
 
@@ -995,7 +1055,7 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
                   ),
                 ],
               ),
-              // 显示包含此歌曲的播放列表
+              // 显示包含此歌曲的歌单
               if (containingPlaylists.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 const Divider(),
@@ -1010,7 +1070,7 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '所属播放列表:',
+                            '所属歌单:',
                             style: TextStyle(
                               color: Colors.black87,
                               fontWeight: FontWeight.w500,
