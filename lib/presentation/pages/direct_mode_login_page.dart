@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/direct_mode_provider.dart';
 import '../widgets/app_snackbar.dart';
+import 'captcha_webview_page.dart';
 
 /// 直连模式登录页面
 /// 用户输入小米账号密码，无需xiaomusic服务端
@@ -41,102 +41,33 @@ class _DirectModeLoginPageState extends ConsumerState<DirectModeLoginPage> {
         );
   }
 
-  /// 🎯 显示验证码输入对话框
-  Future<void> _showCaptchaDialog(
+  /// 🎯 显示 WebView 验证码页面
+  /// 用户在 WebView 中完成验证后，自动重试登录
+  Future<void> _showCaptchaWebView(
     BuildContext context,
     DirectModeNeedsCaptcha captchaState,
   ) async {
-    final captchaController = TextEditingController();
+    debugPrint('🌐 [DirectMode] 显示 WebView 验证码页面');
 
-    final captchaCode = await showDialog<String>(
-      context: context,
-      barrierDismissible: false, // 不允许点击外部关闭
-      builder: (context) => AlertDialog(
-        title: const Text('需要验证码'),
-        content: SizedBox(
-          width: 350,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 验证码图片
-              if (captchaState.captchaUrl.isNotEmpty)
-                Container(
-                  height: 100,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey[300]!),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: CachedNetworkImage(
-                    imageUrl: captchaState.captchaUrl,
-                    placeholder: (context, url) => const Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                    errorWidget: (context, url, error) => Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error, color: Colors.red),
-                          const SizedBox(height: 8),
-                          Text(
-                            '验证码加载失败',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              const SizedBox(height: 16),
-              // 验证码输入框
-              TextField(
-                controller: captchaController,
-                decoration: InputDecoration(
-                  labelText: '验证码',
-                  hintText: '请输入图片中的验证码',
-                  prefixIcon: const Icon(Icons.security),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                autofocus: true,
-                textCapitalization: TextCapitalization.characters,
-              ),
-            ],
-          ),
+    // 显示 WebView 验证码页面
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => CaptchaWebViewPage(
+          captchaUrl: captchaState.captchaUrl,
+          onVerificationComplete: () {
+            debugPrint('✅ [DirectMode] WebView 验证完成，准备重试登录');
+          },
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(null),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final code = captchaController.text.trim();
-              if (code.isNotEmpty) {
-                Navigator.of(context).pop(code);
-              } else {
-                AppSnackBar.showWarning(
-                  context,
-                  '请输入验证码',
-                );
-              }
-            },
-            child: const Text('确认'),
-          ),
-        ],
       ),
     );
 
-    // 如果用户输入了验证码，重新登录
-    if (captchaCode != null && captchaCode.isNotEmpty) {
+    // WebView 关闭后，自动重试登录（不需要验证码，因为 Cookie 已保存）
+    if (mounted) {
+      debugPrint('🔄 [DirectMode] WebView 关闭，自动重试登录');
       await ref.read(directModeProvider.notifier).login(
             account: captchaState.account,
             password: captchaState.password,
-            captchaCode: captchaCode,
+            // 不传递 captchaCode，因为 Cookie 中已有有效会话
             saveCredentials: true,
           );
     }
@@ -159,8 +90,8 @@ class _DirectModeLoginPageState extends ConsumerState<DirectModeLoginPage> {
         // 直接跳转到主页，不显示设备选择对话框
         context.go('/');
       } else if (next is DirectModeNeedsCaptcha) {
-        // 🎯 需要验证码，显示验证码输入对话框
-        _showCaptchaDialog(context, next);
+        // 🎯 需要验证码，显示 WebView 验证码页面
+        _showCaptchaWebView(context, next);
       } else if (next is DirectModeError) {
         // 登录失败，显示错误
         AppSnackBar.showError(
