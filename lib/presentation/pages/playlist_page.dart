@@ -74,11 +74,14 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
       key: const ValueKey('playlist_scaffold'),
       resizeToAvoidBottomInset: false,
       backgroundColor: Theme.of(context).colorScheme.surface,
-      body: _buildContent(
-        isLoading: isLoading,
-        error: error,
-        playlists: playlists,
-        isDirectMode: isDirectMode,
+      body: SafeArea(
+        bottom: false, // 底部由 AppLayout 处理
+        child: _buildContent(
+          isLoading: isLoading,
+          error: error,
+          playlists: playlists,
+          isDirectMode: isDirectMode,
+        ),
       ),
       floatingActionButton: Padding(
         padding: EdgeInsets.only(
