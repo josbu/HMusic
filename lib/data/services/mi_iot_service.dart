@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -40,17 +41,44 @@ class MiIoTService {
   // 🎯 持久化的 deviceId key
   static const String _keyDeviceId = 'mi_iot_device_id';
 
+  // 🎯 防止竞态条件：确保 deviceId 只加载一次
+  Completer<void>? _deviceIdLoadCompleter;
+  bool _deviceIdLoaded = false;
+
   MiIoTService() {
-    _loadPersistedDeviceId();
+    _startLoadingDeviceId();
   }
 
-  /// 🎯 从 SharedPreferences 加载持久化的 deviceId
-  Future<void> _loadPersistedDeviceId() async {
+  /// 🎯 启动 deviceId 加载（构造函数中调用）
+  void _startLoadingDeviceId() {
+    if (_deviceIdLoadCompleter != null) return;
+    _deviceIdLoadCompleter = Completer<void>();
+    _loadPersistedDeviceIdInternal().then((_) {
+      _deviceIdLoaded = true;
+      _deviceIdLoadCompleter!.complete();
+    }).catchError((e) {
+      _deviceIdLoaded = true;
+      _deviceIdLoadCompleter!.complete();
+    });
+  }
+
+  /// 🎯 等待 deviceId 加载完成（供外部和内部方法调用）
+  Future<void> ensureDeviceIdLoaded() async {
+    if (_deviceIdLoaded && _deviceId != null) return;
+    if (_deviceIdLoadCompleter == null) {
+      _startLoadingDeviceId();
+    }
+    await _deviceIdLoadCompleter!.future;
+  }
+
+  /// 🎯 内部方法：从 SharedPreferences 加载持久化的 deviceId
+  Future<void> _loadPersistedDeviceIdInternal() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _deviceId = prefs.getString(_keyDeviceId);
+      final savedDeviceId = prefs.getString(_keyDeviceId);
 
-      if (_deviceId != null) {
+      if (savedDeviceId != null && savedDeviceId.isNotEmpty) {
+        _deviceId = savedDeviceId;
         print('🔧 [MiIoT] 加载持久化的 deviceId: $_deviceId');
       } else {
         // 如果没有保存的 deviceId，生成新的并保存
@@ -62,6 +90,12 @@ class MiIoTService {
       print('⚠️ [MiIoT] 加载持久化 deviceId 失败: $e，生成新的');
       _deviceId = _generateDeviceId();
     }
+  }
+
+  /// 🎯 （已废弃）从 SharedPreferences 加载持久化的 deviceId
+  /// 现在请使用 ensureDeviceIdLoaded()
+  Future<void> _loadPersistedDeviceId() async {
+    await ensureDeviceIdLoaded();
   }
 
   /// 🎯 设置公共音频代理URL（Cloudflare Workers）
@@ -116,10 +150,8 @@ class MiIoTService {
         print('🔐 [MiIoT] 使用验证码登录: $captchaCode');
       }
 
-      // 🎯 确保 deviceId 已加载（如果还未加载）
-      if (_deviceId == null) {
-        await _loadPersistedDeviceId();
-      }
+      // 🎯 确保 deviceId 已加载（使用 Completer 防止竞态条件）
+      await ensureDeviceIdLoaded();
 
       print('🔧 [MiIoT] 使用 deviceId: $_deviceId');
 
@@ -174,6 +206,10 @@ class MiIoTService {
       }
 
       print('📝 [MiIoT] sign: $sign');
+
+      // 🎯 保存 Sign 阶段的 location（用于验证码场景）
+      final signLocation = signData['location'] as String?;
+      print('📝 [MiIoT] Sign 阶段的 location: $signLocation');
 
       // 2. 计算密码MD5 (大写)
       final passwordHash = md5.convert(utf8.encode(password)).toString().toUpperCase();
@@ -261,6 +297,8 @@ class MiIoTService {
       print('  nonce: ${loginResponseData['nonce'] ?? "❌ 缺失"}');
       print('  userId: ${loginResponseData['userId'] ?? "❌ 缺失"}');
       print('  passToken: ${loginResponseData['passToken'] ?? "❌ 缺失"}');
+      print('  notificationUrl: ${loginResponseData['notificationUrl'] ?? "❌ 缺失"}');
+      print('  securityStatus: ${loginResponseData['securityStatus'] ?? "❌ 缺失"}');
 
       // 🎯 保存登录响应（用于UI层提取验证码URL）
       _lastLoginResponse = loginResponseData;
@@ -272,9 +310,20 @@ class MiIoTService {
 
         // 🎯 特殊处理验证码错误（错误码70016）
         if (errorCode == 70016) {
-          final captchaUrl = loginResponseData['captchaUrl'] as String?;
+          var captchaUrl = loginResponseData['captchaUrl'] as String?;
+
+          // 🎯 如果登录认证返回的 captchaUrl 为空，使用 Sign 阶段的 location
+          if ((captchaUrl == null || captchaUrl.isEmpty) && signLocation != null && signLocation.isNotEmpty) {
+            captchaUrl = signLocation;
+            print('⚠️ [MiIoT] 登录认证未返回 captchaUrl，使用 Sign 阶段的 location');
+          }
+
           print('⚠️ [MiIoT] 需要验证码登录');
           print('⚠️ [MiIoT] 验证码URL: $captchaUrl');
+
+          // 🎯 将验证码URL保存到响应中，供 UI 层使用
+          loginResponseData['captchaUrl'] = captchaUrl;
+
           // 返回 false，但保留 _lastLoginResponse 供UI层使用
           return false;
         }
@@ -292,7 +341,32 @@ class MiIoTService {
       final location = loginResponseData['location'] as String?;
       final nonce = loginResponseData['nonce'];
 
-      if (location == null || _ssecurity == null) {
+      if (location == null || location.isEmpty || _ssecurity == null) {
+        // 🎯 检查是否有 notificationUrl（需要二次身份验证）
+        final notificationUrl = loginResponseData['notificationUrl'] as String?;
+        final securityStatus = loginResponseData['securityStatus'];
+
+        if (notificationUrl != null && notificationUrl.isNotEmpty) {
+          // 构建完整的验证 URL
+          final fullVerificationUrl = notificationUrl.startsWith('http')
+              ? notificationUrl
+              : 'https://account.xiaomi.com$notificationUrl';
+
+          print('⚠️ [MiIoT] 需要二次身份验证 (securityStatus: $securityStatus)');
+          print('⚠️ [MiIoT] 验证URL: $fullVerificationUrl');
+
+          // 🎯 将验证URL保存到响应中，供 UI 层使用
+          // 使用特殊的 code 70016 来标识需要验证
+          _lastLoginResponse = {
+            ...loginResponseData,
+            'code': 70016,
+            'captchaUrl': fullVerificationUrl,
+            'desc': '需要二次身份验证',
+          };
+
+          return false;
+        }
+
         print('❌ [MiIoT] location或ssecurity为空');
         return false;
       }
@@ -333,6 +407,305 @@ class MiIoTService {
     } catch (e, stackTrace) {
       print('❌ [MiIoT] 登录异常: $e');
       print('堆栈: ${stackTrace.toString().split('\n').take(5).join('\n')}');
+      return false;
+    }
+  }
+
+  /// 🎯 使用 WebView 提取的 Cookie 登录
+  /// 当用户在 WebView 中完成验证后，使用提取的 Cookie 直接获取 serviceToken
+  Future<bool> loginWithCookies(String account, String password, {Map<String, String>? cookies}) async {
+    try {
+      print('🔐 [MiIoT] 使用 Cookie 登录小米账号: $account');
+
+      // 🎯 确保 deviceId 已加载（使用 Completer 防止竞态条件）
+      await ensureDeviceIdLoaded();
+      print('🔧 [MiIoT] Cookie 登录使用 deviceId: $_deviceId');
+
+      if (cookies == null || cookies.isEmpty) {
+        print('⚠️ [MiIoT] Cookie 为空，尝试普通登录');
+        return login(account, password);
+      }
+
+      print('🍪 [MiIoT] 收到的 Cookie: $cookies');
+
+      // 🎯 检查是否有 serviceToken（最直接的情况）
+      if (cookies.containsKey('serviceToken') && cookies['serviceToken']!.isNotEmpty) {
+        _serviceToken = cookies['serviceToken'];
+        _userId = cookies['userId'];
+        _ssecurity = cookies['ssecurity'];
+        print('✅ [MiIoT] 从 Cookie 中获取到 serviceToken');
+        print('✅ [MiIoT] Cookie 登录成功! userId: $_userId');
+        return true;
+      }
+
+      // 🎯 如果没有 serviceToken，尝试使用 passToken 获取
+      if (cookies.containsKey('passToken') && cookies.containsKey('userId')) {
+        _passToken = cookies['passToken'];
+        _userId = cookies['userId'];
+        print('🔧 [MiIoT] 从 Cookie 中获取到 passToken，尝试获取 serviceToken');
+
+        // 使用 passToken 获取 serviceToken
+        final success = await _getServiceTokenWithPassToken();
+        if (success) {
+          print('✅ [MiIoT] Cookie 登录成功! userId: $_userId');
+          return true;
+        }
+      }
+
+      // 🎯 如果标记了 STS 验证完成，但没有获取到 token，说明需要特殊处理
+      // 不要再调用 login() 避免无限循环
+      if (cookies.containsKey('_stsVerified')) {
+        print('⚠️ [MiIoT] STS 验证已完成但未获取到 token');
+        print('⚠️ [MiIoT] 可用的 Cookie 字段: ${cookies.keys}');
+
+        // 🎯 修复：无论是否有 userId，都尝试使用验证后的 session 重新登录
+        // 因为 deviceId 已经被小米服务器记录为已验证状态
+        if (cookies.containsKey('userId')) {
+          _userId = cookies['userId'];
+        }
+
+        print('🔧 [MiIoT] 尝试使用验证后的 session 获取 serviceToken...');
+
+        // 尝试再次登录，但这次小米服务器应该已经认可了验证
+        // 使用相同的 deviceId 确保 session 一致
+        final success = await _loginAfterStsVerification(account, password);
+        if (success) {
+          print('✅ [MiIoT] 验证后登录成功!');
+          return true;
+        }
+
+        // 如果还是失败，返回错误但不要无限循环
+        print('❌ [MiIoT] 验证后登录仍然失败');
+        // 🎯 注意：_lastLoginResponse 已经在 _loginAfterStsVerification 中被设置为非 70016 的错误
+        return false;
+      }
+
+      // 🎯 如果 Cookie 中没有必要的信息且没有 STS 验证标记，尝试普通登录
+      print('⚠️ [MiIoT] Cookie 中没有必要的认证信息，尝试普通登录');
+      return login(account, password);
+    } catch (e, stackTrace) {
+      print('❌ [MiIoT] Cookie 登录异常: $e');
+      print('堆栈: ${stackTrace.toString().split('\n').take(5).join('\n')}');
+      return false;
+    }
+  }
+
+  /// 🎯 STS 验证完成后再次尝试登录
+  /// 此时小米服务器应该已经记录了验证状态
+  Future<bool> _loginAfterStsVerification(String account, String password) async {
+    try {
+      print('🔧 [MiIoT] STS 验证后尝试登录...');
+
+      // 🎯 关键修复：清除旧的登录响应，避免无限循环！
+      // 因为旧响应中可能包含 code: 70016，导致 UI 层再次跳转到验证页面
+      _lastLoginResponse = null;
+
+      // 🎯 确保使用相同的 deviceId（使用 Completer 防止竞态条件）
+      await ensureDeviceIdLoaded();
+      print('🔧 [MiIoT] STS 验证后使用 deviceId: $_deviceId');
+
+      final headers = {
+        'User-Agent': 'APP/com.xiaomi.mihome APPV/6.0.103 iosPassportSDK/3.9.0 iOS/14.4 miHSTS',
+      };
+
+      // 1. 获取 sign
+      final signResponse = await _dio.get(
+        'https://account.xiaomi.com/pass/serviceLogin',
+        queryParameters: {
+          'sid': 'micoapi',
+          '_json': 'true',
+        },
+        options: Options(
+          headers: {
+            ...headers,
+            'Cookie': 'sdkVersion=3.9; deviceId=$_deviceId',
+          },
+          responseType: ResponseType.plain,
+        ),
+      );
+
+      final signData = _parseJsonResponse(signResponse.data);
+      if (signData == null) {
+        print('❌ [MiIoT] 获取 sign 失败');
+        return false;
+      }
+
+      final sign = signData['_sign'] as String?;
+      final qs = signData['qs'] as String?;
+      final callback = signData['callback'] as String?;
+
+      if (sign == null) {
+        print('❌ [MiIoT] sign 为空');
+        return false;
+      }
+
+      // 2. 计算密码 MD5
+      final passwordHash = md5.convert(utf8.encode(password)).toString().toUpperCase();
+
+      // 3. 登录请求
+      final loginResponse = await _dio.post(
+        'https://account.xiaomi.com/pass/serviceLoginAuth2',
+        data: {
+          '_json': 'true',
+          'qs': qs ?? '',
+          'sid': 'micoapi',
+          '_sign': sign,
+          'callback': callback ?? '',
+          'user': account,
+          'hash': passwordHash,
+        },
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: {
+            ...headers,
+            'Cookie': 'sdkVersion=3.9; deviceId=$_deviceId',
+          },
+          responseType: ResponseType.plain,
+        ),
+      );
+
+      final loginResponseData = _parseJsonResponse(loginResponse.data);
+      if (loginResponseData == null) {
+        print('❌ [MiIoT] 登录响应解析失败');
+        return false;
+      }
+
+      print('📝 [MiIoT] 验证后登录响应: code=${loginResponseData['code']}, desc=${loginResponseData['desc']}');
+      print('📝 [MiIoT] 响应字段: ${loginResponseData.keys}');
+
+      // 检查是否成功获取到关键信息
+      if (loginResponseData['code'] == 0) {
+        final location = loginResponseData['location'] as String?;
+        _ssecurity = loginResponseData['ssecurity'] as String?;
+        final nonce = loginResponseData['nonce'];
+
+        if (location != null && location.isNotEmpty && _ssecurity != null) {
+          // 计算 clientSign 并获取 serviceToken
+          final nsec = 'nonce=$nonce&$_ssecurity';
+          final clientSignBytes = sha1.convert(utf8.encode(nsec)).bytes;
+          final clientSign = base64Encode(clientSignBytes);
+
+          final tokenUrl = '$location&clientSign=${Uri.encodeComponent(clientSign)}';
+          final tokenResponse = await _dio.get(
+            tokenUrl,
+            options: Options(
+              followRedirects: false,
+              validateStatus: (status) => status! < 400 || status == 302,
+              headers: headers,
+            ),
+          );
+
+          // 从 Cookie 中提取 serviceToken
+          final cookies = tokenResponse.headers['set-cookie'];
+          if (cookies != null) {
+            for (var cookie in cookies) {
+              if (cookie.contains('serviceToken=')) {
+                _serviceToken = _extractCookieValue(cookie, 'serviceToken');
+              }
+            }
+          }
+
+          if (_serviceToken != null) {
+            _userId = loginResponseData['userId']?.toString();
+            print('✅ [MiIoT] 验证后登录成功! userId: $_userId');
+            return true;
+          }
+        }
+      }
+
+      print('❌ [MiIoT] 验证后登录未能获取 serviceToken');
+      // 🎯 设置明确的错误响应，告知 UI 层验证后登录失败
+      _lastLoginResponse = {
+        'code': -1,
+        'desc': '验证完成但登录失败，请重试',
+      };
+      return false;
+    } catch (e) {
+      print('❌ [MiIoT] 验证后登录异常: $e');
+      // 🎯 设置明确的错误响应
+      _lastLoginResponse = {
+        'code': -1,
+        'desc': '验证后登录异常: $e',
+      };
+      return false;
+    }
+  }
+
+  /// 🎯 使用 passToken 获取 serviceToken
+  Future<bool> _getServiceTokenWithPassToken() async {
+    try {
+      if (_passToken == null || _userId == null) {
+        print('❌ [MiIoT] passToken 或 userId 为空');
+        return false;
+      }
+
+      print('🔧 [MiIoT] 使用 passToken 获取 serviceToken...');
+
+      // 构建请求 URL
+      final url = 'https://account.xiaomi.com/pass/serviceLogin?sid=micoapi&_json=true';
+
+      final response = await _dio.get(
+        url,
+        options: Options(
+          headers: {
+            'User-Agent': 'APP/com.xiaomi.mihome APPV/6.0.103 iosPassportSDK/3.9.0 iOS/14.4 miHSTS',
+            'Cookie': 'passToken=$_passToken; userId=$_userId',
+          },
+          responseType: ResponseType.plain,
+        ),
+      );
+
+      final data = _parseJsonResponse(response.data);
+      if (data == null) {
+        print('❌ [MiIoT] 响应解析失败');
+        return false;
+      }
+
+      print('📝 [MiIoT] passToken 登录响应: code=${data['code']}');
+
+      // 检查是否成功
+      if (data['code'] == 0) {
+        final location = data['location'] as String?;
+        _ssecurity = data['ssecurity'] as String?;
+        final nonce = data['nonce'];
+
+        if (location != null && _ssecurity != null) {
+          // 计算 clientSign
+          final nsec = 'nonce=$nonce&$_ssecurity';
+          final clientSignBytes = sha1.convert(utf8.encode(nsec)).bytes;
+          final clientSign = base64Encode(clientSignBytes);
+
+          // 获取 serviceToken
+          final tokenUrl = '$location&clientSign=${Uri.encodeComponent(clientSign)}';
+          final tokenResponse = await _dio.get(
+            tokenUrl,
+            options: Options(
+              followRedirects: false,
+              validateStatus: (status) => status! < 400 || status == 302,
+            ),
+          );
+
+          // 从 Cookie 中提取 serviceToken
+          final setCookies = tokenResponse.headers['set-cookie'];
+          if (setCookies != null) {
+            for (var cookie in setCookies) {
+              if (cookie.contains('serviceToken=')) {
+                _serviceToken = _extractCookieValue(cookie, 'serviceToken');
+              }
+            }
+          }
+
+          if (_serviceToken != null) {
+            print('✅ [MiIoT] 成功获取 serviceToken');
+            return true;
+          }
+        }
+      }
+
+      print('❌ [MiIoT] 无法使用 passToken 获取 serviceToken');
+      return false;
+    } catch (e) {
+      print('❌ [MiIoT] passToken 登录异常: $e');
       return false;
     }
   }
