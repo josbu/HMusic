@@ -11,7 +11,9 @@ import '../widgets/app_layout.dart';
 import '../providers/auth_provider.dart';
 
 class PlaylistPage extends ConsumerStatefulWidget {
-  const PlaylistPage({super.key});
+  final bool showCreateDialog; // 🎯 新增：是否自动弹出创建对话框
+
+  const PlaylistPage({super.key, this.showCreateDialog = false});
 
   @override
   ConsumerState<PlaylistPage> createState() => _PlaylistPageState();
@@ -34,6 +36,16 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
         if (auth is AuthAuthenticated) {
           ref.read(playlistProvider.notifier).refreshPlaylists();
         }
+      }
+
+      // 🎯 如果需要自动弹出创建对话框
+      if (widget.showCreateDialog) {
+        // 延迟一点确保页面已经渲染完成
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            _showCreatePlaylistDialog();
+          }
+        });
       }
     });
   }

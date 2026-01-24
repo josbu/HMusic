@@ -680,8 +680,8 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
           );
 
           if (shouldCreate == true) {
-            // 跳转到歌单页面
-            context.push('/playlist');
+            // 跳转到歌单页面并自动弹出创建对话框
+            context.push('/playlist?showCreate=true');
           }
         }
         return;
