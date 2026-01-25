@@ -6,7 +6,14 @@
 
 ## 📱 下载安装
 
-从 [Releases](https://github.com/hpcll/HMusic/releases) 下载最新版本
+从 [Releases](https://github.com/hpcll/HMusic/releases) 下载最新版本：
+
+| 平台 | 文件 | 说明 |
+|------|------|------|
+| 🤖 Android 通用版 | `HMusic-v2.2.0-android-universal.apk` | 推荐，兼容所有设备 |
+| 🤖 Android arm64 | `HMusic-v2.2.0-android-arm64-v8a.apk` | 现代手机，体积更小 |
+| 🤖 Android arm32 | `HMusic-v2.2.0-android-armeabi-v7a.apk` | 老旧设备 |
+| 🍎 iOS | `HMusic-v2.2.0-ios-unsigned.ipa` | 需自签名安装 |
 
 ## 🎯 两种模式
 
