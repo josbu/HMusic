@@ -151,6 +151,11 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
 
   Widget _buildErrorState(String error) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final isSourceError = isSourceFailureError(error);
+    final settingsNotifier = ref.read(sourceSettingsProvider.notifier);
+    final currentStrategy = settingsNotifier.getCurrentStrategyName();
+    final nextStrategy = settingsNotifier.getNextStrategyName();
+
     return Center(
       key: const ValueKey('search_error'),
       child: Padding(
@@ -159,13 +164,13 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.error_outline_rounded,
+              isSourceError ? Icons.wifi_off_rounded : Icons.error_outline_rounded,
               size: 60,
-              color: Colors.redAccent,
+              color: isSourceError ? Colors.orange : Colors.redAccent,
             ),
             const SizedBox(height: 20),
             Text(
-              '哦豁，出错了',
+              isSourceError ? '音源暂时不可用' : '哦豁，出错了',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -178,7 +183,77 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
               error,
               style: TextStyle(fontSize: 15, color: onSurface.withOpacity(0.7)),
               textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
             ),
+            if (isSourceError) ...[
+              const SizedBox(height: 8),
+              Text(
+                '当前策略: $currentStrategy',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: onSurface.withOpacity(0.5),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // 切换音源按钮
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await settingsNotifier.cycleSearchStrategy();
+                      // 自动重试搜索
+                      final query = ref.read(musicSearchProvider).searchQuery;
+                      if (query.isNotEmpty) {
+                        ref.read(musicSearchProvider.notifier).searchOnline(query);
+                      }
+                    },
+                    icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                    label: Text('切换到 $nextStrategy'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // 手动重试按钮
+              TextButton.icon(
+                onPressed: () {
+                  final query = ref.read(musicSearchProvider).searchQuery;
+                  if (query.isNotEmpty) {
+                    ref.read(musicSearchProvider.notifier).searchOnline(query);
+                  }
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('重试当前策略'),
+                style: TextButton.styleFrom(
+                  foregroundColor: onSurface.withOpacity(0.7),
+                ),
+              ),
+            ] else ...[
+              const SizedBox(height: 20),
+              // 普通错误只显示重试按钮
+              TextButton.icon(
+                onPressed: () {
+                  final query = ref.read(musicSearchProvider).searchQuery;
+                  if (query.isNotEmpty) {
+                    ref.read(musicSearchProvider.notifier).searchOnline(query);
+                  }
+                },
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('重试'),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -1248,128 +1323,83 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
         }
       }
 
-      // 🎯 统一API源和其他源：保持原有的解析播放逻辑
-      print('[XMC] 🎵 [Play] 非JS源播放：使用解析播放逻辑');
+      // 🎯 使用JS源解析播放链接
+      print('[XMC] 🎵 [Play] 使用JS源解析播放链接...');
 
-      if (sourceApi == 'unified') {
-        // 🎯 统一API源：使用统一API解析播放链接
-        print('[XMC] 🎵 [Play] 统一API源：使用统一API解析播放链接...');
+      try {
+        final webSvc = await ref.read(webviewJsSourceServiceProvider.future);
+        final jsSvc = await ref.read(jsSourceServiceProvider.future);
+        final jsProxy = ref.read(jsProxyProvider.notifier);
+        final jsProxyState = ref.read(jsProxyProvider);
 
-        try {
-          final unifiedService = ref.read(unifiedApiServiceProvider);
-          playUrl = await unifiedService.getMusicUrl(
+        if (webSvc == null && jsSvc == null) {
+          throw Exception('JS解析服务未就绪');
+        }
+
+        // 优先使用 QuickJS 代理解析
+        if (jsProxyState.isInitialized &&
+            jsProxyState.currentScript != null) {
+          final mapped =
+              (platform == 'qq')
+                  ? 'tx'
+                  : (platform == 'netease' || platform == '163')
+                  ? 'wy'
+                  : platform;
+          playUrl = await jsProxy.getMusicUrl(
+            source: mapped,
             songId: id,
+            quality: '320k',
+            musicInfo: {'songmid': id, 'hash': id},
+          );
+
+          if (playUrl != null && playUrl.isNotEmpty) {
+            print('[XMC] ✅ [Play] QuickJS解析成功: $playUrl');
+          }
+        }
+
+        // 次选 WebView JS解析（仅在QuickJS失败时尝试）
+        if ((playUrl == null || playUrl.isEmpty) && webSvc != null) {
+          print('[XMC] 🔄 [Play] QuickJS解析失败，尝试WebView解析...');
+          playUrl = await webSvc.resolveMusicUrl(
             platform: platform,
+            songId: id,
             quality: '320k',
           );
 
           if (playUrl != null && playUrl.isNotEmpty) {
-            print('[XMC] ✅ [Play] 统一API解析成功: $playUrl');
-          } else {
-            print('[XMC] ❌ [Play] 统一API解析失败，尝试备用方案');
-            // 🎯 备用方案：尝试使用JS源解析
-            try {
-              final webSvc = await ref.read(
-                webviewJsSourceServiceProvider.future,
-              );
-              if (webSvc != null) {
-                print('[XMC] 🔄 [Play] 尝试JS源备用解析...');
-                playUrl = await webSvc.resolveMusicUrl(
-                  platform: platform,
-                  songId: id,
-                  quality: '320k',
-                );
-                if (playUrl != null && playUrl.isNotEmpty) {
-                  print('[XMC] ✅ [Play] JS源备用解析成功: $playUrl');
-                }
-              }
-            } catch (e) {
-              print('[XMC] ⚠️ [Play] JS源备用解析失败: $e');
-            }
+            print('[XMC] ✅ [Play] WebView解析成功: $playUrl');
           }
-        } catch (e) {
-          print('[XMC] ❌ [Play] 统一API解析异常: $e');
-          throw Exception('统一API解析失败: $e');
         }
-      } else {
-        // 🎯 其他源：使用JS源解析
-        print('[XMC] 🎵 [Play] 其他源：使用JS源解析播放链接...');
 
-        try {
-          final webSvc = await ref.read(webviewJsSourceServiceProvider.future);
-          final jsSvc = await ref.read(jsSourceServiceProvider.future);
-          final jsProxy = ref.read(jsProxyProvider.notifier);
-          final jsProxyState = ref.read(jsProxyProvider);
-
-          if (webSvc == null && jsSvc == null) {
-            throw Exception('JS解析服务未就绪');
-          }
-
-          // 优先使用 QuickJS 代理解析
-          if (jsProxyState.isInitialized &&
-              jsProxyState.currentScript != null) {
-            final mapped =
-                (platform == 'qq')
-                    ? 'tx'
-                    : (platform == 'netease' || platform == '163')
-                    ? 'wy'
-                    : platform;
-            playUrl = await jsProxy.getMusicUrl(
-              source: mapped,
-              songId: id,
-              quality: '320k',
-              musicInfo: {'songmid': id, 'hash': id},
-            );
-
-            if (playUrl != null && playUrl.isNotEmpty) {
-              print('[XMC] ✅ [Play] QuickJS解析成功: $playUrl');
-            }
-          }
-
-          // 次选 WebView JS解析（仅在QuickJS失败时尝试）
-          if ((playUrl == null || playUrl.isEmpty) && webSvc != null) {
-            print('[XMC] 🔄 [Play] QuickJS解析失败，尝试WebView解析...');
-            playUrl = await webSvc.resolveMusicUrl(
-              platform: platform,
-              songId: id,
-              quality: '320k',
-            );
-
-            if (playUrl != null && playUrl.isNotEmpty) {
-              print('[XMC] ✅ [Play] WebView解析成功: $playUrl');
-            }
-          }
-
-          // 回退到内置JS解析
-          if ((playUrl == null || playUrl.isEmpty) &&
-              jsSvc != null &&
-              jsSvc.isReady) {
-            print('[XMC] 🔄 [Play] 回退到内置JS解析...');
-            final js = """
-              (function(){
-                try{
-                  if (!lx || !lx.EVENT_NAMES) return '';
-                  // 平台映射
-                  function mapPlat(p){ p=(p||'').toLowerCase(); if(p==='qq'||p==='tencent') return 'tx'; if(p==='netease'||p==='163') return 'wy'; if(p==='kuwo') return 'kw'; if(p==='kugou') return 'kg'; if(p==='migu') return 'mg'; return p; }
-                  var payload = { action: 'musicUrl', source: mapPlat('$platform'), info: { type: '320k', musicInfo: { songmid: '$id', hash: '$id' } } };
-                  var res = lx.emit(lx.EVENT_NAMES.request, payload);
-                  if (res && typeof res.then === 'function') return '';
-                  if (typeof res === 'string') return res; if (res && res.url) return res.url; return '';
-                }catch(e){ return '' }
-              })()
-            """;
-            playUrl = jsSvc.evaluateToString(js);
-          }
-
-          if (playUrl != null && playUrl.isNotEmpty) {
-            print('[XMC] ✅ [Play] JS源解析成功: $playUrl');
-          } else {
-            throw Exception('JS源无法解析播放链接');
-          }
-        } catch (e) {
-          print('[XMC] ❌ [Play] JS源解析异常: $e');
-          throw Exception('JS源解析失败: $e');
+        // 回退到内置JS解析
+        if ((playUrl == null || playUrl.isEmpty) &&
+            jsSvc != null &&
+            jsSvc.isReady) {
+          print('[XMC] 🔄 [Play] 回退到内置JS解析...');
+          final js = """
+            (function(){
+              try{
+                if (!lx || !lx.EVENT_NAMES) return '';
+                // 平台映射
+                function mapPlat(p){ p=(p||'').toLowerCase(); if(p==='qq'||p==='tencent') return 'tx'; if(p==='netease'||p==='163') return 'wy'; if(p==='kuwo') return 'kw'; if(p==='kugou') return 'kg'; if(p==='migu') return 'mg'; return p; }
+                var payload = { action: 'musicUrl', source: mapPlat('$platform'), info: { type: '320k', musicInfo: { songmid: '$id', hash: '$id' } } };
+                var res = lx.emit(lx.EVENT_NAMES.request, payload);
+                if (res && typeof res.then === 'function') return '';
+                if (typeof res === 'string') return res; if (res && res.url) return res.url; return '';
+              }catch(e){ return '' }
+            })()
+          """;
+          playUrl = jsSvc.evaluateToString(js);
         }
+
+        if (playUrl != null && playUrl.isNotEmpty) {
+          print('[XMC] ✅ [Play] JS源解析成功: $playUrl');
+        } else {
+          throw Exception('JS源无法解析播放链接');
+        }
+      } catch (e) {
+        print('[XMC] ❌ [Play] JS源解析异常: $e');
+        throw Exception('JS源解析失败: $e');
       }
 
       // 🎯 检查解析结果

@@ -10,8 +10,6 @@ class SourceSettings {
   final String cookieTencent; // ts_last= 等
   final bool useJsForSearch; // 是否使用JS音源执行搜索
   final bool jsOnlyNoFallback; // 仅JS调试：禁用回落到内置
-  final bool useUnifiedApi; // 是否使用统一API (music.txqq.pro)
-  final String unifiedApiBase; // 统一API基础地址
   final bool useYouTubeProxy; // 是否使用YouTube代理搜索 (需要翻墙)
   final String youTubeDownloadSource; // YouTube下载源选择
   final String youTubeAudioQuality; // YouTube音频质量选择
@@ -19,14 +17,14 @@ class SourceSettings {
   final String ttsTestText; // TTS测试文字
   final bool useBuiltinScript; // 是否使用内置脚本（优先级高于scriptUrl）
   final String
-  primarySource; // 主要音源选择: 'unified' | 'youtube' | 'js_external' | 'js_builtin'
-  final String scriptPreset; // 预置脚本选择: 'xiaoqiu' | 'custom' | 'local_file'
+  primarySource; // 主要音源选择: 'js_external'
+  final String scriptPreset; // 预置脚本选择: 'custom' | 'local_file'
   final String localScriptPath; // 本地脚本文件路径
   final String
   jsSearchStrategy; // JS流程下搜索优先级: qqOnly|kuwoOnly|neteaseOnly|qqFirst|kuwoFirst|neteaseFirst
   final String defaultDownloadQuality; // 默认下载音质: 'lossless' | 'high' | 'standard'
-  final String audioProxyUrl; // 🎯 公共音频代理服务器URL (Cloudflare Workers)
-  final bool useAudioProxy; // 🎯 是否启用公共音频代理（直连模式）
+  final String audioProxyUrl; // 音频代理服务器URL（需用户自行部署）
+  final bool useAudioProxy; // 是否启用音频代理（直连模式）
 
   const SourceSettings({
     this.enabled = true,
@@ -37,21 +35,19 @@ class SourceSettings {
     this.cookieTencent = '',
     this.useJsForSearch = false,
     this.jsOnlyNoFallback = false,
-    this.useUnifiedApi = true, // 新用户默认使用统一API，更稳定可靠
-    this.unifiedApiBase = 'https://music.txqq.pro', // 统一API默认地址
     this.useYouTubeProxy = false, // 公开版本不包含YouTube代理功能
     this.youTubeDownloadSource = '', // 移除YouTube相关配置
     this.youTubeAudioQuality = '', // 移除YouTube相关配置
     this.enableTts = false, // 默认关闭TTS功能
     this.ttsTestText = '你好，这是TTS测试', // 默认TTS测试文字
     this.useBuiltinScript = false, // 公开版本无内置脚本
-    this.primarySource = 'unified', // 默认使用统一API
+    this.primarySource = 'js_external', // 默认使用JS外部脚本
     this.scriptPreset = 'custom', // 默认选择自定义
     this.localScriptPath = '', // 默认无本地脚本路径
     this.jsSearchStrategy = 'qqFirst',
     this.defaultDownloadQuality = 'high', // 默认高品质 (320k)
-    this.audioProxyUrl = '', // 🎯 音频代理服务器URL（需用户自行部署）
-    this.useAudioProxy = false, // 🎯 默认关闭，用户需自行部署代理后启用
+    this.audioProxyUrl = '', // 音频代理服务器URL（需用户自行部署）
+    this.useAudioProxy = false, // 默认关闭，用户需自行部署代理后启用
   });
 
   SourceSettings copyWith({
@@ -62,8 +58,6 @@ class SourceSettings {
     String? cookieTencent,
     bool? useJsForSearch,
     bool? jsOnlyNoFallback,
-    bool? useUnifiedApi,
-    String? unifiedApiBase,
     bool? useYouTubeProxy,
     String? youTubeDownloadSource,
     String? youTubeAudioQuality,
@@ -86,8 +80,6 @@ class SourceSettings {
       cookieTencent: cookieTencent ?? this.cookieTencent,
       useJsForSearch: useJsForSearch ?? this.useJsForSearch,
       jsOnlyNoFallback: jsOnlyNoFallback ?? this.jsOnlyNoFallback,
-      useUnifiedApi: useUnifiedApi ?? this.useUnifiedApi,
-      unifiedApiBase: unifiedApiBase ?? this.unifiedApiBase,
       useYouTubeProxy: useYouTubeProxy ?? this.useYouTubeProxy,
       youTubeDownloadSource:
           youTubeDownloadSource ?? this.youTubeDownloadSource,
@@ -114,8 +106,6 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
   static const _kTencent = 'source_cookie_tencent';
   static const _kUseJsForSearch = 'source_use_js_search';
   static const _kJsOnlyNoFallback = 'source_js_only_no_fallback';
-  static const _kUseUnifiedApi = 'source_use_unified_api';
-  static const _kUnifiedApiBase = 'source_unified_api_base';
   static const _kUseYouTubeProxy = 'source_use_youtube_proxy';
   static const _kYouTubeDownloadSource = 'source_youtube_download_source';
   static const _kYouTubeAudioQuality = 'source_youtube_audio_quality';
@@ -147,8 +137,6 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       final cookieTx = prefs.getString(_kTencent);
       final useJsSearch = prefs.getBool(_kUseJsForSearch);
       final jsOnly = prefs.getBool(_kJsOnlyNoFallback);
-      final useUnifiedApi = prefs.getBool(_kUseUnifiedApi);
-      final unifiedApiBase = prefs.getString(_kUnifiedApiBase);
       final useYouTubeProxy = prefs.getBool(_kUseYouTubeProxy);
       final youTubeDownloadSource = prefs.getString(_kYouTubeDownloadSource);
       final youTubeAudioQuality = prefs.getString(_kYouTubeAudioQuality);
@@ -168,7 +156,6 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       print('  - scriptUrl: $scriptUrl');
       print('  - useJsForSearch: $useJsSearch');
       print('  - jsOnlyNoFallback: $jsOnly');
-      print('  - useUnifiedApi: $useUnifiedApi');
       print('  - useYouTubeProxy: $useYouTubeProxy');
       print('  - youTubeDownloadSource: $youTubeDownloadSource');
       print('  - youTubeAudioQuality: $youTubeAudioQuality');
@@ -178,36 +165,44 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       print('  - primarySource: $primarySource (从SharedPreferences读取)');
       print('  - scriptPreset: $scriptPreset');
       print('  - localScriptPath: $localScriptPath');
-      print('  - unifiedApiBase: $unifiedApiBase');
       print('  - state.primarySource: ${state.primarySource} (当前状态默认值)');
       print('  - audioProxyUrl: $audioProxyUrl');
       print('  - useAudioProxy: $useAudioProxy');
 
-      // 公开版本：清理所有可能的xiaoqiu.js遗留配置
+      // 公开版本：清理所有可能的遗留配置
       String? finalUrl = scriptUrl;
       bool needsCleanup = false;
 
+      // 清理 xiaoqiu.js 遗留配置
       if (finalUrl != null && finalUrl.contains('xiaoqiu.js')) {
         print('[XMC] 🧹 [SourceSettings] 检测到遗留的xiaoqiu.js配置，自动清理');
         finalUrl = '';
         needsCleanup = true;
       }
 
-      // 只有检测到xiaoqiu.js时才重置primarySource，避免覆盖用户的JS设置
+      // 清理旧的统一API配置，强制迁移到JS外部脚本
+      String? finalPrimarySource = primarySource;
+      if (primarySource == 'unified') {
+        print('[XMC] 🧹 [SourceSettings] 检测到遗留的unified配置，迁移到js_external');
+        finalPrimarySource = 'js_external';
+        needsCleanup = true;
+      }
+
       if (needsCleanup) {
         // 清理遗留配置
-        await prefs.setString(_kScriptUrl, '');
+        await prefs.setString(_kScriptUrl, finalUrl ?? '');
         await prefs.setBool(_kUseBuiltinScript, false);
         await prefs.setString(_kScriptPreset, 'custom');
-        await prefs.setString(_kPrimarySource, 'unified');
+        await prefs.setString(_kPrimarySource, 'js_external');
+        // 清理统一API相关的旧配置
+        await prefs.remove('source_use_unified_api');
+        await prefs.remove('source_unified_api_base');
       }
 
       // 确保公开版本的默认设置
       finalUrl = finalUrl ?? state.scriptUrl;
+      finalPrimarySource = finalPrimarySource ?? state.primarySource;
 
-      // 调试：最终的primarySource值
-      final finalPrimarySource =
-          needsCleanup ? 'unified' : (primarySource ?? state.primarySource);
       print('[XMC] 🔧 [SourceSettings] 最终primarySource设置:');
       print('  - needsCleanup: $needsCleanup');
       print('  - primarySource from prefs: $primarySource');
@@ -222,8 +217,6 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
         cookieTencent: cookieTx ?? state.cookieTencent,
         useJsForSearch: useJsSearch ?? state.useJsForSearch,
         jsOnlyNoFallback: jsOnly ?? state.jsOnlyNoFallback,
-        useUnifiedApi: useUnifiedApi ?? state.useUnifiedApi,
-        unifiedApiBase: unifiedApiBase ?? state.unifiedApiBase,
         useYouTubeProxy: useYouTubeProxy ?? state.useYouTubeProxy,
         youTubeDownloadSource:
             youTubeDownloadSource ?? state.youTubeDownloadSource,
@@ -231,7 +224,6 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
         enableTts: enableTts ?? state.enableTts,
         ttsTestText: ttsTestText ?? state.ttsTestText,
         useBuiltinScript: useBuiltinScript ?? state.useBuiltinScript,
-        // 只有在清理遗留配置时才强制设为unified，否则保持用户设置
         primarySource: finalPrimarySource,
         scriptPreset: scriptPreset ?? state.scriptPreset,
         localScriptPath: localScriptPath ?? state.localScriptPath,
@@ -252,7 +244,6 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
     print('  - enabled: ${s.enabled}');
     print('  - useJsForSearch: ${s.useJsForSearch}');
     print('  - jsOnlyNoFallback: ${s.jsOnlyNoFallback}');
-    print('  - useUnifiedApi: ${s.useUnifiedApi}');
     print('  - useYouTubeProxy: ${s.useYouTubeProxy}');
     print('  - youTubeDownloadSource: ${s.youTubeDownloadSource}');
     print('  - youTubeAudioQuality: ${s.youTubeAudioQuality}');
@@ -262,7 +253,6 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
     print('  - primarySource: ${s.primarySource}');
     print('  - scriptPreset: ${s.scriptPreset}');
     print('  - localScriptPath: ${s.localScriptPath}');
-    print('  - unifiedApiBase: ${s.unifiedApiBase}');
     print('  - audioProxyUrl: ${s.audioProxyUrl}');
     print('  - useAudioProxy: ${s.useAudioProxy}');
 
@@ -276,8 +266,6 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       await prefs.setString(_kTencent, s.cookieTencent);
       await prefs.setBool(_kUseJsForSearch, s.useJsForSearch);
       await prefs.setBool(_kJsOnlyNoFallback, s.jsOnlyNoFallback);
-      await prefs.setBool(_kUseUnifiedApi, s.useUnifiedApi);
-      await prefs.setString(_kUnifiedApiBase, s.unifiedApiBase);
       await prefs.setBool(_kUseYouTubeProxy, s.useYouTubeProxy);
       await prefs.setString(_kYouTubeDownloadSource, s.youTubeDownloadSource);
       await prefs.setString(_kYouTubeAudioQuality, s.youTubeAudioQuality);
@@ -307,7 +295,6 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       final savedEnabled = prefs.getBool(_kEnabled);
       final savedUseJs = prefs.getBool(_kUseJsForSearch);
       final savedJsOnly = prefs.getBool(_kJsOnlyNoFallback);
-      final savedUseUnified = prefs.getBool(_kUseUnifiedApi);
       final savedUseYouTube = prefs.getBool(_kUseYouTubeProxy);
       final savedYouTubeSource = prefs.getString(_kYouTubeDownloadSource);
       final savedYouTubeQuality = prefs.getString(_kYouTubeAudioQuality);
@@ -317,8 +304,6 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       final savedPrimarySource = prefs.getString(_kPrimarySource);
       final savedLocalScriptPath = prefs.getString(_kLocalScriptPath);
       final savedJsSearchStrategy = prefs.getString(_kJsSearchStrategy);
-
-      final savedApiBase = prefs.getString(_kUnifiedApiBase);
       final savedScriptPreset = prefs.getString(_kScriptPreset);
       final savedAudioProxyUrl = prefs.getString(_kAudioProxyUrl);
       final savedUseAudioProxy = prefs.getBool(_kUseAudioProxy);
@@ -327,7 +312,6 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       print('  - enabled: $savedEnabled');
       print('  - useJsForSearch: $savedUseJs');
       print('  - jsOnlyNoFallback: $savedJsOnly');
-      print('  - useUnifiedApi: $savedUseUnified');
       print('  - useYouTubeProxy: $savedUseYouTube');
       print('  - youTubeDownloadSource: $savedYouTubeSource');
       print('  - youTubeAudioQuality: $savedYouTubeQuality');
@@ -337,13 +321,73 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       print('  - primarySource: $savedPrimarySource');
       print('  - scriptPreset: $savedScriptPreset');
       print('  - localScriptPath: $savedLocalScriptPath');
-      print('  - unifiedApiBase: $savedApiBase');
       print('  - jsSearchStrategy: $savedJsSearchStrategy');
       print('  - audioProxyUrl: $savedAudioProxyUrl');
       print('  - useAudioProxy: $savedUseAudioProxy');
     } catch (e) {
       print('[XMC] ⚠️ [SourceSettings] 验证保存结果时出错: $e');
     }
+  }
+
+  /// 循环切换搜索策略（当源失效时快速尝试其他源）
+  Future<void> cycleSearchStrategy() async {
+    final strategies = [
+      'qqFirst',
+      'kuwoFirst',
+      'neteaseFirst',
+      'qqOnly',
+      'kuwoOnly',
+      'neteaseOnly',
+    ];
+
+    final currentIndex = strategies.indexOf(state.jsSearchStrategy);
+    final nextIndex = (currentIndex + 1) % strategies.length;
+    final nextStrategy = strategies[nextIndex];
+
+    print('[XMC] 🔄 [SourceSettings] 切换搜索策略: ${state.jsSearchStrategy} -> $nextStrategy');
+
+    await save(state.copyWith(jsSearchStrategy: nextStrategy));
+  }
+
+  /// 获取下一个搜索策略的名称（用于UI显示）
+  String getNextStrategyName() {
+    final strategies = [
+      'qqFirst',
+      'kuwoFirst',
+      'neteaseFirst',
+      'qqOnly',
+      'kuwoOnly',
+      'neteaseOnly',
+    ];
+
+    final strategyNames = {
+      'qqFirst': 'QQ音乐优先',
+      'kuwoFirst': '酷我优先',
+      'neteaseFirst': '网易优先',
+      'qqOnly': '仅QQ音乐',
+      'kuwoOnly': '仅酷我',
+      'neteaseOnly': '仅网易',
+    };
+
+    final currentIndex = strategies.indexOf(state.jsSearchStrategy);
+    final nextIndex = (currentIndex + 1) % strategies.length;
+    final nextStrategy = strategies[nextIndex];
+
+    return strategyNames[nextStrategy] ?? nextStrategy;
+  }
+
+  /// 获取当前搜索策略的显示名称
+  String getCurrentStrategyName() {
+    final strategyNames = {
+      'qqFirst': 'QQ音乐优先',
+      'kuwoFirst': '酷我优先',
+      'neteaseFirst': '网易优先',
+      'qqOnly': '仅QQ音乐',
+      'kuwoOnly': '仅酷我',
+      'neteaseOnly': '仅网易',
+    };
+
+    return strategyNames[state.jsSearchStrategy] ?? state.jsSearchStrategy;
   }
 }
 
@@ -355,3 +399,32 @@ final sourceSettingsProvider =
 
 /// 直接访问notifier的provider（用于保存设置）
 final sourceSettingsNotifierProvider = sourceSettingsProvider.notifier;
+
+/// 音源失效相关的错误关键词
+const sourceFailureKeywords = [
+  'JS脚本',
+  'JS解析',
+  '脚本加载',
+  '脚本未加载',
+  '运行时未初始化',
+  '源失效',
+  '无法解析',
+  'timeout',
+  '超时',
+  '网络错误',
+  'SocketException',
+  'Connection refused',
+  '403',
+  '404',
+  '500',
+  '502',
+  '503',
+];
+
+/// 检测错误是否属于源失效类型
+bool isSourceFailureError(String error) {
+  final lowerError = error.toLowerCase();
+  return sourceFailureKeywords.any((keyword) =>
+    lowerError.contains(keyword.toLowerCase())
+  );
+}

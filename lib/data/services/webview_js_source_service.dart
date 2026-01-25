@@ -596,7 +596,7 @@ class WebViewJsSourceService {
           );
 
           // 特别打印音乐API的返回结果
-          if (url.contains('music.txqq.pro') || url.contains('/url/')) {
+          if (url.contains('/url/') || url.contains('/api/')) {
             print('🎵 [MusicAPI] URL: $url');
             print('🎵 [MusicAPI] 返回数据: ${response.data}');
             try {
@@ -634,7 +634,7 @@ class WebViewJsSourceService {
                         : '')
                     ?.toLowerCase() ??
                 '';
-            if (lower.contains('music.txqq.pro') || lower.contains('/url/')) {
+            if (lower.contains('/url/') || lower.contains('/api/')) {
               final data = jsonDecode(msg.message);
               final requestId = data['id'] as String;
               final jsHeaders = jsonEncode((data['headers'] as Map?) ?? {});

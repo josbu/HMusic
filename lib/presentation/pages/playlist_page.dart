@@ -141,21 +141,21 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            '在这里创建和管理你的音乐收藏',
+            isDirectMode
+                ? '点击右下角 + 创建你的第一个歌单'
+                : '在这里创建和管理你的音乐收藏',
             style: TextStyle(fontSize: 16, color: onSurface.withOpacity(0.6)),
           ),
           const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () {
-              if (isDirectMode) {
-                ref.read(localPlaylistProvider.notifier).refreshPlaylists();
-              } else {
+          // 直连模式不显示"加载歌单"按钮（本地存储无需加载）
+          if (!isDirectMode)
+            FilledButton.icon(
+              onPressed: () {
                 ref.read(playlistProvider.notifier).refreshPlaylists();
-              }
-            },
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('加载歌单'),
-          ),
+              },
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('加载歌单'),
+            ),
         ],
       ),
     );

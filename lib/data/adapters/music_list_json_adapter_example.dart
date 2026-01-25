@@ -95,7 +95,7 @@ class MusicListJsonAdapterExample {
     final apiJsonString = MusicListJsonAdapter.createSingleSongJson(
       title: '爱你没差',
       artist: '周杰伦',
-      url: 'https://music.txqq.pro/url/tx/002tNzue0g8xQA/320k',
+      url: 'https://api.example.com/url/tx/002tNzue0g8xQA/320k',
       headers: {'X-Request-Key': 'share-v2'},
     );
 
@@ -150,7 +150,7 @@ class MusicListJsonAdapterExample {
   /// 示例5：智能URL类型判断
   static void exampleSmartUrlDetection() {
     final testUrls = [
-      'https://music.txqq.pro/url/tx/002tNzue0g8xQA/320k', // API接口
+      'https://api.example.com/url/tx/002tNzue0g8xQA/320k', // API接口
       'https://music.example.com/song.mp3', // 直接音频
       'https://api.music.com/stream/123456', // API接口
       'https://cdn.music.com/files/song.m4a', // 直接音频

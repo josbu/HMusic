@@ -124,7 +124,7 @@ class MusicListJsonAdapter {
   /// 判断URL是否为需要API调用的接口链接
   ///
   /// API链接特征：
-  /// - 包含 '/url/' 路径（如 music.txqq.pro/url/tx/...）
+  /// - 包含 '/url/' 路径
   /// - 包含 '/api/' 路径
   /// - 不是直接的音频文件扩展名结尾
   /// - 包含特定的API域名
@@ -168,10 +168,8 @@ class MusicListJsonAdapter {
 
     // 检查是否为已知的音乐API域名
     final knownApiDomains = [
-      'music.txqq.pro',
       'musicapi.lxmusic.org',
       'api.lxmusic.org',
-      // 公开版本使用统一API域名
     ];
 
     final isKnownApiDomain = knownApiDomains.any(
