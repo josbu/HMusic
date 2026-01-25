@@ -113,7 +113,7 @@ HMusic 现在支持两种播放模式，满足不同用户的需求：
 
 从 [Releases](https://github.com/hpcll/XiaoMi_Music_Client/releases) 下载最新版本：
 - **Android**: HMusic-v2.2.0.apk
-- **iOS**: 即将推出
+- **iOS**:  HMusic-v2.2.0.iap
 
 #### 首次使用
 
