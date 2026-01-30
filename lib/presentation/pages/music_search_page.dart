@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'dart:convert';
 import 'dart:io';
 import '../providers/js_proxy_provider.dart';
 import '../providers/music_search_provider.dart';
@@ -29,6 +30,7 @@ import '../providers/playlist_provider.dart'; // 🎯 播放列表Provider
 import '../providers/local_playlist_provider.dart'; // 🎯 本地播放列表Provider
 import '../../data/models/local_playlist.dart'; // 🎯 本地播放列表模型
 import '../providers/navigation_provider.dart'; // 🎯 Tab 导航Provider
+import '../../data/utils/lx_music_info_builder.dart';
 
 class MusicSearchPage extends ConsumerStatefulWidget {
   const MusicSearchPage({super.key});
@@ -580,6 +582,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
       final platform = (item.platform ?? 'qq');
       final id = item.songId ?? '';
       if (id.isEmpty) return null;
+      final musicInfo = buildLxMusicInfoFromOnlineResult(item);
 
       // 0) 优先使用新的 QuickJS 代理解析（若已加载脚本）
       try {
@@ -596,7 +599,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
             source: mapped,
             songId: id,
             quality: quality,
-            musicInfo: {'songmid': id, 'hash': id},
+            musicInfo: musicInfo,
           );
           if (url != null && url.isNotEmpty) return url;
         }
@@ -624,7 +627,8 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
               try{
                 if (!lx || !lx.EVENT_NAMES) return '';
                 function mapPlat(p){ p=(p||'').toLowerCase(); if(p==='qq'||p==='tencent') return 'tx'; if(p==='netease'||p==='163') return 'wy'; if(p==='kuwo') return 'kw'; if(p==='kugou') return 'kg'; if(p==='migu') return 'mg'; return p; }
-                var payload = { action: 'musicUrl', source: mapPlat('$platform'), info: { type: '$quality', musicInfo: { songmid: '$id', hash: '$id' } } };
+                var musicInfo = ${jsonEncode(musicInfo)};
+                var payload = { action: 'musicUrl', source: mapPlat('$platform'), info: { type: '$quality', musicInfo: musicInfo } };
                 var res = lx.emit(lx.EVENT_NAMES.request, payload);
                 if (res && typeof res.then === 'function') return '';
                 if (typeof res === 'string') return res;
@@ -1047,6 +1051,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
       }
       return;
     }
+    final musicInfo = buildLxMusicInfoFromOnlineResult(item);
 
     try {
       // 🎯 检查用户音源设置和JS脚本状态
@@ -1199,7 +1204,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
               source: mapped,
               songId: id,
               quality: '320k',
-              musicInfo: {'songmid': id, 'hash': id},
+              musicInfo: musicInfo,
             );
             print(
               '[XMC] 🎵 [Play] JS解析结果: ${resolvedUrl?.isNotEmpty == true ? "成功" : "失败"}',
@@ -1226,7 +1231,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
                   source: mapped,
                   songId: id,
                   quality: '320k',
-                  musicInfo: {'songmid': id, 'hash': id},
+                  musicInfo: musicInfo,
                 );
                 print(
                   '[XMC] 🎵 [Play] JS解析结果: ${resolvedUrl?.isNotEmpty == true ? "成功" : "失败"}',
@@ -1349,7 +1354,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
             source: mapped,
             songId: id,
             quality: '320k',
-            musicInfo: {'songmid': id, 'hash': id},
+            musicInfo: musicInfo,
           );
 
           if (playUrl != null && playUrl.isNotEmpty) {
@@ -1382,7 +1387,8 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
                 if (!lx || !lx.EVENT_NAMES) return '';
                 // 平台映射
                 function mapPlat(p){ p=(p||'').toLowerCase(); if(p==='qq'||p==='tencent') return 'tx'; if(p==='netease'||p==='163') return 'wy'; if(p==='kuwo') return 'kw'; if(p==='kugou') return 'kg'; if(p==='migu') return 'mg'; return p; }
-                var payload = { action: 'musicUrl', source: mapPlat('$platform'), info: { type: '320k', musicInfo: { songmid: '$id', hash: '$id' } } };
+                var musicInfo = ${jsonEncode(musicInfo)};
+                var payload = { action: 'musicUrl', source: mapPlat('$platform'), info: { type: '320k', musicInfo: musicInfo } };
                 var res = lx.emit(lx.EVENT_NAMES.request, payload);
                 if (res && typeof res.then === 'function') return '';
                 if (typeof res === 'string') return res; if (res && res.url) return res.url; return '';

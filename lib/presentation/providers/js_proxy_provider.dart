@@ -2,7 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/services/enhanced_js_proxy_executor_service.dart';
 import '../../data/models/online_music_result.dart';
 import '../../data/models/js_script.dart';
+import '../../data/utils/lx_music_info_builder.dart';
 import 'dart:io';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/source_settings_provider.dart';
@@ -61,8 +63,11 @@ class JSProxyState {
 class JSProxyNotifier extends StateNotifier<JSProxyState> {
   final Ref _ref;
 
-  JSProxyNotifier(this._ref) : super(const JSProxyState()) {
-    _initializeService();
+  JSProxyNotifier(this._ref, {bool autoInit = true})
+    : super(const JSProxyState()) {
+    if (autoInit) {
+      _initializeService();
+    }
   }
 
   final EnhancedJSProxyExecutorService _service =
@@ -138,8 +143,19 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
       final success = await _service.loadScript(scriptContent);
 
       if (success) {
+        // 🔧 修复：等待脚本完成异步初始化（某些脚本使用 setTimeout 延迟注册）
+        await Future.delayed(const Duration(milliseconds: 500));
+
         final sources = _service.getSupportedSources();
-        final hasHandler = _service.hasRequestHandler(); // 🎯 检查是否有 request 处理器
+        var hasHandler = _service.hasRequestHandler(); // 🎯 检查是否有 request 处理器
+
+        // 🔧 修复：如果没有检测到处理器，再等待一次并重试
+        if (!hasHandler) {
+          print('[JSProxyProvider] ⏳ 未检测到处理器，等待脚本异步注册...');
+          await Future.delayed(const Duration(milliseconds: 1000));
+          hasHandler = _service.hasRequestHandler();
+          print('[JSProxyProvider] 🔄 重试检测 hasRequestHandler: $hasHandler');
+        }
 
         state = state.copyWith(
           isLoading: false,
@@ -190,7 +206,7 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
           final url = script.content;
           final resp = await http.get(Uri.parse(url));
           if (resp.statusCode == 200) {
-            content = resp.body;
+            content = utf8.decode(resp.bodyBytes, allowMalformed: true);
             print('[JSProxyProvider] 🌐 下载脚本成功: ${url} (${content.length} chars)');
           }
         } else {
@@ -243,6 +259,37 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
     }
   }
 
+  List<String> _buildQualityFallbackList(String quality) {
+    final q = quality.toLowerCase();
+    final List<String> base;
+    switch (q) {
+      case 'lossless':
+      case 'hires':
+      case 'flac':
+      case 'flac24bit':
+      case 'flac24':
+        base = ['hires', 'flac', '320k', '128k'];
+        break;
+      case '320k':
+        base = ['320k', '128k'];
+        break;
+      case '128k':
+        base = ['128k'];
+        break;
+      default:
+        base = [quality, '320k', '128k'];
+        break;
+    }
+
+    final seen = <String>{};
+    final result = <String>[];
+    for (final item in base) {
+      final key = item.toLowerCase();
+      if (seen.add(key)) result.add(item);
+    }
+    return result;
+  }
+
   /// 获取音乐播放链接
   Future<String?> getMusicUrl({
     required String source,
@@ -288,22 +335,28 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
     }
 
     try {
-      print('[JSProxyProvider] 🎵 获取音乐链接: $source/$songId/$quality');
+      final fallbackList = _buildQualityFallbackList(quality);
+      for (final q in fallbackList) {
+        print('[JSProxyProvider] 🎵 获取音乐链接: $source/$songId/$q');
+        final url = await _service.getMusicUrl(
+          source: source,
+          songId: songId,
+          quality: q,
+          musicInfo: musicInfo,
+        );
 
-      final url = await _service.getMusicUrl(
-        source: source,
-        songId: songId,
-        quality: quality,
-        musicInfo: musicInfo,
-      );
-
-      if (url != null) {
-        print('[JSProxyProvider] ✅ 成功获取音乐链接');
-        return url;
-      } else {
-        print('[JSProxyProvider] ❌ 获取音乐链接失败');
-        return null;
+        if (url != null && url.isNotEmpty) {
+          if (q != quality) {
+            print('[JSProxyProvider] ✅ 已降级音质: $quality -> $q');
+          } else {
+            print('[JSProxyProvider] ✅ 成功获取音乐链接');
+          }
+          return url;
+        }
       }
+
+      print('[JSProxyProvider] ❌ 获取音乐链接失败');
+      return null;
     } catch (e) {
       print('[JSProxyProvider] ❌ 获取音乐链接异常: $e');
       return null;
@@ -328,11 +381,7 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
         source: result.platform ?? 'unknown',
         songId: result.songId ?? 'unknown',
         quality: quality,
-        musicInfo: {
-          'title': result.title,
-          'artist': result.author,
-          'album': result.album,
-        },
+        musicInfo: buildLxMusicInfoFromOnlineResult(result),
       );
 
       if (resolvedUrl != null && resolvedUrl.isNotEmpty) {

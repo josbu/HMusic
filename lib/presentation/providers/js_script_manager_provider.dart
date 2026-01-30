@@ -146,6 +146,11 @@ class JsScriptManager extends StateNotifier<List<JsScript>> {
         print('[XMC] ➕ [JsScriptManager] 添加新脚本: ${script.name}');
       }
 
+      // ✅ 只有在添加第一个脚本时（即当前没有选中脚本）才自动选中
+      if (_selectedScriptId == null) {
+        _selectedScriptId = script.id;
+        print('[XMC] 🎯 [JsScriptManager] 首个脚本，自动选中: ${script.name}');
+      }
       await _saveScripts();
       return true;
     } catch (e) {
@@ -187,6 +192,11 @@ class JsScriptManager extends StateNotifier<List<JsScript>> {
         print('[XMC] ➕ [JsScriptManager] 添加新脚本: ${script.name}');
       }
 
+      // ✅ 只有在添加第一个脚本时（即当前没有选中脚本）才自动选中
+      if (_selectedScriptId == null) {
+        _selectedScriptId = script.id;
+        print('[XMC] 🎯 [JsScriptManager] 首个脚本，自动选中: ${script.name}');
+      }
       await _saveScripts();
       return true;
     } catch (e) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
+import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import '../providers/js_proxy_provider.dart';
 
@@ -153,7 +154,9 @@ class _JSProxyTestPageState extends ConsumerState<JSProxyTestPage> {
 
       final file = result.files.first;
       final content =
-          file.bytes != null ? String.fromCharCodes(file.bytes!) : '';
+          file.bytes != null
+              ? utf8.decode(file.bytes!, allowMalformed: true)
+              : '';
       if (content.isEmpty) {
         setState(() {
           _testResult = '❌ 读取文件失败或内容为空';

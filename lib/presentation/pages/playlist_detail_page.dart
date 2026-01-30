@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -14,6 +15,7 @@ import '../widgets/app_snackbar.dart';
 import '../widgets/app_layout.dart';
 import '../../data/models/music.dart';
 import '../../data/models/local_playlist.dart'; // 🎯 本地播放列表模型
+import '../../data/utils/lx_music_info_builder.dart';
 
 class PlaylistDetailPage extends ConsumerStatefulWidget {
   final String playlistName;
@@ -584,6 +586,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
       debugPrint('🔧 [PlaylistDetail] 开始URL解析');
       debugPrint('   平台: $platform, 歌曲ID: $songId, 音质: $quality');
+      final musicInfo = buildLxMusicInfoFromLocalPlaylistSong(song);
 
       String? resolvedUrl;
 
@@ -613,7 +616,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
             source: mapped,
             songId: songId,
             quality: quality,
-            musicInfo: {'songmid': songId, 'hash': songId},
+            musicInfo: musicInfo,
           );
 
           if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
@@ -680,7 +683,8 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                     return '';
                   }
                   function mapPlat(p){ p=(p||'').toLowerCase(); if(p==='qq'||p==='tencent') return 'tx'; if(p==='netease'||p==='163') return 'wy'; if(p==='kuwo') return 'kw'; if(p==='kugou') return 'kg'; if(p==='migu') return 'mg'; return p; }
-                  var payload = { action: 'musicUrl', source: mapPlat('$platform'), info: { type: '$quality', musicInfo: { songmid: '$songId', hash: '$songId' } } };
+                  var musicInfo = ${jsonEncode(musicInfo)};
+                  var payload = { action: 'musicUrl', source: mapPlat('$platform'), info: { type: '$quality', musicInfo: musicInfo } };
                   console.log('[PlaylistDetail] 内置JS: 调用 lx.emit，参数:', payload);
                   var res = lx.emit(lx.EVENT_NAMES.request, payload);
                   console.log('[PlaylistDetail] 内置JS: lx.emit 返回:', typeof res, res);

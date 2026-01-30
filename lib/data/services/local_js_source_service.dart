@@ -61,10 +61,10 @@ class LocalJsSourceService {
   /// 下载远程脚本
   Future<String?> _downloadScript(String url) async {
     try {
-      final resp = await _http.get<String>(
+      final resp = await _http.get<List<int>>(
         url,
         options: Options(
-          responseType: ResponseType.plain,
+          responseType: ResponseType.bytes,
           sendTimeout: const Duration(seconds: 12),
           receiveTimeout: const Duration(seconds: 45),
           validateStatus: (code) => code != null && code >= 200 && code < 400,
@@ -75,7 +75,10 @@ class LocalJsSourceService {
           },
         ),
       );
-      final script = resp.data ?? '';
+      final bytes = resp.data ?? <int>[];
+      final script = bytes.isNotEmpty
+          ? utf8.decode(bytes, allowMalformed: true)
+          : '';
       if (script.isEmpty) {
         print('[XMC] ⚠️ [LocalJsSource] 脚本内容为空: $url');
         return null;
@@ -548,14 +551,9 @@ class LocalJsSourceService {
     // 修复常见的编码问题
     script = script.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 
-    // 添加严格模式保护
-    if (!script.contains('use strict') && !script.contains('"use strict"')) {
-      script = '"use strict";\n' + script;
-    }
-
-    // 包装在IIFE中以避免全局变量污染
-    script = '(function() {\n' + script + '\n})();';
-
+    // 注意：不要强制注入 "use strict" 或额外 IIFE 包装。
+    // 很多 LX Music 音源脚本（尤其是强混淆/自解码脚本）依赖非严格模式下的 this/global 行为，
+    // 或在顶层声明 search 等函数供宿主探测；强制包装会导致脚本无法正常初始化或被误判为“无可用功能”。
     return script;
   }
 

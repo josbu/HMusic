@@ -227,16 +227,19 @@ EOF
     ;;
 esac
 
-# 如果OpenWrt无法直连Docker Hub，可通过代理先拉取再tag到本地镜像名
-if [[ -n "$IMAGE_PROXY" ]]; then
-  log_info "通过代理拉取镜像并进行本地tag..."
-  ssh -p "$OPENWRT_PORT" "${OPENWRT_USER}@${OPENWRT_IP}" \
-    "docker pull ${IMAGE_PROXY}/hanxi/xiaomusic:${IMAGE_TAG} && docker tag ${IMAGE_PROXY}/hanxi/xiaomusic:${IMAGE_TAG} hanxi/xiaomusic:${IMAGE_TAG}"
-fi
-
 # 停止现有服务
 log_info "停止现有服务..."
 ssh -p "$OPENWRT_PORT" "${OPENWRT_USER}@${OPENWRT_IP}" "cd /opt/xiaomusic && IMAGE_TAG=${IMAGE_TAG} docker-compose down" 2>/dev/null || true
+
+# 拉取最新镜像
+if [[ -n "$IMAGE_PROXY" ]]; then
+  log_info "通过代理拉取最新镜像..."
+  ssh -p "$OPENWRT_PORT" "${OPENWRT_USER}@${OPENWRT_IP}" \
+    "docker pull ${IMAGE_PROXY}/hanxi/xiaomusic:${IMAGE_TAG} && docker tag ${IMAGE_PROXY}/hanxi/xiaomusic:${IMAGE_TAG} hanxi/xiaomusic:${IMAGE_TAG}"
+else
+  log_info "拉取最新镜像..."
+  ssh -p "$OPENWRT_PORT" "${OPENWRT_USER}@${OPENWRT_IP}" "cd /opt/xiaomusic && IMAGE_TAG=${IMAGE_TAG} docker-compose pull"
+fi
 
 # 启动服务
 log_info "启动xiaomusic服务..."

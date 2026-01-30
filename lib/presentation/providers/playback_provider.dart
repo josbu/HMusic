@@ -29,6 +29,7 @@ import 'js_proxy_provider.dart'; // 🎯 QuickJS代理
 import 'js_source_provider.dart'; // 🎯 WebView JS 和 LocalJS 解析（两个都在这里）
 import '../../data/models/playlist_item.dart'; // 🎯 播放列表项模型
 import '../../data/models/playlist_queue.dart'; // 🎯 播放队列模型
+import '../../data/utils/lx_music_info_builder.dart';
 
 // 用于区分"未传入参数"和"传入 null"
 const _undefined = Object();
@@ -3092,9 +3093,24 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     required String platform,
     required String songId,
     String quality = '320k',
+    String? title,
+    String? artist,
+    String? album,
+    int? duration,
+    String? coverUrl,
+    Map<String, dynamic>? extra,
   }) async {
     try {
       debugPrint('🔍 [JS解析] 开始解析: platform=$platform, songId=$songId, quality=$quality');
+      final musicInfo = buildLxMusicInfo(
+        songId: songId,
+        title: title,
+        artist: artist,
+        album: album,
+        duration: duration,
+        coverUrl: coverUrl,
+        extra: extra,
+      );
 
       // 优先级1：QuickJS代理解析
       try {
@@ -3107,7 +3123,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             source: mapped,
             songId: songId,
             quality: quality,
-            musicInfo: {'songmid': songId, 'hash': songId},
+            musicInfo: musicInfo,
           );
           if (url != null && url.isNotEmpty) {
             debugPrint('✅ [JS解析] QuickJS成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...');
@@ -3158,10 +3174,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
                   if(p==='migu') return 'mg';
                   return p;
                 }
+                var musicInfo = ${jsonEncode(musicInfo)};
                 var payload = {
                   action: 'musicUrl',
                   source: mapPlat('$platform'),
-                  info: { type: '$quality', musicInfo: { songmid: '$songId', hash: '$songId' } }
+                  info: { type: '$quality', musicInfo: musicInfo }
                 };
                 var res = lx.emit(lx.EVENT_NAMES.request, payload);
                 if (res && typeof res.then === 'function') return '';
@@ -3268,6 +3285,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           platform: item.platform!,
           songId: item.songId!,
           quality: '320k',
+          title: item.title,
+          artist: item.artist,
+          album: item.album,
+          duration: item.duration,
+          coverUrl: item.coverUrl,
         );
       } else if (item.isLocal) {
         // 本地音乐：直接使用文件路径
