@@ -366,7 +366,9 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
                       // 🎯 直连模式额外显示"加入播放队列"（用于当前播放队列）
                       if (isDirectMode)
                         const PopupMenuItem(value: 'add_to_queue', child: Text('➕ 加入播放队列')),
-                      const PopupMenuItem(value: 'server', child: Text('下载到服务器')),
+                      // 🎯 只有 xiaomusic 模式才显示"下载到服务器"（直连模式无服务器）
+                      if (!isDirectMode)
+                        const PopupMenuItem(value: 'server', child: Text('下载到服务器')),
                       const PopupMenuItem(value: 'local', child: Text('下载到本地')),
                     ];
                   },
