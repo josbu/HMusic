@@ -172,15 +172,19 @@ class MusicSearchNotifier extends StateNotifier<MusicSearchState> {
       if (jsState.currentScript == null) {
         print('[XMC] ⚠️ JS脚本未加载，尝试自动加载');
         bool loadSuccess = false;
-        for (int retry = 0; retry < 3 && !loadSuccess; retry++) {
-          if (retry > 0) {
-            print('[XMC] 🔄 第${retry + 1}次重试加载JS脚本...');
-            await Future.delayed(const Duration(milliseconds: 500));
-          }
+        // 只尝试一次加载（避免 Isolate 预检超时导致多次阻塞）
+        try {
           loadSuccess = await ref.read(jsProxyProvider.notifier).loadScriptByScript(selectedScript);
+        } catch (e) {
+          print('[XMC] ⚠️ JS脚本自动加载异常: $e');
         }
-        if (!loadSuccess) throw Exception('JS脚本加载失败\n请检查脚本内容或网络');
-        print('[XMC] ✅ JS脚本自动加载成功');
+        if (!loadSuccess) {
+          // 🔧 修复：脚本加载失败不阻止搜索
+          // 搜索使用原生 API，不依赖 JS 脚本；JS 脚本仅用于播放解析
+          print('[XMC] ⚠️ JS脚本加载失败，继续使用原生搜索（播放解析可能受影响）');
+        } else {
+          print('[XMC] ✅ JS脚本自动加载成功');
+        }
       }
 
       print('[XMC] 🎵 [MusicSearch] JS流程（使用原生搜索 + JS解析播放）');

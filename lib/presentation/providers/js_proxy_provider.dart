@@ -170,7 +170,13 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
         print('[JSProxyProvider] 🔍 有 request 处理器: $hasHandler'); // 🎯 日志
         return true;
       } else {
-        state = state.copyWith(isLoading: false, error: '脚本加载失败');
+        // 🔧 修复：使用 service 的 lastLoadError 提供精确的错误信息
+        final errorMsg = _service.lastLoadError ?? '脚本加载失败';
+        state = state.copyWith(
+          isLoading: false,
+          error: errorMsg,
+        );
+        print('[JSProxyProvider] ❌ 脚本加载失败: $errorMsg');
         return false;
       }
     } catch (e) {

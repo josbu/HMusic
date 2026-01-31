@@ -461,12 +461,23 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
       await ref.read(sourceSettingsNotifierProvider).save(newSettings);
 
       // 保存后尝试将所选脚本加载到 QuickJS 代理，确保播放解析使用所选脚本
+      bool scriptLoadSuccess = true;
+      String? scriptLoadError;
       if (selectedScript != null) {
         try {
-          await ref
+          scriptLoadSuccess = await ref
               .read(jsProxyProvider.notifier)
               .loadScriptByScript(selectedScript);
-        } catch (_) {}
+
+          // 如果加载失败，获取错误信息
+          if (!scriptLoadSuccess) {
+            final jsProxyState = ref.read(jsProxyProvider);
+            scriptLoadError = jsProxyState.error ?? '脚本加载失败';
+          }
+        } catch (e) {
+          scriptLoadSuccess = false;
+          scriptLoadError = '脚本加载异常: $e';
+        }
       }
 
       // 🎯 刷新直连模式的代理设置（如果已登录）
@@ -474,10 +485,24 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
 
       if (!mounted) return;
 
-      AppSnackBar.show(
-        context,
-        const SnackBar(content: Text('音源设置已保存'), backgroundColor: Colors.green),
-      );
+      // 🔧 根据脚本加载结果显示不同的提示
+      if (!scriptLoadSuccess && scriptLoadError != null) {
+        // 脚本加载失败，显示警告
+        AppSnackBar.show(
+          context,
+          SnackBar(
+            content: Text('设置已保存，但脚本加载失败: $scriptLoadError'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      } else {
+        // 全部成功
+        AppSnackBar.show(
+          context,
+          const SnackBar(content: Text('音源设置已保存'), backgroundColor: Colors.green),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       AppSnackBar.show(

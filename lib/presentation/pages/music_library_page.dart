@@ -50,13 +50,28 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
         debugPrint('🎯 [MusicLibrary] 直连模式：显示所有歌单音乐');
       } else {
         // xiaomusic 模式：检查音乐库是否需要加载
-        final libraryState = ref.read(musicLibraryProvider);
-        if (libraryState.musicList.isEmpty && !libraryState.isLoading) {
-          debugPrint('🎯 [MusicLibrary] xiaomusic 模式：手动触发音乐库加载');
-          ref.read(musicLibraryProvider.notifier).refreshLibrary();
-        }
+        _refreshXiaomusicLibraryIfNeeded();
       }
+
+      // 🔧 监听模式切换，确保切换到 xiaomusic 模式时刷新数据
+      ref.listenManual(playbackModeProvider, (previous, next) {
+        if (previous == PlaybackMode.miIoTDirect && next == PlaybackMode.xiaomusic) {
+          debugPrint('🎯 [MusicLibrary] 从直连模式切换到 xiaomusic 模式，刷新音乐库');
+          _refreshXiaomusicLibraryIfNeeded();
+        }
+      });
     });
+  }
+
+  /// 如果需要则刷新 xiaomusic 音乐库
+  void _refreshXiaomusicLibraryIfNeeded() {
+    final libraryState = ref.read(musicLibraryProvider);
+    if (libraryState.musicList.isEmpty && !libraryState.isLoading) {
+      debugPrint('🎯 [MusicLibrary] xiaomusic 模式：手动触发音乐库加载');
+      ref.read(musicLibraryProvider.notifier).refreshLibrary();
+    } else {
+      debugPrint('🎯 [MusicLibrary] xiaomusic 模式：音乐库已加载 ${libraryState.musicList.length} 首');
+    }
   }
 
   @override
@@ -476,7 +491,10 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
     if (libraryState.error != null) {
       return _buildErrorState(libraryState.error!);
     }
-    if (libraryState.musicList.isEmpty) {
+    // 🔧 修复：统一使用 filteredMusicList 判断，与 _buildStatistics 保持一致
+    // 当 filteredMusicList 为空且无搜索关键词时，显示空状态
+    if (libraryState.filteredMusicList.isEmpty &&
+        libraryState.searchQuery.isEmpty) {
       return _buildEmptyState();
     }
     if (libraryState.filteredMusicList.isEmpty &&

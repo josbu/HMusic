@@ -117,7 +117,7 @@ class PlaybackState {
   });
 
   PlaybackState copyWith({
-    PlayingMusic? currentMusic,
+    Object? currentMusic = _undefined, // 🔧 支持显式设置为 null
     int? volume,
     bool? isLoading,
     String? error,
@@ -130,7 +130,10 @@ class PlaybackState {
     bool? isLocalMode,
   }) {
     return PlaybackState(
-      currentMusic: currentMusic ?? this.currentMusic,
+      currentMusic:
+          currentMusic == _undefined
+              ? this.currentMusic
+              : currentMusic as PlayingMusic?, // 🔧 支持显式设置为 null
       volume: volume ?? this.volume,
       isLoading: isLoading ?? this.isLoading,
       error: error,
@@ -547,11 +550,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
         debugPrint('✅ [PlaybackProvider] 已清理远程模式的定时器和状态');
 
-        // 更新状态
+        // 更新状态 - 🔧 显式重置 currentMusic 为 null，避免显示旧模式的播放状态
         state = state.copyWith(
           hasLoaded: true,
           isLoading: false,
           isLocalMode: true, // 本地播放
+          currentMusic: null, // 🔧 清除旧的播放状态
+          albumCoverUrl: null, // 🔧 清除旧的封面
         );
 
         debugPrint('✅ [PlaybackProvider] 本地播放模式切换完成');
@@ -898,6 +903,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             debugPrint('⚠️ [PlaybackProvider] 无本地播放缓存可恢复');
             debugPrint('   - cachedUrl: ${cachedUrl ?? "null"}');
             debugPrint('   - cachedMusic: ${cachedMusic?.curMusic ?? "null"}');
+
+            // 🔧 修复：清除旧的播放状态，避免显示远程模式的数据
+            state = state.copyWith(
+              currentMusic: null,
+              albumCoverUrl: null,
+              hasLoaded: true,
+              isLoading: false,
+              isLocalMode: true,
+            );
+            debugPrint('✅ [PlaybackProvider] 已清除旧播放状态');
 
             // 🔧 即使没有缓存,也要清空通知栏避免显示远程播放信息
             if (_currentStrategy is LocalPlaybackStrategy) {

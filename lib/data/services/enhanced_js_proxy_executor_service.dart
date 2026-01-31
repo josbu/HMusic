@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
@@ -16,6 +17,13 @@ class EnhancedJSProxyExecutorService {
   bool _isInitialized = false;
   String? _lxPreloadScript;
   final Map<String, Completer<dynamic>> _lxPendingRequests = {};
+
+  /// 缓存预检失败的脚本 MD5，避免重复预检阻塞
+  /// key: 脚本 MD5, value: 失败原因 ('timeout' 或 'error')
+  final Map<String, String> _preCheckFailedScripts = {};
+
+  /// 最后一次脚本加载失败的原因
+  String? lastLoadError;
 
   EnhancedJSProxyExecutorService() {
     // 某些第三方音源接口证书链不稳定（尤其是测试环境/镜像站），导致握手失败；
@@ -2454,6 +2462,189 @@ class EnhancedJSProxyExecutorService {
     }
   }
 
+  // ===========================================================================
+  // Isolate 预检机制 - 防止混淆脚本阻塞主线程导致 ANR
+  // ===========================================================================
+
+  /// Isolate 入口函数 - 在新 Isolate 中预执行脚本检测超时
+  /// 必须使用 @pragma('vm:entry-point') 防止 AOT 编译时被 tree-shaking 移除
+  @pragma('vm:entry-point')
+  static void _scriptPreCheckEntry(List<dynamic> args) {
+    final SendPort sendPort = args[0] as SendPort;
+    final String scriptContent = args[1] as String;
+    // 🔧 不再需要 RootIsolateToken，因为使用 FlutterJsQuickjs 直接实例化
+
+    try {
+      // 🔧 注意：后台 Isolate 中不能使用 getJavascriptRuntime()，
+      // 因为它调用 enableFetch() 需要 rootBundle，而 rootBundle 需要 ServicesBinding
+      // 直接使用底层的 FlutterJsQuickjs，跳过 enableFetch()
+
+      final stopwatch = Stopwatch()..start();
+
+      // 创建最小化的 JavascriptRuntime 环境（不调用 enableFetch）
+      final runtime = QuickJsRuntime2();
+      runtime.enableHandlePromises(); // 只启用 Promise 支持
+
+      // 注入最小 LX 环境（仅用于预检，不需要完整功能）
+      runtime.evaluate('''
+        // 最小 LX 环境模拟
+        globalThis._lxHandlers = { request: null };
+        globalThis._pendingRequests = {};
+        globalThis._musicSources = {};
+        globalThis._isInitedApi = false;
+        globalThis._scriptRegistered = false;
+
+        // console 模拟
+        if (typeof console === 'undefined') {
+          globalThis.console = {
+            log: function() {},
+            warn: function() {},
+            error: function() {},
+            info: function() {},
+            debug: function() {}
+          };
+        }
+
+        // setTimeout/clearTimeout 模拟
+        globalThis._timers = {};
+        globalThis._timerIdCounter = 1;
+        globalThis.setTimeout = function(fn, delay) {
+          var id = globalThis._timerIdCounter++;
+          // 在 Isolate 预检中不实际执行定时器
+          return id;
+        };
+        globalThis.clearTimeout = function(id) {
+          delete globalThis._timers[id];
+        };
+        globalThis.setInterval = function(fn, delay) {
+          return globalThis._timerIdCounter++;
+        };
+        globalThis.clearInterval = function(id) {};
+
+        // atob/btoa 模拟
+        if (typeof atob === 'undefined') {
+          globalThis.atob = function(input) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+            let str = '', bc = 0, buffer, idx = 0;
+            input = input.replace(/=+\$/, '');
+            for (buffer = input.charAt(idx++); ~(buffer = chars.indexOf(buffer)) && (buffer = bc % 4 ? buffer * 64 + chars.indexOf(input.charAt(idx - 1)) : buffer) && bc++ % 4 ? str += String.fromCharCode(255 & buffer >> (-2 * bc & 6)) : 0;) {}
+            return str;
+          };
+        }
+        if (typeof btoa === 'undefined') {
+          globalThis.btoa = function(input) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+            let str = input, output = '';
+            for (let block = 0, charCode, idx = 0, map = chars; str.charAt(idx | 0) || (map = '=', idx % 1); output += map.charAt(63 & block >> 8 - idx % 1 * 8)) {
+              charCode = str.charCodeAt(idx += 3/4);
+              if (charCode > 0xFF) throw new Error('btoa failed');
+              block = block << 8 | charCode;
+            }
+            return output;
+          };
+        }
+
+        // lx 对象模拟
+        globalThis.lx = {
+          EVENT_NAMES: { inited: 'inited', request: 'request', send: 'send' },
+          on: function(eventName, handler) {
+            if (eventName === 'request') {
+              globalThis._lxHandlers.request = handler;
+            }
+            return Promise.resolve();
+          },
+          send: function(eventName, data) {
+            if (eventName === 'inited' && data && data.sources) {
+              globalThis._musicSources = data.sources;
+              globalThis._isInitedApi = true;
+            }
+            return Promise.resolve();
+          },
+          request: function(url, options, callback) {
+            // 预检时不实际发起网络请求
+            return function() {};
+          }
+        };
+
+        // window 别名
+        if (typeof window === 'undefined') {
+          globalThis.window = globalThis;
+        }
+        window.lx = globalThis.lx;
+      ''');
+
+      // 执行用户脚本（这是可能超时的关键步骤）
+      runtime.evaluate(scriptContent);
+
+      stopwatch.stop();
+      final elapsedMs = stopwatch.elapsedMilliseconds;
+
+      // 清理 runtime
+      runtime.dispose();
+
+      // 发送执行耗时回主 Isolate
+      sendPort.send(elapsedMs);
+    } catch (e) {
+      // 脚本执行出错（但没有超时），发送 -2 表示错误
+      sendPort.send(-2);
+    }
+  }
+
+  /// 在 Isolate 中预检脚本，返回执行耗时或错误码
+  /// 返回值:
+  ///   null = 超时（15秒）
+  ///   -1 = Isolate 不可用（跳过预检）
+  ///   -2 = 脚本执行错误（仍尝试主线程执行）
+  ///   >=0 = 成功，返回执行耗时(ms)
+  Future<int?> _preCheckScriptInIsolate(String scriptContent) async {
+    print('[EnhancedJSProxy] 🔍 开始 Isolate 预检脚本...');
+
+    final receivePort = ReceivePort();
+    Isolate? isolate;
+
+    try {
+      // 创建 Isolate 并传入脚本内容（不再需要 RootIsolateToken）
+      isolate = await Isolate.spawn(
+        _scriptPreCheckEntry,
+        [receivePort.sendPort, scriptContent],
+        debugName: 'ScriptPreCheck',
+      );
+
+      // 设置 15 秒超时
+      const timeout = Duration(seconds: 15);
+      final result = await receivePort.first.timeout(
+        timeout,
+        onTimeout: () {
+          print('[EnhancedJSProxy] ⏱️ Isolate 预检超时（15秒）');
+          return null;
+        },
+      );
+
+      if (result == null) {
+        // 超时，强制终止 Isolate
+        isolate.kill(priority: Isolate.immediate);
+        print('[EnhancedJSProxy] ❌ 脚本预检超时，已终止 Isolate');
+        return null;
+      }
+
+      final elapsedMs = result as int;
+      if (elapsedMs == -2) {
+        print('[EnhancedJSProxy] ⚠️ 脚本在 Isolate 中执行出错（仍将尝试主线程）');
+      } else if (elapsedMs >= 0) {
+        print('[EnhancedJSProxy] ✅ 脚本预检通过，耗时: ${elapsedMs}ms');
+      }
+
+      return elapsedMs;
+    } catch (e) {
+      print('[EnhancedJSProxy] ⚠️ Isolate 预检失败（跳过预检）: $e');
+      // Isolate 不可用（可能是平台限制），返回 -1 跳过预检
+      return -1;
+    } finally {
+      receivePort.close();
+      isolate?.kill(priority: Isolate.immediate);
+    }
+  }
+
   /// 加载JS脚本
   Future<bool> loadScript(String scriptContent) async {
     if (!_isInitialized) {
@@ -2461,6 +2652,7 @@ class EnhancedJSProxyExecutorService {
     }
 
     try {
+      lastLoadError = null; // 重置错误信息
       print('[EnhancedJSProxy] 📜 开始加载JS脚本...');
       final scriptMd5 = crypto.md5.convert(utf8.encode(scriptContent)).toString();
       print('[EnhancedJSProxy] 🔑 脚本MD5: $scriptMd5');
@@ -2665,6 +2857,35 @@ class EnhancedJSProxyExecutorService {
         })()
       ''');
       print('[EnhancedJSProxy] 🔍 脚本分析: ${scriptAnalysis.stringResult}');
+
+      // 🔥 Isolate 预检：在后台 Isolate 中预执行脚本，检测是否会超时
+      // 这样可以避免混淆脚本阻塞主线程导致 ANR
+
+      // 检查缓存：如果此脚本之前预检超时过，直接拒绝，不再等待 15 秒
+      if (_preCheckFailedScripts.containsKey(scriptMd5)) {
+        final failReason = _preCheckFailedScripts[scriptMd5];
+        print('[EnhancedJSProxy] ❌ 脚本预检失败（缓存命中: $failReason），跳过重复预检');
+        lastLoadError = '脚本执行超时，该脚本可能不兼容当前环境';
+        return false;
+      }
+
+      final preCheckMs = await _preCheckScriptInIsolate(scriptContent);
+      if (preCheckMs == null) {
+        // 脚本在 Isolate 中执行超时（15秒），拒绝加载并缓存结果
+        _preCheckFailedScripts[scriptMd5] = 'timeout';
+        print('[EnhancedJSProxy] ❌ 脚本预检超时(15秒)，可能不兼容当前环境');
+        lastLoadError = '脚本执行超时(15秒)，该脚本可能不兼容当前环境';
+        return false;
+      }
+      // preCheckMs == -1: Isolate 不可用，跳过预检，继续主线程执行
+      // preCheckMs == -2: 脚本在 Isolate 中出错，仍尝试主线程执行（可能是环境差异）
+      // preCheckMs >= 0: 预检通过
+      if (preCheckMs >= 0) {
+        print('[EnhancedJSProxy] ✅ Isolate 预检通过，耗时 ${preCheckMs}ms');
+      }
+
+      // 让 UI 有机会更新（避免长时间阻塞导致卡顿感）
+      await Future.delayed(Duration.zero);
 
       // 执行用户脚本
       try {
@@ -3163,6 +3384,7 @@ class EnhancedJSProxyExecutorService {
 
       if (hasTopLevelError) {
         print('[EnhancedJSProxy] ❌ 脚本加载失败');
+        lastLoadError = '脚本执行出错，请检查脚本内容';
         return false;
       }
 
@@ -3170,10 +3392,89 @@ class EnhancedJSProxyExecutorService {
       final finalHandlerCheck = hasRequestHandler();
       print('[EnhancedJSProxy] 📋 最终 hasRequestHandler 检查: $finalHandlerCheck');
 
+      // 🔥 LX 脚本格式验证（运行时检测，对加密脚本也有效）
+      // 检查脚本是否正确初始化了 LX Music 环境
+      final lxValidation = _runtime!.evaluate('''
+        (function() {
+          try {
+            const result = {
+              // 核心指标：是否有 request 处理器
+              hasRequestHandler: globalThis._lxHandlers && typeof globalThis._lxHandlers.request === 'function',
+              // 是否声明了音源
+              hasMusicSources: Object.keys(globalThis._musicSources || {}).length > 0,
+              musicSourceCount: Object.keys(globalThis._musicSources || {}).length,
+              musicSourceNames: Object.keys(globalThis._musicSources || {}),
+              // 是否调用了 lx.send('inited', ...)
+              isInitedApi: globalThis._isInitedApi === true,
+              // 是否有常见的音乐获取函数
+              hasGetMusicUrl: typeof globalThis.getMusicUrl === 'function',
+              hasHandleGetMusicUrl: typeof globalThis.handleGetMusicUrl === 'function',
+              // 是否有 sources/apis 对象
+              hasSourcesObject: typeof globalThis.sources === 'object' && globalThis.sources !== null,
+              hasApisObject: typeof globalThis.apis === 'object' && globalThis.apis !== null,
+              // 脚本头部注释检测（静态特征）
+              hasLxMeta: (function() {
+                const script = globalThis._currentScriptContent || '';
+                return script.includes('@name') ||
+                       script.includes('@version') ||
+                       script.includes('@author') ||
+                       script.includes('lx-music') ||
+                       script.includes('LX Music');
+              })()
+            };
+
+            // 综合判断是否是有效的 LX 脚本
+            result.isValidLxScript =
+              result.hasRequestHandler ||
+              result.hasMusicSources ||
+              result.isInitedApi ||
+              result.hasGetMusicUrl ||
+              result.hasHandleGetMusicUrl ||
+              result.hasSourcesObject ||
+              result.hasApisObject;
+
+            return JSON.stringify(result);
+          } catch (e) {
+            return JSON.stringify({ error: e.toString(), isValidLxScript: false });
+          }
+        })()
+      ''');
+
+      print('[EnhancedJSProxy] 🔍 LX 脚本验证结果: ${lxValidation.stringResult}');
+
+      // 解析验证结果
+      try {
+        final validation = jsonDecode(lxValidation.stringResult) as Map<String, dynamic>;
+        final isValidLxScript = validation['isValidLxScript'] == true;
+
+        if (!isValidLxScript) {
+          print('[EnhancedJSProxy] ❌ 脚本不是有效的 LX Music 格式');
+          print('[EnhancedJSProxy] 📋 验证详情:');
+          print('[EnhancedJSProxy]   - hasRequestHandler: ${validation['hasRequestHandler']}');
+          print('[EnhancedJSProxy]   - hasMusicSources: ${validation['hasMusicSources']}');
+          print('[EnhancedJSProxy]   - isInitedApi: ${validation['isInitedApi']}');
+          print('[EnhancedJSProxy]   - hasGetMusicUrl: ${validation['hasGetMusicUrl']}');
+          print('[EnhancedJSProxy]   - hasLxMeta: ${validation['hasLxMeta']}');
+          // 返回 false，让调用方知道脚本格式不正确
+          lastLoadError = '该脚本不是有效的 LX Music 格式，无法识别音源';
+          return false;
+        }
+
+        // 脚本验证通过，输出音源信息
+        final sources = validation['musicSourceNames'] as List<dynamic>?;
+        if (sources != null && sources.isNotEmpty) {
+          print('[EnhancedJSProxy] ✅ 检测到 ${sources.length} 个音源: ${sources.join(', ')}');
+        }
+      } catch (e) {
+        print('[EnhancedJSProxy] ⚠️ LX 验证结果解析失败: $e');
+        // 解析失败不阻止加载
+      }
+
       print('[EnhancedJSProxy] ✅ JS脚本加载成功');
       return true;
     } catch (e) {
       print('[EnhancedJSProxy] ❌ JS脚本加载异常: $e');
+      lastLoadError = '脚本加载异常: $e';
       return false;
     }
   }
