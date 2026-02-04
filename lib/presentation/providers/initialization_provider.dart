@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +17,7 @@ import 'direct_mode_provider.dart';
 import 'js_script_manager_provider.dart';
 import 'source_settings_provider.dart';
 import 'js_proxy_provider.dart';
+import '../../core/utils/network_detector.dart';
 
 /// 初始化状态
 class InitializationState {
@@ -54,6 +56,7 @@ class InitializationNotifier extends StateNotifier<InitializationState> {
 
   // 🎯 代理服务器实例（用于音频流转发）
   AudioProxyServer? _proxyServer;
+  StreamSubscription? _networkSubscription;
 
   // 🎯 标记是否已经初始化过 AudioService（防止重复初始化）
   static bool _audioServiceInitialized = false;
@@ -83,6 +86,7 @@ class InitializationNotifier extends StateNotifier<InitializationState> {
       // 步骤 3.5: 🎯 初始化代理服务器（关键！）
       state = state.copyWith(progress: 0.42, message: '启动音频代理服务器...');
       await _initializeProxyServer();
+      _startNetworkObserver();
 
       // 步骤 4: 请求权限
       state = state.copyWith(progress: 0.5, message: '请求必要权限...');
@@ -201,6 +205,17 @@ class InitializationNotifier extends StateNotifier<InitializationState> {
       _proxyServer = null;
       // 代理服务器失败不影响应用启动，只是直连模式可能无法播放
     }
+  }
+
+  void _startNetworkObserver() {
+    _networkSubscription?.cancel();
+    final detector = NetworkDetector();
+    _networkSubscription = detector.onConnectivityChanged.listen((_) async {
+      if (_proxyServer != null && _proxyServer!.isRunning) {
+        await _proxyServer!.refreshLocalIp();
+      }
+    });
+    debugPrint('✅ [Initialization] 网络变化监听已启动');
   }
 
   /// 请求必要权限
@@ -431,6 +446,7 @@ class InitializationNotifier extends StateNotifier<InitializationState> {
       debugPrint('✅ [Initialization] 代理服务器已停止');
     }
 
+    _networkSubscription?.cancel();
     super.dispose();
   }
 }

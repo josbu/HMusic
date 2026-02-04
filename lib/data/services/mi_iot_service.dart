@@ -143,6 +143,24 @@ class MiIoTService {
   /// 🎯 获取上次登录响应（用于验证码场景）
   Map<String, dynamic>? get lastLoginResponse => _lastLoginResponse;
 
+  String _maskValue(String? value) {
+    if (value == null || value.isEmpty) return '';
+    if (value.length <= 6) return '***';
+    return '${value.substring(0, 3)}***${value.substring(value.length - 3)}';
+  }
+
+  Map<String, String> _maskCookieMap(Map<String, String> cookies) {
+    final masked = <String, String>{};
+    cookies.forEach((k, v) {
+      if (k == 'passToken' || k == 'serviceToken' || k == 'ssecurity') {
+        masked[k] = _maskValue(v);
+      } else {
+        masked[k] = v;
+      }
+    });
+    return masked;
+  }
+
   Future<bool> login(String account, String password, {String? captchaCode}) async {
     try {
       print('🔐 [MiIoT] 开始登录小米账号: $account');
@@ -296,7 +314,8 @@ class MiIoTService {
       print('  ssecurity: ${loginResponseData['ssecurity'] ?? "❌ 缺失"}');
       print('  nonce: ${loginResponseData['nonce'] ?? "❌ 缺失"}');
       print('  userId: ${loginResponseData['userId'] ?? "❌ 缺失"}');
-      print('  passToken: ${loginResponseData['passToken'] ?? "❌ 缺失"}');
+      final passToken = loginResponseData['passToken']?.toString();
+      print('  passToken: ${passToken == null ? "❌ 缺失" : _maskValue(passToken)}');
       print('  notificationUrl: ${loginResponseData['notificationUrl'] ?? "❌ 缺失"}');
       print('  securityStatus: ${loginResponseData['securityStatus'] ?? "❌ 缺失"}');
 
@@ -426,7 +445,8 @@ class MiIoTService {
         return login(account, password);
       }
 
-      print('🍪 [MiIoT] 收到的 Cookie: $cookies');
+      final safeCookies = _maskCookieMap(cookies);
+      print('🍪 [MiIoT] 收到的 Cookie: $safeCookies');
 
       // 🎯 检查是否有 serviceToken（最直接的情况）
       if (cookies.containsKey('serviceToken') && cookies['serviceToken']!.isNotEmpty) {
@@ -739,6 +759,9 @@ class MiIoTService {
 
       final devices = <MiDevice>[];
       for (var deviceData in deviceList) {
+        final ip = deviceData['localip'] as String? ??
+            deviceData['localIp'] as String? ??
+            deviceData['ip'] as String?;
         final device = MiDevice(
           deviceId: deviceData['deviceID'] as String? ?? '',
           did: deviceData['miotDID'] as String? ?? '',
@@ -746,11 +769,15 @@ class MiIoTService {
               deviceData['name'] as String? ??
               '未知设备',
           hardware: deviceData['hardware'] as String? ?? '',
+          ip: ip,
         );
 
         if (device.deviceId.isNotEmpty && device.did.isNotEmpty) {
           devices.add(device);
-          print('  📱 ${device.name} (${device.hardware})');
+          final ipSuffix = device.ip != null && device.ip!.isNotEmpty
+              ? ' - ${device.ip}'
+              : '';
+          print('  📱 ${device.name} (${device.hardware})$ipSuffix');
         }
       }
 
@@ -833,9 +860,28 @@ class MiIoTService {
     // 移动网络：直接使用公共代理（跳过本地代理检测，节省3秒超时）
     final networkDetector = NetworkDetector();
     final isWiFi = await networkDetector.isWiFiConnected();
+    final device = _devices.cast<MiDevice?>().firstWhere(
+          (d) => d?.deviceId == deviceId || d?.did == deviceId,
+          orElse: () => null,
+        );
+    final deviceIp = device?.ip;
+    final localIp = _proxyServer?.localIp;
+    final sameSubnet = _isSameSubnet(deviceIp, localIp);
 
     // 方案1：尝试使用本地代理（仅在 WiFi 环境下）
     if (isWiFi && _proxyServer != null && _proxyServer!.isRunning) {
+      if (deviceIp != null && localIp != null && !sameSubnet) {
+        print('⚠️ [MiIoT] 设备IP与手机IP不同网段，跳过本地代理');
+        print('   设备IP: $deviceIp');
+        print('   手机IP: $localIp');
+      } else if (deviceIp == null || localIp == null) {
+        print('⚠️ [MiIoT] 无法获取设备或手机IP，仍尝试本地代理');
+      } else {
+        print('✅ [MiIoT] 设备IP与手机IP同网段，允许本地代理');
+        print('   设备IP: $deviceIp');
+        print('   手机IP: $localIp');
+      }
+
       final originalUrl = playUrl;
       try {
         // 🔧 检查本地代理是否真的可达（关键修复！）
@@ -853,12 +899,15 @@ class MiIoTService {
         ).timeout(const Duration(milliseconds: 3000)); // 额外3秒超时保护
 
         // 如果本地代理可达，使用它
-        if (healthCheckResponse.statusCode != null) {
+        if ((deviceIp == null || localIp == null || sameSubnet) &&
+            healthCheckResponse.statusCode != null) {
           playUrl = _proxyServer!.getProxyUrl(playUrl);
           useProxy = true;
           print('✅ [MiIoT] 本地代理可达，使用本地代理转发');
           print('   原始URL: ${originalUrl.substring(0, originalUrl.length > 80 ? 80 : originalUrl.length)}...');
           print('   代理URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...');
+        } else if (deviceIp != null && localIp != null && !sameSubnet) {
+          print('⚠️ [MiIoT] 已确认不同网段，跳过本地代理');
         } else {
           print('⚠️ [MiIoT] 本地代理不可达，跳过使用');
         }
@@ -1188,6 +1237,20 @@ class MiIoTService {
     return false;
   }
 
+  bool _isSameSubnet(String? ipA, String? ipB) {
+    if (ipA == null || ipB == null) {
+      return false;
+    }
+    final partsA = ipA.split('.');
+    final partsB = ipB.split('.');
+    if (partsA.length != 4 || partsB.length != 4) {
+      return false;
+    }
+    return partsA[0] == partsB[0] &&
+        partsA[1] == partsB[1] &&
+        partsA[2] == partsB[2];
+  }
+
   /// 暂停播放
   Future<bool> pause(String deviceId) async {
     return await _sendPlayerOperation(deviceId, 'pause');
@@ -1433,12 +1496,14 @@ class MiDevice {
   final String did;
   final String name;
   final String hardware;
+  final String? ip;
 
   MiDevice({
     required this.deviceId,
     required this.did,
     required this.name,
     required this.hardware,
+    this.ip,
   });
 
   Map<String, dynamic> toJson() => {
@@ -1446,6 +1511,7 @@ class MiDevice {
         'did': did,
         'name': name,
         'hardware': hardware,
+        'ip': ip,
       };
 
   factory MiDevice.fromJson(Map<String, dynamic> json) => MiDevice(
@@ -1453,5 +1519,6 @@ class MiDevice {
         did: json['did'] as String,
         name: json['name'] as String,
         hardware: json['hardware'] as String,
+        ip: json['ip'] as String?,
       );
 }

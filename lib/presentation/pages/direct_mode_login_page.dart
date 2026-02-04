@@ -60,7 +60,15 @@ class _DirectModeLoginPageState extends ConsumerState<DirectModeLoginPage> {
           captchaUrl: captchaState.captchaUrl,
           onVerificationComplete: (cookies) {
             debugPrint('✅ [DirectMode] WebView 验证完成，准备重试登录');
-            debugPrint('🍪 [DirectMode] 收到 Cookie: $cookies');
+            final safeCookies = <String, String>{};
+            cookies?.forEach((k, v) {
+              if (k == 'passToken' || k == 'serviceToken' || k == 'ssecurity') {
+                safeCookies[k] = v.length <= 6 ? '***' : '${v.substring(0, 3)}***${v.substring(v.length - 3)}';
+              } else {
+                safeCookies[k] = v;
+              }
+            });
+            debugPrint('🍪 [DirectMode] 收到 Cookie: $safeCookies');
             verificationCompleted = true;
             extractedCookies = cookies;
           },

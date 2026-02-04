@@ -28,6 +28,9 @@ class AudioProxyServer {
   // 获取代理服务器地址
   String get serverUrl => 'http://$_localIp:$_port';
 
+  // 获取本地IP地址
+  String? get localIp => _localIp;
+
   // 获取统计信息
   Map<String, int> get stats => {
     'total': _totalRequests,
@@ -217,8 +220,11 @@ class AudioProxyServer {
         type: InternetAddressType.IPv4,
       );
 
+      final sortedInterfaces = interfaces.toList()
+        ..sort((a, b) => _interfacePriority(a.name).compareTo(_interfacePriority(b.name)));
+
       // 优先选择 WiFi/以太网接口
-      for (var interface in interfaces) {
+      for (var interface in sortedInterfaces) {
         // 跳过虚拟网络接口
         if (interface.name.contains('docker') ||
             interface.name.contains('veth') ||
@@ -249,6 +255,32 @@ class AudioProxyServer {
     } catch (e) {
       debugPrint('❌ [ProxyServer] 获取IP地址失败: $e');
       return null;
+    }
+  }
+
+  int _interfacePriority(String name) {
+    final lower = name.toLowerCase();
+    if (lower.contains('wlan') || lower.contains('wifi') || lower == 'en0') {
+      return 0;
+    }
+    if (lower.contains('eth') || lower.startsWith('en')) {
+      return 1;
+    }
+    if (lower.contains('pdp') || lower.contains('rmnet') || lower.contains('wwan')) {
+      return 3;
+    }
+    return 2;
+  }
+
+  Future<void> refreshLocalIp() async {
+    final newIp = await _getLocalIp();
+    if (newIp == null) {
+      debugPrint('⚠️ [ProxyServer] 刷新本地IP失败');
+      return;
+    }
+    if (_localIp != newIp) {
+      debugPrint('🔄 [ProxyServer] 本地IP已更新: $_localIp -> $newIp');
+      _localIp = newIp;
     }
   }
 

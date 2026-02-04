@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 import '../providers/auth_provider.dart';
 import '../providers/music_library_provider.dart';
@@ -11,6 +12,7 @@ import '../providers/playlist_provider.dart';
 import '../providers/source_settings_provider.dart';
 import '../widgets/app_snackbar.dart';
 import '../providers/direct_mode_provider.dart';
+import '../../core/utils/app_logger.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -69,6 +71,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 onTap: () => context.push('/settings/sponsor'),
                 onSurface: onSurface,
                 iconColor: Colors.red.withOpacity(0.8),
+              ),
+              _buildSettingsItem(
+                context: context,
+                icon: Icons.bug_report_rounded,
+                title: '导出日志',
+                subtitle: '保存问题日志并发送给开发者',
+                onTap: () => _exportLogs(context),
+                onSurface: onSurface,
               ),
             ],
           ),
@@ -818,6 +828,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _exportLogs(BuildContext context) async {
+    try {
+      final files = await AppLogger.instance.getLogFiles();
+      if (files.isEmpty) {
+        if (context.mounted) {
+          AppSnackBar.showText(context, '暂无日志文件');
+        }
+        return;
+      }
+      final xfiles = files.map((f) => XFile(f.path)).toList();
+      await Share.shareXFiles(xfiles, text: 'HMusic 日志');
+    } catch (e) {
+      if (context.mounted) {
+        AppSnackBar.showText(context, '导出日志失败: $e');
+      }
+    }
   }
 
   /// 下载音质选择器

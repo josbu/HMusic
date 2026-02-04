@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
@@ -10,12 +11,16 @@ import 'presentation/providers/js_proxy_provider.dart';
 import 'presentation/providers/usage_stats_provider.dart';
 import 'presentation/providers/audio_proxy_provider.dart';
 import 'data/services/audio_proxy_server.dart';
+import 'core/utils/app_logger.dart';
+import 'dart:async';
 
 // 🎯 全局代理服务器实例
 AudioProxyServer? _globalProxyServer;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await AppLogger.init();
 
   try {
     // warm-up by touching singleton instance
@@ -74,20 +79,44 @@ void main() async {
       return;
     }
 
+    AppLogger.instance.e(
+      'FlutterError',
+      error: details.exception,
+      stack: details.stack,
+      tag: 'Flutter',
+    );
     // 其他错误正常处理
     FlutterError.presentError(details);
   };
 
-  runApp(
-    ProviderScope(
-      overrides: [
-        usageStatsProvider.overrideWith((ref) => UsageStatsNotifier(prefs)),
-        // 🎯 提供全局代理服务器实例
-        audioProxyServerProvider.overrideWithValue(_globalProxyServer),
-      ],
-      child: const MyApp(),
-    ),
-  );
+  PlatformDispatcher.instance.onError = (error, stack) {
+    AppLogger.instance.e('PlatformError', error: error, stack: stack, tag: 'Platform');
+    return true;
+  };
+
+  final originalDebugPrint = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) {
+    originalDebugPrint(message, wrapWidth: wrapWidth);
+  };
+
+  runZonedGuarded(() {
+    AppLogger.instance.i('App start', tag: 'App');
+    runApp(
+      ProviderScope(
+        overrides: [
+          usageStatsProvider.overrideWith((ref) => UsageStatsNotifier(prefs)),
+          // 🎯 提供全局代理服务器实例
+          audioProxyServerProvider.overrideWithValue(_globalProxyServer),
+        ],
+        child: const MyApp(),
+      ),
+    );
+  }, (error, stack) {
+    AppLogger.instance.e('ZoneError', error: error, stack: stack, tag: 'Zone');
+  }, zoneSpecification: ZoneSpecification(print: (self, parent, zone, line) {
+    AppLogger.instance.i(line);
+    parent.print(zone, line);
+  }));
 }
 
 /// 🎯 启动代理服务器

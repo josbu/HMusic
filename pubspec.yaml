@@ -71,6 +71,7 @@ dependencies:
   palette_generator: ^0.3.3+4
   # 网络状态检测
   connectivity_plus: ^6.0.5
+  share_plus: ^10.0.2
 
 dev_dependencies:
   flutter_test:
