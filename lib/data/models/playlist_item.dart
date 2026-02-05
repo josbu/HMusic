@@ -115,6 +115,79 @@ class PlaylistItem {
     );
   }
 
+  /// 从 Music 对象创建（音乐库/歌单，xiaomusic 模式）
+  ///
+  /// Music.name 通常是 "歌名 - 歌手" 格式，本方法会智能解析
+  static PlaylistItem fromMusic(dynamic music) {
+    // 获取字段（兼容 Music 对象和 Map）
+    final String name;
+    final String? title;
+    final String? artist;
+    final String? album;
+    final String? duration;
+    final String? picture;
+
+    if (music is Map) {
+      name = music['name']?.toString() ?? '';
+      title = music['title']?.toString();
+      artist = music['artist']?.toString();
+      album = music['album']?.toString();
+      duration = music['duration']?.toString();
+      picture = music['picture']?.toString();
+    } else {
+      // 假设是 Music 对象
+      name = music.name ?? '';
+      title = music.title;
+      artist = music.artist;
+      album = music.album;
+      duration = music.duration;
+      picture = music.picture;
+    }
+
+    // 智能解析 name 字段（格式：歌名 - 歌手）
+    String parsedTitle = title ?? '';
+    String parsedArtist = artist ?? '';
+
+    if (parsedTitle.isEmpty || parsedArtist.isEmpty) {
+      // 尝试从 name 解析
+      final parts = name.split(' - ');
+      if (parts.length >= 2) {
+        if (parsedTitle.isEmpty) parsedTitle = parts[0].trim();
+        if (parsedArtist.isEmpty) parsedArtist = parts.sublist(1).join(' - ').trim();
+      } else if (parts.length == 1) {
+        if (parsedTitle.isEmpty) parsedTitle = parts[0].trim();
+        if (parsedArtist.isEmpty) parsedArtist = '未知歌手';
+      }
+    }
+
+    // 确保 title 不为空
+    if (parsedTitle.isEmpty) {
+      parsedTitle = name.isNotEmpty ? name : '未知歌曲';
+    }
+    if (parsedArtist.isEmpty) {
+      parsedArtist = '未知歌手';
+    }
+
+    // 解析 duration（字符串转整数）
+    int parsedDuration = 0;
+    if (duration != null && duration.isNotEmpty) {
+      parsedDuration = int.tryParse(duration) ?? 0;
+    }
+
+    return PlaylistItem(
+      title: parsedTitle,
+      artist: parsedArtist,
+      album: album,
+      duration: parsedDuration,
+      sourceType: 'server', // 来自 xiaomusic 服务器
+      platform: null,
+      songId: null, // 服务器音乐没有 songId
+      coverUrl: picture,
+      lrc: null,
+      localPath: null,
+    );
+  }
+
   /// 复制并更新部分字段
   PlaylistItem copyWith({
     String? title,

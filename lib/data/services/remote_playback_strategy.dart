@@ -163,17 +163,19 @@ class RemotePlaybackStrategy implements PlaybackStrategy {
     String? url,
     String? platform,
     String? songId,
+    int? duration,
   }) async {
     debugPrint('🎵 [RemotePlayback] 播放音乐: $musicName (设备: $_deviceId)');
 
-    // 如果有直链URL，使用在线播放
+    // 如果有直链URL，使用 playOnlineMusic API 播放
+    // 🎯 修复：playOnlineMusic 已修复为只发送 music_list_json 字段，避免 500 错误
+    // 注意：playUrlSmart/playUrl 不可靠，会播放错误的歌曲
     if (url != null && url.isNotEmpty) {
-      debugPrint('🎵 [RemotePlayback] 使用在线播放链接');
-
-      // 从 musicName 解析出歌曲名和歌手名（格式: "歌名 - 歌手"）
+      debugPrint('🎵 [RemotePlayback] 使用 playOnlineMusic API 播放在线音乐');
+      // 解析歌曲名和歌手
       final parts = musicName.split(' - ');
-      final title = parts.isNotEmpty ? parts[0] : musicName;
-      final author = parts.length > 1 ? parts[1] : '未知歌手';
+      final title = parts.isNotEmpty ? parts[0].trim() : musicName;
+      final author = parts.length > 1 ? parts.sublist(1).join(' - ').trim() : '未知歌手';
 
       await _apiService.playOnlineMusic(
         did: _deviceId,

@@ -16,11 +16,13 @@ abstract class PlaybackStrategy {
   /// [url] 可选的直接播放链接（在线音乐）
   /// [platform] 音乐平台（用于在线音乐）
   /// [songId] 歌曲ID（用于在线音乐）
+  /// [duration] 歌曲时长秒数（用于 APP 端倒计时备用触发自动下一首）
   Future<void> playMusic({
     required String musicName,
     String? url,
     String? platform,
     String? songId,
+    int? duration,
   });
 
   /// 播放音乐列表

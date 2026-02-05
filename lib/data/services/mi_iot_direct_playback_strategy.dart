@@ -26,6 +26,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
   // 获取音乐URL的回调（由PlaybackProvider设置）
   Future<String?> Function(String musicName)? onGetMusicUrl;
 
+  // 🎯 歌曲播放完成回调（用于自动下一首）
+  Function()? onSongComplete;
+
   // 当前播放状态缓存
   PlayingMusic? _currentPlayingMusic;
   String? _albumCoverUrl;
@@ -55,6 +58,19 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
   // playMusic() 成功后，在保护窗口内忽略轮询返回的"暂停"状态
   DateTime? _playingStateProtectedUntil;
 
+  // 🎯 自动下一首保护：防止重复触发
+  bool _isAutoNextTriggered = false;
+  String? _lastCompletedAudioId;
+
+  // 🎯 位置跳跃检测：记录上一次轮询的 position 和 duration
+  int _lastPolledPosition = 0;
+  int _lastPolledDuration = 0;
+
+  // 🎯 方案C：APP端倒计时定时器（备用自动下一首触发）
+  // 当 API 返回的 play_song_detail 为空或 duration=0 时，使用此定时器作为备用
+  Timer? _backupAutoNextTimer;
+  String? _backupTimerMusicName; // 定时器对应的歌曲名，用于验证
+
   // 🎯 持久化存储的Key
   static const String _keyLastMusicName = 'direct_mode_last_music_name';
   static const String _keyLastPlaylist = 'direct_mode_last_playlist';
@@ -68,13 +84,15 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     AudioHandlerService? audioHandler,
     Function()? onStatusChanged, // 🔧 在构造函数中接收回调，确保轮询启动前已设置
     Future<String?> Function(String musicName)? onGetMusicUrl, // 🔧 在构造函数中接收回调
+    Function()? onSongComplete, // 🎯 歌曲播放完成回调（自动下一首）
     bool skipRestore = false, // 🎯 模式切换时跳过状态恢复，避免显示错误的歌曲
   })  : _miService = miService,
         _deviceId = deviceId,
         _deviceName = deviceName ?? '小爱音箱',
         _audioHandler = audioHandler,
         onStatusChanged = onStatusChanged, // 🔧 立即设置回调，避免 NULL 问题
-        onGetMusicUrl = onGetMusicUrl {    // 🔧 立即设置回调
+        onGetMusicUrl = onGetMusicUrl,     // 🔧 立即设置回调
+        onSongComplete = onSongComplete {  // 🎯 设置播放完成回调
     _initializeAudioHandler();
     _initializeHardwareInfo(); // 🎯 初始化硬件信息
     // 🎯 只有非模式切换时才恢复状态（APP 首次启动时恢复，模式切换时跳过）
@@ -419,9 +437,114 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
         // 通知状态变化
         onStatusChanged?.call();
+
+        // 🎯 自动下一首检测：当歌曲播放完成时自动播放下一首
+        //
+        // ⚠️ 关键发现：
+        // 1. 小爱音箱播放完歌曲后不会停止（status 保持为 1），会自动循环
+        // 2. 轮询间隔 3 秒，但歌曲循环只需 1 秒，可能错过 "接近结尾" 的瞬间
+        //
+        // 检测策略（双保险）：
+        // A. 位置接近结尾：position 接近 duration（差值 < 3秒）
+        // B. 位置跳跃检测：上一次 position 接近结尾，这一次跳回开头
+        if (_currentPlayingMusic != null && detail != null) {
+          final audioId = detail['audio_id'] as String?;
+          final durationMs = detail['duration'] as int? ?? 0;
+          final positionMs = detail['position'] as int? ?? 0;
+          final detailDuration = (durationMs / 1000).round();
+          final detailPosition = (positionMs / 1000).round();
+
+          final hasValidAudioId = audioId != null && audioId.isNotEmpty;
+
+          // 🔄 重置保护标志：当 audio_id 变化时（新歌开始播放）
+          if (hasValidAudioId && _isAutoNextTriggered && audioId != _lastCompletedAudioId) {
+            _isAutoNextTriggered = false;
+            debugPrint('🔄 [MiIoTDirect] 检测到新歌曲 (audioId: $audioId)，重置自动下一首保护标志');
+          }
+
+          // ========== 歌曲完成检测（双保险） ==========
+
+          // 方案A：position 接近 duration
+          final isNearEnd = detailDuration > 10 && detailPosition > 10 && (detailDuration - detailPosition) < 6;
+
+          // 方案B：位置跳跃检测（上一次接近结尾 → 这一次回到开头）
+          // 条件：上一次 position 在最后 5 秒内，这一次 position 在前 10 秒内
+          // 且是同一首歌（同一个 audio_id）
+          final wasNearEnd = _lastPolledDuration > 10 &&
+              _lastPolledPosition > 10 &&
+              (_lastPolledDuration - _lastPolledPosition) < 5;
+          final jumpedToStart = detailPosition < 10;
+          final isPositionJump = wasNearEnd && jumpedToStart;
+
+          // 更新上一次的轮询位置（放在检测之后）
+          final shouldTrigger = (isNearEnd || isPositionJump) &&
+              hasValidAudioId &&
+              audioId != _lastCompletedAudioId &&
+              !_isAutoNextTriggered;
+
+          if (shouldTrigger) {
+            final reason = isNearEnd ? '接近结尾' : '位置跳跃 (${_lastPolledPosition}s→${detailPosition}s)';
+            debugPrint('🎵 [MiIoTDirect] 检测到歌曲播放完成 [$reason]: position=$detailPosition, duration=$detailDuration, audioId=$audioId');
+            debugPrint('🎵 [MiIoTDirect] 触发自动下一首...');
+
+            // 设置保护标志，防止重复触发
+            _isAutoNextTriggered = true;
+            _lastCompletedAudioId = audioId;
+
+            // 触发回调
+            if (onSongComplete != null) {
+              onSongComplete!();
+              debugPrint('✅ [MiIoTDirect] 已调用 onSongComplete 回调');
+            } else {
+              debugPrint('⚠️ [MiIoTDirect] onSongComplete 回调未设置');
+            }
+          }
+
+          // 🔄 更新上一次轮询的位置（必须在检测之后更新）
+          _lastPolledPosition = detailPosition;
+          _lastPolledDuration = detailDuration;
+        }
       }
     } catch (e) {
       debugPrint('⚠️ [MiIoTDirect] 状态轮询失败: $e');
+    }
+  }
+
+  /// 🎯 方案C：备用自动下一首定时器触发处理
+  ///
+  /// 当 API 检测（position/duration）失败时，使用此定时器作为备用
+  void _handleBackupAutoNextTimer(String expectedMusicName) {
+    debugPrint('⏱️ [MiIoTDirect] 备用定时器触发，检查是否需要自动下一首');
+    debugPrint('   - 期望歌曲: $expectedMusicName');
+    debugPrint('   - 当前歌曲: ${_currentPlayingMusic?.curMusic ?? "空"}');
+    debugPrint('   - 已触发过: $_isAutoNextTriggered');
+
+    // 验证条件：
+    // 1. 定时器对应的歌曲名与当前播放的歌曲名一致（没有被手动切歌）
+    // 2. 尚未通过 API 检测触发过自动下一首
+    final currentMusic = _currentPlayingMusic?.curMusic ?? '';
+    final isSameSong = currentMusic == expectedMusicName ||
+        expectedMusicName == _backupTimerMusicName;
+
+    if (!isSameSong) {
+      debugPrint('⏭️ [MiIoTDirect] 歌曲已切换，忽略备用定时器');
+      return;
+    }
+
+    if (_isAutoNextTriggered) {
+      debugPrint('⏭️ [MiIoTDirect] 已通过 API 检测触发，忽略备用定时器');
+      return;
+    }
+
+    // 🎯 触发自动下一首
+    debugPrint('🎵 [MiIoTDirect] 备用定时器：触发自动下一首！');
+    _isAutoNextTriggered = true;
+
+    if (onSongComplete != null) {
+      onSongComplete!();
+      debugPrint('✅ [MiIoTDirect] 备用定时器：已调用 onSongComplete 回调');
+    } else {
+      debugPrint('⚠️ [MiIoTDirect] 备用定时器：onSongComplete 回调未设置');
     }
   }
 
@@ -656,6 +779,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     String? url,
     String? platform,
     String? songId,
+    int? duration, // 🎯 方案C：歌曲时长（秒），用于设置备用倒计时定时器
   }) async {
     debugPrint('🎵 [MiIoTDirect] 播放音乐: $musicName');
     debugPrint('🔗 [MiIoTDirect] URL: $url');
@@ -736,6 +860,26 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         _playingStateProtectedUntil = DateTime.now().add(const Duration(seconds: 5));
         debugPrint('🛡️ [MiIoTDirect] 设置播放状态保护窗口: 5秒');
 
+        // 🎯 方案C：设置备用自动下一首定时器
+        // 当 API 返回的 play_song_detail 为空或 duration=0 时，使用此定时器作为备用
+        _backupAutoNextTimer?.cancel();
+        _backupTimerMusicName = musicName;
+        if (duration != null && duration > 10) {
+          // 定时器时间 = 歌曲时长 + 5秒缓冲（确保歌曲真的播放完成）
+          final timerDuration = Duration(seconds: duration + 5);
+          debugPrint('⏱️ [MiIoTDirect] 设置备用自动下一首定时器: ${timerDuration.inSeconds}秒 (歌曲时长: ${duration}秒)');
+
+          _backupAutoNextTimer = Timer(timerDuration, () {
+            _handleBackupAutoNextTimer(musicName);
+          });
+        } else {
+          debugPrint('⚠️ [MiIoTDirect] 无有效 duration ($duration)，未设置备用定时器');
+        }
+
+        // 🔄 重置自动下一首保护标志（新歌开始）
+        _isAutoNextTriggered = false;
+        _lastCompletedAudioId = null;
+
         // 通知状态变化
         debugPrint('🔔 [MiIoTDirect] 准备调用 onStatusChanged (${onStatusChanged != null ? "已设置" : "NULL"})');
         onStatusChanged?.call();
@@ -810,6 +954,18 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     _playlist.clear();
     onStatusChanged = null;
     onGetMusicUrl = null;
+    onSongComplete = null; // 🎯 清理播放完成回调
+
+    // 🎯 清理自动下一首保护标志
+    _isAutoNextTriggered = false;
+    _lastCompletedAudioId = null;
+    _lastPolledPosition = 0;
+    _lastPolledDuration = 0;
+
+    // 🎯 方案C：清理备用定时器
+    _backupAutoNextTimer?.cancel();
+    _backupAutoNextTimer = null;
+    _backupTimerMusicName = null;
 
     // 🎯 清理 duration 缓存
     _lastValidAudioId = null;

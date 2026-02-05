@@ -317,6 +317,7 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
     String? url,
     String? platform,
     String? songId,
+    int? duration,
   }) async {
     try {
       debugPrint('🎵 [LocalPlayback] 播放音乐: $musicName');

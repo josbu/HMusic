@@ -113,10 +113,17 @@ class MusicApiService {
     return response.data as Map<String, dynamic>;
   }
 
-  // 保存设置接口
+  // 保存设置接口（完整配置）
   Future<dynamic> saveSetting(Map<String, dynamic> settings) async {
     final response = await _client.post('/savesetting', data: settings);
     return response.data; // 直接返回原始数据，可能是字符串或Map
+  }
+
+  // 修改部分设置接口（只更新指定字段）
+  // 🎯 这个 API 专门用于修改部分设置，不需要发送完整配置
+  Future<Map<String, dynamic>> modifySetting(Map<String, dynamic> settings) async {
+    final response = await _client.post('/api/system/modifiysetting', data: settings);
+    return response.data as Map<String, dynamic>;
   }
 
   // 播放音乐列表接口
@@ -132,7 +139,8 @@ class MusicApiService {
     return response.data; // 直接返回原始数据，可能是字符串或Map
   }
 
-  // 通过设置在线播放列表来播放音乐（兼容旧版本）
+  // 通过设置在线播放列表来播放音乐
+  // 🎯 使用 /api/system/modifiysetting API 只更新 music_list_json 字段
   Future<void> playOnlineMusic({
     required String did,
     required String musicUrl,
@@ -140,24 +148,39 @@ class MusicApiService {
     required String musicAuthor,
     Map<String, String>? headers,
   }) async {
+    // 🎯 关键：如果 URL 需要代理，转换成代理 URL 格式
+    // 格式：http://服务器地址/proxy?urlb64=base64编码的原始URL
+    String finalUrl = musicUrl;
+    if (_needsProxy(musicUrl)) {
+      final baseUrl = _client.baseUrl;
+      finalUrl = '$baseUrl/proxy?urlb64=${_encodeUrlToBase64(musicUrl)}';
+      debugPrint('🔄 URL需要代理，已转换: $musicUrl -> $finalUrl');
+    }
+
     // 使用新的适配器创建单首歌曲JSON
     final musicListJsonString = MusicListJsonAdapter.createSingleSongJson(
       title: musicTitle,
       artist: musicAuthor,
-      url: musicUrl,
+      url: finalUrl,
       headers: headers,
     );
 
     debugPrint('🔵 完整的音乐列表JSON: $musicListJsonString');
 
-    // 获取当前设置，然后更新音乐列表
-    final currentSettings = await getSettings();
-    final updatedSettings = Map<String, dynamic>.from(currentSettings);
-    updatedSettings['music_list_json'] = musicListJsonString;
-
-    // 保存设置
-    final saveResult = await saveSetting(updatedSettings);
-    debugPrint('保存设置结果: $saveResult');
+    // 🎯 使用 modifySetting API 只更新 music_list_json 字段
+    // 这个 API 专门用于修改部分设置，不需要发送完整配置
+    try {
+      final saveResult = await modifySetting({'music_list_json': musicListJsonString});
+      debugPrint('保存设置结果(modifySetting): $saveResult');
+    } catch (e) {
+      // 如果 modifySetting 不可用（旧版本服务端），回退到完整设置方式
+      debugPrint('⚠️ modifySetting 失败: $e，回退到完整设置方式');
+      final currentSettings = await getSettings();
+      final updatedSettings = Map<String, dynamic>.from(currentSettings);
+      updatedSettings['music_list_json'] = musicListJsonString;
+      final saveResult = await saveSetting(updatedSettings);
+      debugPrint('保存设置结果(完整): $saveResult');
+    }
 
     // 播放音乐
     final playResult = await playMusicList(
@@ -225,14 +248,19 @@ class MusicApiService {
       throw FormatException('生成的music_list_json格式无效');
     }
 
-    // 获取当前设置，然后更新音乐列表
-    final currentSettings = await getSettings();
-    final updatedSettings = Map<String, dynamic>.from(currentSettings);
-    updatedSettings['music_list_json'] = musicListJsonString;
-
-    // 保存设置
-    final saveResult = await saveSetting(updatedSettings);
-    debugPrint('🔵 [PlayOnlineSearchResult] 保存设置结果: $saveResult');
+    // 🎯 使用 modifySetting API 只更新 music_list_json 字段
+    try {
+      final saveResult = await modifySetting({'music_list_json': musicListJsonString});
+      debugPrint('🔵 [PlayOnlineSearchResult] 保存设置结果(modifySetting): $saveResult');
+    } catch (e) {
+      // 如果 modifySetting 不可用（旧版本服务端），回退到完整设置方式
+      debugPrint('⚠️ [PlayOnlineSearchResult] modifySetting 失败: $e，回退到完整设置方式');
+      final currentSettings = await getSettings();
+      final updatedSettings = Map<String, dynamic>.from(currentSettings);
+      updatedSettings['music_list_json'] = musicListJsonString;
+      final saveResult = await saveSetting(updatedSettings);
+      debugPrint('🔵 [PlayOnlineSearchResult] 保存设置结果(完整): $saveResult');
+    }
 
     // 播放音乐
     final playResult = await playMusicList(
@@ -282,21 +310,37 @@ class MusicApiService {
   }
 
   // 判断URL是否需要代理
+  // 🎯 改进逻辑：除了本地服务器的 URL，其他外部 URL 都需要代理
+  // 因为小爱音箱可能无法直接访问外部链接（防盗链、headers 等限制）
   bool _needsProxy(String url) {
     final uri = Uri.tryParse(url);
     if (uri == null) return false;
 
-    // 需要代理的域名列表
-    const proxyDomains = [
-      'ws.stream.qqmusic.qq.com', // QQ音乐
-      'music.163.com', // 网易云音乐
-      'freetyst.nf.migu.cn', // 咪咕音乐
-      'antiserver.kuwo.cn', // 酷我音乐
-      'fs.taihe.com', // 百度音乐
-      // 可以根据需要添加更多需要代理的域名
-    ];
+    // 获取本地服务器地址
+    final baseUri = Uri.tryParse(_client.baseUrl);
+    if (baseUri == null) return true; // 无法解析服务器地址时，默认需要代理
 
-    return proxyDomains.any((domain) => uri.host.contains(domain));
+    // 如果 URL 已经是本地服务器的地址（包括已经是代理 URL），不需要再代理
+    if (uri.host == baseUri.host) {
+      return false;
+    }
+
+    // 如果是本地地址（localhost、127.0.0.1、192.168.x.x 等），可能是本地服务，不需要代理
+    if (uri.host == 'localhost' ||
+        uri.host == '127.0.0.1' ||
+        uri.host.startsWith('192.168.') ||
+        uri.host.startsWith('10.') ||
+        uri.host.startsWith('172.')) {
+      // 但如果是其他本地服务器，还是需要检查是否是已知的音乐域名
+      // 这里保守起见，本地地址不代理
+      return false;
+    }
+
+    // 🎯 所有外部 URL 都需要代理！
+    // 包括 QQ音乐(wx.music.tc.qq.com, ws.stream.qqmusic.qq.com)、
+    // 网易云、咪咕、酷我、酷狗等所有音乐平台
+    debugPrint('🔄 检测到外部URL，需要代理: ${uri.host}');
+    return true;
   }
 
   // Base64编码URL
@@ -483,5 +527,56 @@ class MusicApiService {
       endpoint: '/uploadytdlpcookie',
       files: [UploadFile(fieldName: 'file', filePath: filePath)],
     );
+  }
+
+  // ==================== JS插件相关 ====================
+
+  /// 获取JS插件列表
+  /// [enabledOnly] 是否只返回已启用的插件
+  /// 返回格式: {"success": true, "data": [...]}
+  Future<Map<String, dynamic>> getJsPlugins({bool enabledOnly = true}) async {
+    final response = await _client.get(
+      '/api/js-plugins',
+      queryParameters: {'enabled_only': enabledOnly},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// 检测是否配置了JS插件
+  /// 返回 true 表示有可用的JS插件
+  Future<bool> hasJsPlugins() async {
+    try {
+      final result = await getJsPlugins(enabledOnly: true);
+      if (result['success'] == true) {
+        final plugins = result['data'] as List<dynamic>?;
+        return plugins != null && plugins.isNotEmpty;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('⚠️ [MusicApiService] 检测JS插件失败: $e');
+      return false;
+    }
+  }
+
+  // ==================== 批量推送歌曲 ====================
+
+  /// 推送歌曲列表给设备播放（用于有JS插件的情况）
+  /// [did] 设备ID
+  /// [songList] 歌曲列表，格式由xiaomusic定义
+  /// [playlistName] 播放列表名称
+  Future<Map<String, dynamic>> pushSongList({
+    required String did,
+    required List<Map<String, dynamic>> songList,
+    String playlistName = '在线播放',
+  }) async {
+    final response = await _client.post(
+      '/api/device/pushList',
+      data: {
+        'did': did,
+        'songList': songList,
+        'playlistName': playlistName,
+      },
+    );
+    return response.data as Map<String, dynamic>;
   }
 }
