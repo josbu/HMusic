@@ -1007,8 +1007,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   void _startStatusRefreshTimer() {
     _statusRefreshTimer?.cancel();
 
-    // 远程模式需要定期轮询状态
-    _statusRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    // 远程模式需要定期轮询状态（3秒一次）
+    _statusRefreshTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       refreshStatus(silent: true);
     });
 
@@ -1151,7 +1151,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       }
 
       // 🔧 使用策略的 getCurrentStatus 方法,这样会自动更新通知栏
-      final currentMusic = await _currentStrategy?.getCurrentStatus();
+      final rawMusic = await _currentStrategy?.getCurrentStatus();
+      final currentMusic = _sanitizeRemoteStatus(rawMusic);
       print(
         '🎵 解析后的播放状态: 音乐=${currentMusic?.curMusic}, 播放中=${currentMusic?.isPlaying}, 进度=${currentMusic?.offset}/${currentMusic?.duration}',
       );
@@ -1198,7 +1199,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         // 🔧 但不清除封面，因为可能是初始化时已经有封面缓存
         isSongChanged = false; // 改为 false，避免清除已有的封面
         print('🎵 首次加载歌曲: "${currentMusic.curMusic}"（保留已有封面）');
-      } else if (state.currentMusic != null && currentMusic != null) {
+      } else if (state.currentMusic != null &&
+          currentMusic != null &&
+          state.currentMusic!.duration > 0 &&
+          currentMusic.duration > 0) {
         final oldSongName = state.currentMusic!.curMusic;
         final newSongName = currentMusic.curMusic;
         if (oldSongName != newSongName) {
@@ -1242,21 +1246,34 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         return;
       }
 
-      // 🛡️ 乐观更新保护：如果在保护期内，保留本地的 isPlaying 状态
+      // 🛡️ 乐观更新保护：如果在保护期内，保留本地的歌曲名和播放状态
+      // 这是为了防止定时器的 refreshStatus() 覆盖 playOnlineItem 的乐观更新
       PlayingMusic? finalMusic = currentMusic;
       if (_optimisticUpdateProtectionUntil != null &&
           DateTime.now().isBefore(_optimisticUpdateProtectionUntil!)) {
-        debugPrint('🛡️ [PlaybackProvider] 保护期内，保留本地 isPlaying 状态');
-        if (currentMusic != null && state.currentMusic != null) {
-          // 使用本地的 isPlaying 状态，其他字段使用远程状态
+        debugPrint('🛡️ [PlaybackProvider] 保护期内，保留本地歌曲名和播放状态');
+        if (state.currentMusic != null) {
+          final shouldUseServerProgress =
+              currentMusic != null &&
+              currentMusic.curMusic == state.currentMusic!.curMusic;
+          // 🎯 关键修复：保护期内保留本地歌曲名 + 播放状态
+          // 仅当服务器歌曲名一致时才更新进度，避免旧歌覆盖
           finalMusic = PlayingMusic(
-            ret: currentMusic.ret,
-            curMusic: currentMusic.curMusic,
-            curPlaylist: currentMusic.curPlaylist,
-            isPlaying: state.currentMusic!.isPlaying, // 🛡️ 保留本地状态
-            offset: currentMusic.offset,
-            duration: currentMusic.duration,
+            ret: currentMusic?.ret ?? state.currentMusic!.ret,
+            curMusic: state.currentMusic!.curMusic, // 🛡️ 保留本地歌曲名
+            curPlaylist: state.currentMusic!.curPlaylist, // 🛡️ 保留本地播放列表
+            isPlaying: state.currentMusic!.isPlaying, // 🛡️ 保留本地播放状态
+            offset:
+                shouldUseServerProgress
+                    ? currentMusic!.offset
+                    : state.currentMusic!.offset,
+            duration:
+                shouldUseServerProgress
+                    ? currentMusic!.duration
+                    : state.currentMusic!.duration,
           );
+          // 🎯 不触发歌曲切换检测
+          isSongChanged = false;
         }
       } else if (_optimisticUpdateProtectionUntil != null) {
         // 保护期已结束，清除标记
@@ -1344,7 +1361,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       if (_currentStrategy != null &&
           !_currentStrategy!.isLocalMode &&
           _currentStrategy is! MiIoTDirectPlaybackStrategy) {
-        _startProgressTimer(currentMusic?.isPlaying ?? false);
+        final canPredictProgress =
+            currentMusic != null &&
+            currentMusic.isPlaying &&
+            currentMusic.duration > 0 &&
+            currentMusic.offset > 0;
+        _startProgressTimer(canPredictProgress);
         debugPrint('✅ [PlaybackProvider] xiaomusic远程模式已启动进度预测定时器');
 
         // 🎯 xiaomusic 模式自动下一首检测
@@ -1376,6 +1398,55 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         hasLoaded: true,
       );
     }
+  }
+
+  PlayingMusic? _sanitizeRemoteStatus(PlayingMusic? remote) {
+    if (remote == null) return null;
+
+    int safeDuration = remote.duration;
+    int safeOffset = remote.offset;
+    bool invalidOffset = false;
+
+    final local = state.currentMusic;
+
+    // 服务器偶发返回 duration=0，优先保留本地已知时长
+    if (safeDuration <= 0 && local != null && local.duration > 0) {
+      safeDuration = local.duration;
+    } else if (safeDuration <= 0) {
+      // 尝试使用队列中的时长兜底
+      final queueState = ref.read(playbackQueueProvider);
+      final queueDuration = queueState.queue?.currentItem?.duration ?? 0;
+      if (queueDuration > 0) {
+        safeDuration = queueDuration;
+      }
+    }
+
+    // 过滤异常 offset（例如时间戳）
+    if (safeDuration > 0 && safeOffset > safeDuration + 300) {
+      invalidOffset = true;
+    } else if (safeDuration == 0 && safeOffset > 36000) {
+      invalidOffset = true;
+    }
+
+    if (invalidOffset) {
+      debugPrint(
+        '⚠️ [PlaybackProvider] 发现异常 offset=${remote.offset}, duration=${remote.duration}，使用本地进度兜底',
+      );
+      safeOffset = local?.offset ?? 0;
+    }
+
+    if (safeDuration != remote.duration || safeOffset != remote.offset) {
+      return PlayingMusic(
+        ret: remote.ret,
+        isPlaying: remote.isPlaying,
+        curMusic: remote.curMusic,
+        curPlaylist: remote.curPlaylist,
+        offset: safeOffset,
+        duration: safeDuration,
+      );
+    }
+
+    return remote;
   }
 
   Future<void> shutdown() async {
@@ -1636,7 +1707,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     }
 
     try {
-      state = state.copyWith(isLoading: true);
+      // 🎯 不再一开始就设置 isLoading: true，让 UI 立即响应
       debugPrint('🎵 执行上一首命令');
 
       // 🎯 根据播放模式执行不同逻辑
@@ -1666,17 +1737,20 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
               final prevItem = ref.read(playbackQueueProvider.notifier).previous();
               if (prevItem != null) {
                 debugPrint('🎵 [PlaybackProvider] 使用队列播放上一首: ${prevItem.title}');
+
+                // 🎯 立即乐观更新 UI（无转圈）
+                _applyOptimisticUpdate(prevItem);
+
                 await _playFromQueueItem(prevItem);
 
-                // 等待播放状态更新
-                await Future.delayed(const Duration(milliseconds: 1000));
-                await refreshStatus();
+                // 🎯 静默刷新，避免二次 loading
+                await Future.delayed(const Duration(milliseconds: 500));
+                await refreshStatus(silent: true);
 
-                state = state.copyWith(isLoading: false);
                 return; // ✅ 使用新逻辑成功，直接返回
               } else {
                 debugPrint('⚠️ [PlaybackProvider] 队列已到开头（顺序播放模式）');
-                state = state.copyWith(isLoading: false, error: '已是第一首');
+                state = state.copyWith(error: '已是第一首');
                 return;
               }
             } else {
@@ -1692,17 +1766,18 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
               final prevItem = ref.read(playbackQueueProvider.notifier).previous();
               if (prevItem != null) {
                 debugPrint('🎵 [PlaybackProvider] xiaomusic队列播放上一首: ${prevItem.title}');
+
+                // 🎯 playOnlineItem 内部会做乐观更新，直接调用
                 await playOnlineItem(prevItem);
 
-                // 等待播放状态更新
-                await Future.delayed(const Duration(milliseconds: 1500));
-                await refreshStatus();
+                // 🎯 静默刷新
+                await Future.delayed(const Duration(milliseconds: 500));
+                await refreshStatus(silent: true);
 
-                state = state.copyWith(isLoading: false);
                 return; // ✅ 使用队列逻辑成功，直接返回
               } else {
                 debugPrint('⚠️ [PlaybackProvider] 队列已到开头（顺序播放模式）');
-                state = state.copyWith(isLoading: false, error: '已是第一首');
+                state = state.copyWith(error: '已是第一首');
                 return;
               }
             } else {
@@ -1717,18 +1792,39 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           // 等待命令执行后刷新状态
           await Future.delayed(const Duration(milliseconds: 1000));
 
-          // 🔄 远程模式需要刷新状态，本地模式会自动更新
+          // 🔄 远程模式需要刷新状态（静默刷新，避免二次 loading）
           if (!_currentStrategy!.isLocalMode) {
-            await refreshStatus();
+            await refreshStatus(silent: true);
           }
           break;
       }
-
-      state = state.copyWith(isLoading: false);
     } catch (e) {
       print('🎵 上一首失败: $e');
-      state = state.copyWith(isLoading: false, error: '上一首失败: ${e.toString()}');
+      state = state.copyWith(error: '上一首失败: ${e.toString()}');
     }
+  }
+
+  /// 🎯 立即乐观更新 UI（无转圈），用于 next/previous 队列播放
+  void _applyOptimisticUpdate(PlaylistItem item) {
+    // 设置保护期
+    _optimisticUpdateProtectionUntil = DateTime.now().add(const Duration(seconds: 10));
+    debugPrint('🛡️ [_applyOptimisticUpdate] 设置乐观更新保护期: 10秒');
+
+    final optimisticMusic = PlayingMusic(
+      ret: 'OK',
+      curMusic: item.displayName,
+      curPlaylist: '',
+      isPlaying: true,
+      duration: item.duration ?? 0,
+      offset: 0,
+    );
+    state = state.copyWith(
+      currentMusic: optimisticMusic,
+      isLoading: false,  // 🎯 立即显示播放状态，不转圈
+      error: null,
+      albumCoverUrl: item.coverUrl,
+    );
+    debugPrint('✨ [_applyOptimisticUpdate] 乐观更新UI（无转圈）: ${item.displayName}');
   }
 
   Future<void> next() async {
@@ -1748,7 +1844,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     }
 
     try {
-      state = state.copyWith(isLoading: true);
+      // 🎯 不再一开始就设置 isLoading: true，让 UI 立即响应
       debugPrint('🎵 执行下一首命令');
 
       // 🎯 根据播放模式执行不同逻辑
@@ -1778,17 +1874,20 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
               final nextItem = ref.read(playbackQueueProvider.notifier).next();
               if (nextItem != null) {
                 debugPrint('🎵 [PlaybackProvider] 使用队列播放下一首: ${nextItem.title}');
+
+                // 🎯 立即乐观更新 UI（无转圈）
+                _applyOptimisticUpdate(nextItem);
+
                 await _playFromQueueItem(nextItem);
 
-                // 等待播放状态更新
-                await Future.delayed(const Duration(milliseconds: 1000));
-                await refreshStatus();
+                // 🎯 静默刷新，避免二次 loading
+                await Future.delayed(const Duration(milliseconds: 500));
+                await refreshStatus(silent: true);
 
-                state = state.copyWith(isLoading: false);
                 return; // ✅ 使用新逻辑成功，直接返回
               } else {
                 debugPrint('⚠️ [PlaybackProvider] 队列已到末尾（顺序播放模式）');
-                state = state.copyWith(isLoading: false, error: '已是最后一首');
+                state = state.copyWith(error: '已是最后一首');
                 return;
               }
             } else {
@@ -1804,17 +1903,18 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
               final nextItem = ref.read(playbackQueueProvider.notifier).next();
               if (nextItem != null) {
                 debugPrint('🎵 [PlaybackProvider] xiaomusic队列播放下一首: ${nextItem.title}');
+
+                // 🎯 playOnlineItem 内部会做乐观更新，直接调用
                 await playOnlineItem(nextItem);
 
-                // 等待播放状态更新
-                await Future.delayed(const Duration(milliseconds: 1500));
-                await refreshStatus();
+                // 🎯 静默刷新
+                await Future.delayed(const Duration(milliseconds: 500));
+                await refreshStatus(silent: true);
 
-                state = state.copyWith(isLoading: false);
                 return; // ✅ 使用队列逻辑成功，直接返回
               } else {
                 debugPrint('⚠️ [PlaybackProvider] 队列已到末尾（顺序播放模式）');
-                state = state.copyWith(isLoading: false, error: '已是最后一首');
+                state = state.copyWith(error: '已是最后一首');
                 return;
               }
             } else {
@@ -1829,17 +1929,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           // 等待命令执行后刷新状态
           await Future.delayed(const Duration(milliseconds: 1000));
 
-          // 🔄 远程模式需要刷新状态，本地模式会自动更新
+          // 🔄 远程模式需要刷新状态（静默刷新，避免二次 loading）
           if (!_currentStrategy!.isLocalMode) {
-            await refreshStatus();
+            await refreshStatus(silent: true);
           }
           break;
       }
-
-      state = state.copyWith(isLoading: false);
     } catch (e) {
       print('🎵 下一首失败: $e');
-      state = state.copyWith(isLoading: false, error: '下一首失败: ${e.toString()}');
+      state = state.copyWith(error: '下一首失败: ${e.toString()}');
     }
   }
 
@@ -1939,6 +2037,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       _lastProgressUpdate = null;
 
       // 🎯 乐观更新：立即更新UI显示歌曲信息，不等待音箱响应
+      // 🎯 检查是否在保护期内，如果是则不覆盖 playOnlineItem 的乐观更新
+      final inProtectionPeriod = _optimisticUpdateProtectionUntil != null &&
+          DateTime.now().isBefore(_optimisticUpdateProtectionUntil!);
+
       if (musicName != null && musicName.isNotEmpty) {
         final optimisticMusic = PlayingMusic(
           ret: 'OK',
@@ -1951,13 +2053,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
         state = state.copyWith(
           currentMusic: optimisticMusic,
-          isLoading: true,
+          isLoading: inProtectionPeriod ? false : true,  // 🎯 保护期内不设置 loading
           error: null,
           albumCoverUrl: albumCoverUrl, // 如果有封面图，立即显示
         );
-        debugPrint('✨ [PlaybackProvider] 乐观更新UI: $musicName');
+        debugPrint('✨ [PlaybackProvider] 乐观更新UI: $musicName (保护期: $inProtectionPeriod)');
       } else {
-        state = state.copyWith(isLoading: true, error: null);
+        state = state.copyWith(
+          isLoading: inProtectionPeriod ? false : true,  // 🎯 保护期内不设置 loading
+          error: null,
+        );
       }
 
       // 🖼️ 切歌时重置防抖标记，允许新歌曲搜索封面
@@ -2119,7 +2224,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     if (isPlaying && state.currentMusic != null) {
       // 智能刷新策略：根据播放状态调整刷新频率
       final duration = state.currentMusic?.duration ?? 0;
-      final refreshInterval = duration > 300 ? 8 : 5; // 长歌曲减少刷新频率
+      final refreshInterval = duration > 300 ? 5 : 3; // 🎯 改进：3秒刷新，长歌曲5秒
 
       _statusRefreshTimer = Timer.periodic(Duration(seconds: refreshInterval), (
         _,
@@ -2141,12 +2246,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       // 需要继续轮询才能检测到歌曲切换并触发自动下一首
       final queueState = ref.read(playbackQueueProvider);
       if (queueState.queue != null && queueState.queue!.items.isNotEmpty) {
-        _statusRefreshTimer = Timer.periodic(const Duration(seconds: 5), (
+        _statusRefreshTimer = Timer.periodic(const Duration(seconds: 3), (
           _,
         ) {
           refreshStatus(silent: true);
         });
-        debugPrint('⏰ 暂停状态但有播放队列，保持低频轮询（5秒）用于自动下一首检测');
+        debugPrint('⏰ 暂停状态但有播放队列，保持低频轮询（3秒）用于自动下一首检测');
       } else {
         debugPrint('⏸️ 停止进度定时器（无播放队列）');
       }
@@ -2502,6 +2607,28 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         throw Exception('未选择播放设备');
       }
 
+      // 🎯 关键修复：在 URL 解析开始前就设置保护期和乐观更新
+      // 这样定时器的 refreshStatus() 就不会覆盖我们的乐观更新
+      _optimisticUpdateProtectionUntil = DateTime.now().add(const Duration(seconds: 15));
+      debugPrint('🛡️ [playOnlineItem] 设置乐观更新保护期: 15秒（覆盖整个 URL 解析 + 播放过程）');
+
+      // 🎯 立即乐观更新 UI，不等待 URL 解析
+      final optimisticMusic = PlayingMusic(
+        ret: 'OK',
+        curMusic: item.displayName,
+        curPlaylist: '',
+        isPlaying: true,
+        duration: item.duration ?? 0,
+        offset: 0,
+      );
+      state = state.copyWith(
+        currentMusic: optimisticMusic,
+        isLoading: false,  // 🎯 立即显示播放状态，不转圈
+        error: null,
+        albumCoverUrl: item.coverUrl,
+      );
+      debugPrint('✨ [playOnlineItem] 乐观更新UI（无转圈）: ${item.displayName}');
+
       // 🎯 懒加载：解析 URL
       debugPrint('🎵 [playOnlineItem] 开始解析 URL...');
       final url = await _resolveUrlByJS(
@@ -2531,6 +2658,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       debugPrint('✅ [playOnlineItem] 播放命令已发送');
 
+      // 🎯 播放命令后做一次非静默刷新，清理 loading 并同步状态
+      // 使用保护期避免被旧歌曲状态覆盖
+      await Future.delayed(const Duration(milliseconds: 400));
+      await refreshStatus(silent: false);
+
       // 🖼️ 如果没有封面，自动搜索
       if (item.coverUrl == null || item.coverUrl!.isEmpty) {
         debugPrint('🖼️ [playOnlineItem] 封面未缓存，开始搜索');
@@ -2548,7 +2680,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     } catch (e, stackTrace) {
       debugPrint('❌ [playOnlineItem] 播放失败: $e');
       debugPrint('❌ [playOnlineItem] 堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}');
-      state = state.copyWith(error: '播放失败: ${e.toString()}');
+      state = state.copyWith(error: '播放失败: ${e.toString()}', isLoading: false);
+      // 🎯 失败时清除保护期
+      _optimisticUpdateProtectionUntil = null;
       rethrow;
     }
   }
