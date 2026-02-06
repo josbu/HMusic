@@ -73,6 +73,9 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
   final EnhancedJSProxyExecutorService _service =
       EnhancedJSProxyExecutorService();
 
+  /// 🔧 记录是否已经尝试过重新加载脚本，避免无限循环
+  bool _hasReloadedScript = false;
+
   /// 初始化服务
   Future<void> _initializeService() async {
     try {
@@ -134,6 +137,15 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
 
         if (selected != null) {
           print('[JSProxyProvider] 🚀 自动加载已选脚本: ${selected.name}');
+
+          // 🎯 关键修复：APP启动时清除脚本缓存，强制从源重新加载
+          // 这样可以确保动态token脚本能够重新初始化获取新token
+          final cacheKey = _buildCacheKey(selected);
+          final hadCache = prefs.containsKey(cacheKey);
+          if (hadCache) {
+            await prefs.remove(cacheKey);
+            print('[JSProxyProvider] 🧹 已清除脚本缓存，将从源重新加载以获取新token');
+          }
 
           // 🛡️ 设置崩溃保护标记（加载前）
           await prefs.setBool('script_load_in_progress', true);
@@ -327,6 +339,7 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
   }
 
   /// 获取音乐播放链接
+  /// 🎯 增强：失败时自动重新加载脚本并重试一次
   Future<String?> getMusicUrl({
     required String source,
     required String songId,
@@ -387,15 +400,71 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
           } else {
             print('[JSProxyProvider] ✅ 成功获取音乐链接');
           }
+          // 🎯 成功后重置重试标记
+          _hasReloadedScript = false;
           return url;
         }
       }
 
-      print('[JSProxyProvider] ❌ 获取音乐链接失败');
+      // 🎯 获取失败，尝试重新加载脚本并重试
+      if (!_hasReloadedScript) {
+        print('[JSProxyProvider] ⚠️ 获取链接失败，尝试重新加载脚本...');
+        final reloaded = await _reloadScriptAndRetry();
+        if (reloaded) {
+          _hasReloadedScript = true;
+          print('[JSProxyProvider] 🔄 脚本已重新加载，重试获取链接...');
+          // 递归调用自己重试一次
+          return getMusicUrl(
+            source: source,
+            songId: songId,
+            quality: quality,
+            musicInfo: musicInfo,
+          );
+        }
+      }
+
+      print('[JSProxyProvider] ❌ 获取音乐链接失败（已尝试重新加载脚本）');
+      _hasReloadedScript = false; // 重置标记
       return null;
     } catch (e) {
       print('[JSProxyProvider] ❌ 获取音乐链接异常: $e');
+      _hasReloadedScript = false; // 重置标记
       return null;
+    }
+  }
+
+  /// 🎯 重新加载脚本（清除缓存后从源重新获取）
+  Future<bool> _reloadScriptAndRetry() async {
+    try {
+      final scripts = _ref.read(jsScriptManagerProvider);
+      final manager = _ref.read(jsScriptManagerProvider.notifier);
+      final selected = manager.selectedScript;
+
+      if (selected == null) {
+        print('[JSProxyProvider] ⚠️ 无法重新加载：未选择脚本');
+        return false;
+      }
+
+      print('[JSProxyProvider] 🧹 清除脚本缓存: ${selected.name}');
+      // 清除当前脚本的缓存
+      await clearCurrentScriptCache();
+
+      print('[JSProxyProvider] 🔄 重新加载脚本: ${selected.name}');
+      // 重新加载脚本（会从源获取新内容）
+      final success = await loadScriptByScript(selected);
+
+      if (success) {
+        print('[JSProxyProvider] ✅ 脚本重新加载成功');
+        // 等待脚本初始化完成
+        await Future.delayed(const Duration(milliseconds: 500));
+      } else {
+        print('[JSProxyProvider] ❌ 脚本重新加载失败');
+      }
+
+      return success;
+    } catch (e) {
+      print('[JSProxyProvider] ❌ 重新加载脚本异常: $e');
+      return false;
     }
   }
 
