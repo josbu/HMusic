@@ -167,20 +167,15 @@ class MusicApiService {
 
     debugPrint('🔵 完整的音乐列表JSON: $musicListJsonString');
 
-    // 🎯 使用 modifySetting API 只更新 music_list_json 字段
-    // 这个 API 专门用于修改部分设置，不需要发送完整配置
-    try {
-      final saveResult = await modifySetting({'music_list_json': musicListJsonString});
-      debugPrint('保存设置结果(modifySetting): $saveResult');
-    } catch (e) {
-      // 如果 modifySetting 不可用（旧版本服务端），回退到完整设置方式
-      debugPrint('⚠️ modifySetting 失败: $e，回退到完整设置方式');
-      final currentSettings = await getSettings();
-      final updatedSettings = Map<String, dynamic>.from(currentSettings);
-      updatedSettings['music_list_json'] = musicListJsonString;
-      final saveResult = await saveSetting(updatedSettings);
-      debugPrint('保存设置结果(完整): $saveResult');
-    }
+    // 🎯 使用 saveSetting API 完整保存配置
+    // 重要：必须使用 saveSetting 而不是 modifySetting！
+    // modifySetting 只会保存配置到文件，但不会触发 xiaomusic 重新加载播放列表
+    // saveSetting 会触发 xiaomusic 重新加载 music_list_json 到内存中的"在线播放"列表
+    final currentSettings = await getSettings();
+    final updatedSettings = Map<String, dynamic>.from(currentSettings);
+    updatedSettings['music_list_json'] = musicListJsonString;
+    final saveResult = await saveSetting(updatedSettings);
+    debugPrint('保存设置结果(saveSetting): $saveResult');
 
     // 播放音乐
     final playResult = await playMusicList(
@@ -248,19 +243,15 @@ class MusicApiService {
       throw FormatException('生成的music_list_json格式无效');
     }
 
-    // 🎯 使用 modifySetting API 只更新 music_list_json 字段
-    try {
-      final saveResult = await modifySetting({'music_list_json': musicListJsonString});
-      debugPrint('🔵 [PlayOnlineSearchResult] 保存设置结果(modifySetting): $saveResult');
-    } catch (e) {
-      // 如果 modifySetting 不可用（旧版本服务端），回退到完整设置方式
-      debugPrint('⚠️ [PlayOnlineSearchResult] modifySetting 失败: $e，回退到完整设置方式');
-      final currentSettings = await getSettings();
-      final updatedSettings = Map<String, dynamic>.from(currentSettings);
-      updatedSettings['music_list_json'] = musicListJsonString;
-      final saveResult = await saveSetting(updatedSettings);
-      debugPrint('🔵 [PlayOnlineSearchResult] 保存设置结果(完整): $saveResult');
-    }
+    // 🎯 使用 saveSetting API 完整保存配置
+    // 重要：必须使用 saveSetting 而不是 modifySetting！
+    // modifySetting 只会保存配置到文件，但不会触发 xiaomusic 重新加载播放列表
+    // saveSetting 会触发 xiaomusic 重新加载 music_list_json 到内存中的"在线播放"列表
+    final currentSettings = await getSettings();
+    final updatedSettings = Map<String, dynamic>.from(currentSettings);
+    updatedSettings['music_list_json'] = musicListJsonString;
+    final saveResult = await saveSetting(updatedSettings);
+    debugPrint('🔵 [PlayOnlineSearchResult] 保存设置结果(saveSetting): $saveResult');
 
     // 播放音乐
     final playResult = await playMusicList(

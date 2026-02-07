@@ -17,89 +17,91 @@ import 'dart:async';
 // 🎯 全局代理服务器实例
 AudioProxyServer? _globalProxyServer;
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
+  // 🎯 关键修复：所有初始化和 runApp 必须在同一个 zone 中
+  // 避免 Zone mismatch 错误
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  await AppLogger.init();
+    await AppLogger.init();
 
-  try {
-    // warm-up by touching singleton instance
-    // ignore: unnecessary_statements
-    DefaultCacheManager();
-  } catch (_) {}
+    try {
+      // warm-up by touching singleton instance
+      // ignore: unnecessary_statements
+      DefaultCacheManager();
+    } catch (_) {}
 
-  // 🎯 启动代理服务器（用于音频流转发）
-  await _startProxyServer();
+    // 🎯 启动代理服务器（用于音频流转发）
+    await _startProxyServer();
 
-  // 初始化SharedPreferences
-  final prefs = await SharedPreferences.getInstance();
+    // 初始化SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
 
-  // 禁用Flutter调试边框和调试信息
-  debugPaintSizeEnabled = false;
-  debugRepaintRainbowEnabled = false;
-  debugPaintLayerBordersEnabled = false;
+    // 禁用Flutter调试边框和调试信息
+    debugPaintSizeEnabled = false;
+    debugRepaintRainbowEnabled = false;
+    debugPaintLayerBordersEnabled = false;
 
-  // 配置系统UI样式，适配小米澎湃OS 2.0
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      systemStatusBarContrastEnforced: false,
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarIconBrightness: Brightness.dark,
-      systemNavigationBarContrastEnforced: false,
-      systemNavigationBarDividerColor: Colors.transparent,
-    ),
-  );
-
-  // 启用边缘到边缘显示，沉浸顶部与底部小白条
-  SystemChrome.setEnabledSystemUIMode(
-    SystemUiMode.edgeToEdge,
-    overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
-  );
-
-  // 添加全局错误处理
-  FlutterError.onError = (FlutterErrorDetails details) {
-    final errorString = details.exception.toString();
-
-    // 过滤掉已知的Flutter问题和非关键错误
-    if (errorString.contains('mouse_tracker.dart') ||
-        errorString.contains('_debugDuringDeviceUpdate') ||
-        errorString.contains(
-          'Cannot hit test a render box that has never been laid out',
-        ) ||
-        errorString.contains('Cannot hit test a render box with no size') ||
-        errorString.contains('RenderBox was not laid out') ||
-        errorString.contains('_RenderDeferredLayoutBox') ||
-        errorString.contains('!_debugDoingThisLayout') ||
-        errorString.contains('DropdownButtonFormField') &&
-            errorString.contains('performLayout') ||
-        errorString.contains('RenderSemanticsAnnotations') &&
-            errorString.contains('size: MISSING')) {
-      // 忽略这些已知的Flutter Web问题和布局问题
-      return;
-    }
-
-    AppLogger.instance.e(
-      'FlutterError',
-      error: details.exception,
-      stack: details.stack,
-      tag: 'Flutter',
+    // 配置系统UI样式，适配小米澎湃OS 2.0
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        systemStatusBarContrastEnforced: false,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarContrastEnforced: false,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ),
     );
-    // 其他错误正常处理
-    FlutterError.presentError(details);
-  };
 
-  PlatformDispatcher.instance.onError = (error, stack) {
-    AppLogger.instance.e('PlatformError', error: error, stack: stack, tag: 'Platform');
-    return true;
-  };
+    // 启用边缘到边缘显示，沉浸顶部与底部小白条
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.edgeToEdge,
+      overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
+    );
 
-  final originalDebugPrint = debugPrint;
-  debugPrint = (String? message, {int? wrapWidth}) {
-    originalDebugPrint(message, wrapWidth: wrapWidth);
-  };
+    // 添加全局错误处理
+    FlutterError.onError = (FlutterErrorDetails details) {
+      final errorString = details.exception.toString();
 
-  runZonedGuarded(() {
+      // 过滤掉已知的Flutter问题和非关键错误
+      if (errorString.contains('mouse_tracker.dart') ||
+          errorString.contains('_debugDuringDeviceUpdate') ||
+          errorString.contains(
+            'Cannot hit test a render box that has never been laid out',
+          ) ||
+          errorString.contains('Cannot hit test a render box with no size') ||
+          errorString.contains('RenderBox was not laid out') ||
+          errorString.contains('_RenderDeferredLayoutBox') ||
+          errorString.contains('!_debugDoingThisLayout') ||
+          errorString.contains('DropdownButtonFormField') &&
+              errorString.contains('performLayout') ||
+          errorString.contains('RenderSemanticsAnnotations') &&
+              errorString.contains('size: MISSING')) {
+        // 忽略这些已知的Flutter Web问题和布局问题
+        return;
+      }
+
+      AppLogger.instance.e(
+        'FlutterError',
+        error: details.exception,
+        stack: details.stack,
+        tag: 'Flutter',
+      );
+      // 其他错误正常处理
+      FlutterError.presentError(details);
+    };
+
+    PlatformDispatcher.instance.onError = (error, stack) {
+      AppLogger.instance.e('PlatformError', error: error, stack: stack, tag: 'Platform');
+      return true;
+    };
+
+    final originalDebugPrint = debugPrint;
+    debugPrint = (String? message, {int? wrapWidth}) {
+      originalDebugPrint(message, wrapWidth: wrapWidth);
+    };
+
     AppLogger.instance.i('App start', tag: 'App');
     runApp(
       ProviderScope(

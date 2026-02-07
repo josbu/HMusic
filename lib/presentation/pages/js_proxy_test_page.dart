@@ -23,6 +23,9 @@ class _JSProxyTestPageState extends ConsumerState<JSProxyTestPage> {
   String _testResult = '';
   bool _isFetchingUrl = false;
 
+  // 🎯 当前测试歌曲的完整信息（与真实播放时传递的信息一致）
+  Map<String, dynamic> _currentMusicInfo = {};
+
   Widget _quickButton(String label, VoidCallback onPressed) {
     return OutlinedButton(
       onPressed: onPressed,
@@ -199,16 +202,22 @@ class _JSProxyTestPageState extends ConsumerState<JSProxyTestPage> {
       });
 
       final jsProxy = ref.read(jsProxyProvider.notifier);
+
+      // 🎯 使用完整的歌曲信息，与真实播放时一致
+      final musicInfo = _currentMusicInfo.isNotEmpty
+          ? _currentMusicInfo
+          : {
+              'title': '测试歌曲',
+              'artist': '测试歌手',
+              'songmid': _songIdController.text,
+              'hash': _songIdController.text,
+            };
+
       final url = await jsProxy.getMusicUrl(
         source: _sourceController.text,
         songId: _songIdController.text,
         quality: _qualityController.text,
-        musicInfo: {
-          'title': '测试歌曲',
-          'artist': '测试歌手',
-          'songmid': _songIdController.text,
-          'hash': _songIdController.text,
-        },
+        musicInfo: musicInfo,
       );
 
       setState(() {
@@ -592,6 +601,19 @@ console.log('✅ JS代理测试脚本模板加载完成');
                           _sourceController.text = 'tx';
                           _songIdController.text = '001NgljR0RUhy1';
                           _qualityController.text = '320k';
+                          _currentMusicInfo = {
+                            'songmid': '001NgljR0RUhy1',
+                            'hash': '001NgljR0RUhy1',
+                            'strMediaMid': '001NgljR0RUhy1',
+                            'id': '001NgljR0RUhy1',
+                            'name': '唯一',
+                            'singer': '邓紫棋',
+                            'album': '',
+                            'albumMid': '',
+                            'albumId': '',
+                            'duration': 0,
+                            'interval': 0,
+                          };
                           setState(() {
                             _testResult =
                                 '🎵 已设置: 邓紫棋 - 唯一 (tx/001NgljR0RUhy1/320k)';
@@ -601,6 +623,19 @@ console.log('✅ JS代理测试脚本模板加载完成');
                           _sourceController.text = 'tx';
                           _songIdController.text = '001X0PDf0W4lBq';
                           _qualityController.text = '320k';
+                          _currentMusicInfo = {
+                            'songmid': '001X0PDf0W4lBq',
+                            'hash': '001X0PDf0W4lBq',
+                            'strMediaMid': '001X0PDf0W4lBq',
+                            'id': '001X0PDf0W4lBq',
+                            'name': '泡沫',
+                            'singer': '邓紫棋',
+                            'album': '',
+                            'albumMid': '',
+                            'albumId': '',
+                            'duration': 0,
+                            'interval': 0,
+                          };
                           setState(() {
                             _testResult =
                                 '🎵 已设置: 邓紫棋 - 泡沫 (tx/001X0PDf0W4lBq/320k)';
@@ -610,9 +645,45 @@ console.log('✅ JS代理测试脚本模板加载完成');
                           _sourceController.text = 'tx';
                           _songIdController.text = '002E3MtF0IAMMY';
                           _qualityController.text = '320k';
+                          _currentMusicInfo = {
+                            'songmid': '002E3MtF0IAMMY',
+                            'hash': '002E3MtF0IAMMY',
+                            'strMediaMid': '002E3MtF0IAMMY',
+                            'id': '002E3MtF0IAMMY',
+                            'name': '光年之外',
+                            'singer': '邓紫棋',
+                            'album': '',
+                            'albumMid': '',
+                            'albumId': '',
+                            'duration': 0,
+                            'interval': 0,
+                          };
                           setState(() {
                             _testResult =
                                 '🎵 已设置: 邓紫棋 - 光年之外 (tx/002E3MtF0IAMMY/320k)';
+                          });
+                        }),
+                        // 🎯 晴天 - 用于测试与真实播放时相同的歌曲
+                        _quickButton('晴天', () {
+                          _sourceController.text = 'tx';
+                          _songIdController.text = '0039MnYb0qxYhV';
+                          _qualityController.text = '320k';
+                          _currentMusicInfo = {
+                            'songmid': '0039MnYb0qxYhV',
+                            'hash': '0039MnYb0qxYhV',
+                            'strMediaMid': '0039MnYb0qxYhV',
+                            'id': '0039MnYb0qxYhV',
+                            'name': '晴天',
+                            'singer': '周杰伦',
+                            'album': '叶惠美',
+                            'albumMid': '',
+                            'albumId': '',
+                            'duration': 269,
+                            'interval': 269,
+                          };
+                          setState(() {
+                            _testResult =
+                                '🎵 已设置: 周杰伦 - 晴天 (tx/0039MnYb0qxYhV/320k)\n⚠️ 这是真实播放时失败的歌曲，用于对比测试';
                           });
                         }),
                       ],
