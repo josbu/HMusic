@@ -17,6 +17,7 @@ import 'direct_mode_provider.dart';
 import 'js_script_manager_provider.dart';
 import 'source_settings_provider.dart';
 import 'js_proxy_provider.dart';
+import 'audio_proxy_provider.dart';
 import '../../core/utils/network_detector.dart';
 
 /// 初始化状态
@@ -185,6 +186,14 @@ class InitializationNotifier extends StateNotifier<InitializationState> {
   Future<void> _initializeProxyServer() async {
     try {
       debugPrint('🌐 [Initialization] 开始初始化音频代理服务器...');
+
+      // 优先复用 main.dart 启动的全局代理服务器
+      final globalProxy = ref.read(audioProxyServerProvider);
+      if (globalProxy != null && globalProxy.isRunning) {
+        _proxyServer = globalProxy;
+        debugPrint('✅ [Initialization] 复用全局代理服务器: ${_proxyServer!.serverUrl}');
+        return;
+      }
 
       // 创建代理服务器实例
       _proxyServer = AudioProxyServer();

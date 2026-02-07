@@ -2458,6 +2458,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   String? _xiaomusicLastSongName;
   int _xiaomusicLastPosition = 0;
   int _xiaomusicLastDuration = 0;
+  int _xiaomusicNearEndHits = 0;
 
   /// 🎯 xiaomusic 模式：检测歌曲是否接近结尾并触发自动下一首
   ///
@@ -2478,9 +2479,28 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       return;
     }
 
+    // 🎯 保护期内不做自动下一首检测（避免解析/切歌中误触发）
+    if (_optimisticUpdateProtectionUntil != null &&
+        DateTime.now().isBefore(_optimisticUpdateProtectionUntil!)) {
+      return;
+    }
+
     final currentSongName = currentMusic.curMusic;
     final position = currentMusic.offset;
     final duration = currentMusic.duration;
+    final isPlaying = currentMusic.isPlaying;
+
+    // duration/offset 不可靠时，跳过自动下一首检测
+    if (duration <= 0 || position < 0 || !isPlaying) {
+      _xiaomusicLastPosition = position;
+      _xiaomusicLastDuration = duration;
+      return;
+    }
+
+    final remaining = duration - position;
+    final nearEndThreshold = (duration * 0.02).round().clamp(3, 8);
+    final isAtEnd = duration > 0 && remaining <= 3;
+    final shouldCountNearEnd = remaining > 0 && remaining <= nearEndThreshold;
 
     // ========== 检测方式C：歌曲异常切换检测（最可靠） ==========
     // 当 xiaomusic 服务端播完 music_list_json 里的歌后，会自动切回服务端自己的播放列表
@@ -2493,7 +2513,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       final queue = queueState.queue!;
       final isInQueue = queue.items.any((item) => item.displayName == currentSongName);
 
-      if (!isInQueue) {
+      final wasNearEnd = _xiaomusicLastDuration > 10 &&
+          _xiaomusicLastPosition > 10 &&
+          (_xiaomusicLastDuration - _xiaomusicLastPosition) < nearEndThreshold;
+      final isAtStart = position < 10;
+
+      if (!isInQueue && wasNearEnd && isAtStart) {
         debugPrint('🎵 [xiaomusic-AutoNext] 🔍 检测到歌曲异常切换!');
         debugPrint('   上一首(APP推送): $_xiaomusicLastSongName');
         debugPrint('   当前(服务端自切): $currentSongName');
@@ -2534,20 +2559,33 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     }
 
     // ========== 检测方式A：position 接近 duration ==========
-    // 🎯 阈值设为15秒，确保不会被5秒的轮询间隔错过
-    final isNearEnd = duration > 10 && position > 10 && (duration - position) < 15;
+    // 🎯 阈值基于时长动态调整，避免短歌过早触发
+    final isNearEnd = duration > 10 &&
+        position > 10 &&
+        shouldCountNearEnd &&
+        position > (duration * 0.85);
 
     // ========== 检测方式B：位置跳跃检测 ==========
     // 上一次接近结尾 → 这一次回到开头（同一首歌循环播放的情况）
     final wasNearEnd = _xiaomusicLastDuration > 10 &&
         _xiaomusicLastPosition > 10 &&
-        (_xiaomusicLastDuration - _xiaomusicLastPosition) < 15;
+        (_xiaomusicLastDuration - _xiaomusicLastPosition) < nearEndThreshold;
     final jumpedToStart = position < 10;
     final isPositionJump = wasNearEnd && jumpedToStart;
 
-    final shouldTrigger = (isNearEnd || isPositionJump) && !_xiaomusicAutoNextTriggered;
+    if (isAtEnd) {
+      _xiaomusicNearEndHits = 2;
+    } else if (isNearEnd) {
+      _xiaomusicNearEndHits += 1;
+    } else {
+      _xiaomusicNearEndHits = 0;
+    }
 
-    if (shouldTrigger) {
+    final shouldTrigger =
+        ((isNearEnd && _xiaomusicNearEndHits >= 2) || isPositionJump) &&
+        !_xiaomusicAutoNextTriggered;
+
+      if (shouldTrigger) {
       final reason = isNearEnd ? '接近结尾(剩${duration - position}秒)' : '位置跳跃(${_xiaomusicLastPosition}s→${position}s)';
       debugPrint('🎵 [xiaomusic-AutoNext] 检测到歌曲播放完成 [$reason]');
       debugPrint('🎵 [xiaomusic-AutoNext] 当前: $currentSongName, position=$position, duration=$duration');
@@ -2576,8 +2614,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     }
 
     // 🔄 更新上一次轮询的位置（必须在检测之后更新）
-    _xiaomusicLastPosition = position;
-    _xiaomusicLastDuration = duration;
+      _xiaomusicLastPosition = position;
+      _xiaomusicLastDuration = duration;
   }
 
   /// 🎵 统一的在线歌曲播放方法（懒加载方式）
