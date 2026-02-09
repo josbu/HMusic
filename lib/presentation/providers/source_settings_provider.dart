@@ -22,7 +22,7 @@ class SourceSettings {
   final String localScriptPath; // 本地脚本文件路径
   final String
   jsSearchStrategy; // JS流程下搜索优先级: qqOnly|kuwoOnly|neteaseOnly|qqFirst|kuwoFirst|neteaseFirst
-  final String defaultDownloadQuality; // 默认下载音质: 'lossless' | 'high' | 'standard'
+  final String defaultDownloadQuality; // 默认下载音质: 'hires24' | 'lossless' | 'high' | 'standard'
   final String audioProxyUrl; // 音频代理服务器URL（需用户自行部署）
   final bool useAudioProxy; // 是否启用音频代理（直连模式）
 

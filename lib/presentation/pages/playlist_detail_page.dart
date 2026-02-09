@@ -580,12 +580,11 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     }
 
     try {
-      // 获取默认音质
-      final settings = ref.read(sourceSettingsProvider);
-      final quality = settings.defaultDownloadQuality == 'lossless' ? '320k' : '320k';
+      // 歌单播放解析使用固定高品质，不跟随“服务器下载音质”设置
+      const quality = '320k';
 
       debugPrint('🔧 [PlaylistDetail] 开始URL解析');
-      debugPrint('   平台: $platform, 歌曲ID: $songId, 音质: $quality');
+      debugPrint('   平台: $platform, 歌曲ID: $songId, 解析音质: $quality');
       final musicInfo = buildLxMusicInfoFromLocalPlaylistSong(song);
 
       String? resolvedUrl;

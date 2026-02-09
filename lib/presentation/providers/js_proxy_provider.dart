@@ -311,11 +311,15 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
     final q = quality.toLowerCase();
     final List<String> base;
     switch (q) {
-      case 'lossless':
-      case 'hires':
-      case 'flac':
       case 'flac24bit':
       case 'flac24':
+        base = ['flac24bit', 'hires', 'flac', '320k', '128k'];
+        break;
+      case 'lossless':
+      case 'flac':
+        base = ['flac', '320k', '128k'];
+        break;
+      case 'hires':
         base = ['hires', 'flac', '320k', '128k'];
         break;
       case '320k':

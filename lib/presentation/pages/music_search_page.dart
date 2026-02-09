@@ -14,7 +14,6 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../providers/js_source_provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:open_filex/open_filex.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../providers/music_library_provider.dart';
 import '../widgets/app_snackbar.dart';
@@ -487,27 +486,11 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
   }
 
   Future<void> _downloadToLocal(OnlineMusicResult item) async {
-    // 获取用户设置的默认下载音质
+    // 本地下载与服务器下载统一：都跟随默认下载音质设置
     final settings = ref.read(sourceSettingsProvider);
     final quality = settings.defaultDownloadQuality;
 
     try {
-      var url = item.url;
-      if (url.isEmpty) {
-        // 使用音质降级逻辑解析
-        url = await _resolveWithQualityFallback(item, quality) ?? '';
-      }
-
-      if (url.isEmpty) {
-        if (mounted) {
-          AppSnackBar.showError(
-            context,
-            '❌ 无法解析直链，无法下载',
-          );
-        }
-        return;
-      }
-
       // 确定下载目录
       Directory dir;
       if (Platform.isIOS) {
@@ -551,35 +534,101 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
         }
       }
 
+      // ⚠️ 放在权限确认之后再解析URL，避免授权弹窗期间链接过期导致404
+      var url = item.url;
+      if (url.isEmpty) {
+        // 使用音质降级逻辑解析
+        url = await _resolveWithQualityFallback(item, quality) ?? '';
+      }
+
+      if (url.isEmpty) {
+        if (mounted) {
+          AppSnackBar.showError(
+            context,
+            '❌ 无法解析直链，无法下载',
+          );
+        }
+        return;
+      }
+
       final titlePart = item.title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
       final authorPart = item.author.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-      final safeName =
-          authorPart.isNotEmpty ? '$titlePart - $authorPart' : titlePart;
-      final ext = p.extension(Uri.parse(url).path);
-      final filePath = p.join(
-        dir.path,
-        '$safeName${ext.isEmpty ? '.m4a' : ext}',
-      );
+      final safeName = authorPart.isNotEmpty ? '$titlePart - $authorPart' : titlePart;
 
+      String buildFilePath(String targetUrl) {
+        final ext = p.extension(Uri.parse(targetUrl).path);
+        return p.join(dir.path, '$safeName${ext.isEmpty ? '.m4a' : ext}');
+      }
+
+      var downloadUrl = url;
+      var savedFilePath = buildFilePath(downloadUrl);
       final client = dio.Dio();
-      await client.download(
-        url,
-        filePath,
-        options: dio.Options(
-          responseType: dio.ResponseType.bytes,
-          followRedirects: true,
-        ),
-      );
+      try {
+        await client.download(
+          downloadUrl,
+          savedFilePath,
+          options: dio.Options(
+            responseType: dio.ResponseType.bytes,
+            followRedirects: true,
+          ),
+        );
+      } on dio.DioException catch (e) {
+        final statusCode = e.response?.statusCode;
+        final canRetry = statusCode == 403 || statusCode == 404;
+
+        if (!canRetry) rethrow;
+
+        debugPrint('[XMC] ⚠️ 本地下载首次失败($statusCode)，尝试按音质链降级重试下载');
+
+        var recovered = false;
+        final qualities = _getQualityFallbackList(quality);
+        for (final fallbackQuality in qualities) {
+          final refreshedUrl = await _resolvePlayUrlForItem(
+            item,
+            quality: fallbackQuality,
+          );
+
+          if (refreshedUrl == null ||
+              refreshedUrl.isEmpty ||
+              refreshedUrl == downloadUrl) {
+            continue;
+          }
+
+          final candidatePath = buildFilePath(refreshedUrl);
+
+          try {
+            debugPrint('[XMC] 🔄 本地下载重试音质: $fallbackQuality');
+            await client.download(
+              refreshedUrl,
+              candidatePath,
+              options: dio.Options(
+                responseType: dio.ResponseType.bytes,
+                followRedirects: true,
+              ),
+            );
+
+            downloadUrl = refreshedUrl;
+            savedFilePath = candidatePath;
+            recovered = true;
+            debugPrint('[XMC] ✅ 本地下载重试成功，音质: $fallbackQuality');
+            break;
+          } on dio.DioException catch (retryError) {
+            final retryStatus = retryError.response?.statusCode;
+            debugPrint('[XMC] ❌ 重试音质 $fallbackQuality 失败: $retryStatus');
+
+            if (retryStatus != 403 && retryStatus != 404) {
+              rethrow;
+            }
+          }
+        }
+
+        if (!recovered) rethrow;
+      }
 
       if (mounted) {
         AppSnackBar.showSuccess(
           context,
-          '已保存到本地: ${p.basename(filePath)}',
-          action: SnackBarAction(
-            label: '打开',
-            textColor: Colors.white,
-            onPressed: () => OpenFilex.open(filePath),
-          ),
+          '已保存到本地: ${p.basename(savedFilePath)}',
         );
       }
     } catch (e) {
@@ -620,8 +669,14 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
   /// 获取音质降级列表
   List<String> _getQualityFallbackList(String target) {
     switch (target) {
+      case 'hires24':
+      case '24bitflac':
+      case 'flac24bit':
+      case 'flac24':
+        return ['flac24bit', 'hires', 'flac', '320k', '128k'];
       case 'lossless':
-        return ['hires', 'flac', '320k', '128k'];
+      case 'flac':
+        return ['flac', '320k', '128k'];
       case 'high':
         return ['320k', '128k'];
       case 'standard':

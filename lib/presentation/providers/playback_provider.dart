@@ -2015,11 +2015,24 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     if (_currentStrategy == null) {
       debugPrint('❌ [PlaybackProvider] 播放策略未初始化，尝试切换设备');
 
-      // 如果策略未初始化，尝试根据设备ID切换
-      final deviceState = ref.read(deviceProvider);
-      if (deviceState.devices.isNotEmpty) {
-        await _switchStrategy(deviceId, deviceState.devices);
+      final playbackMode = ref.read(playbackModeProvider);
+
+      if (playbackMode == PlaybackMode.miIoTDirect) {
+        // 直连模式：优先使用直连策略初始化，避免误走远程设备列表
+        final directState = ref.read(directModeProvider);
+        if (directState is DirectModeAuthenticated &&
+            directState.playbackDeviceType.isNotEmpty) {
+          await _switchToDirectModeStrategy(directState);
+        }
       } else {
+        // xiaomusic 模式：根据设备ID切换远程策略
+        final deviceState = ref.read(deviceProvider);
+        if (deviceState.devices.isNotEmpty) {
+          await _switchStrategy(deviceId, deviceState.devices);
+        }
+      }
+
+      if (_currentStrategy == null) {
         state = state.copyWith(error: '播放策略未初始化');
         return;
       }

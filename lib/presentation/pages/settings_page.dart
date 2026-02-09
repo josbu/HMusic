@@ -869,7 +869,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           size: 20,
         ),
       ),
-      title: const Text('默认下载音质'),
+      title: const Text(
+        '默认下载音质',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       trailing: Padding(
         padding: const EdgeInsets.only(right: 2),
         child: DropdownButton<String>(
@@ -879,9 +883,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           alignment: AlignmentDirectional.centerEnd,
           icon: const Icon(Icons.arrow_drop_down),
           items: const [
-            DropdownMenuItem(value: 'lossless', child: Text('无损音质')),
-            DropdownMenuItem(value: 'high', child: Text('高品质 (320k)')),
-            DropdownMenuItem(value: 'standard', child: Text('标准音质 (128k)')),
+            DropdownMenuItem(
+              value: 'hires24',
+              child: Text('HI-Res(24bit)', style: TextStyle(fontSize: 12)),
+            ),
+            DropdownMenuItem(
+              value: 'lossless',
+              child: Text('无损音乐(flac)', style: TextStyle(fontSize: 12)),
+            ),
+            DropdownMenuItem(
+              value: 'high',
+              child: Text('高品质(320k)', style: TextStyle(fontSize: 12)),
+            ),
+            DropdownMenuItem(
+              value: 'standard',
+              child: Text('标准音质(128k)', style: TextStyle(fontSize: 12)),
+            ),
           ],
           onChanged: (value) {
             if (value != null) {

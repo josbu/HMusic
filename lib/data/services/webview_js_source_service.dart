@@ -2645,6 +2645,10 @@ class WebViewJsSourceService {
                   '128k': 'low',
                   '320k': 'standard',
                   'flac': 'high',
+                  'hires': 'high',
+                  'flac24bit': 'high',
+                  'flac24': 'high',
+                  'lossless': 'high',
                   'default': 'standard'
                 };
                 const mappedQuality = qualityMap['$quality'] || qualityMap['default'];
