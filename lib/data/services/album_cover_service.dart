@@ -38,8 +38,20 @@ class AlbumCoverService {
 
       // 2. 如果有封面，替换内网地址后返回
       if (pictureUrl != null && pictureUrl.isNotEmpty) {
-        debugPrint('✅ [AlbumCover] 服务器已有封面: $pictureUrl');
-        return _replaceWithLoginDomain(pictureUrl, loginBaseUrl);
+        if (_isUsablePictureUrl(pictureUrl)) {
+          debugPrint('✅ [AlbumCover] 服务器已有可用封面: $pictureUrl');
+          return _replaceWithLoginDomain(pictureUrl, loginBaseUrl);
+        }
+
+        debugPrint('⚠️ [AlbumCover] 服务器封面无效，改为在线刮削: $pictureUrl');
+
+        // 清理服务端的无效封面，避免后续一直命中脏数据
+        try {
+          await _musicApi.setMusicTag({'musicname': musicName, 'picture': ''});
+          debugPrint('🧹 [AlbumCover] 已清理服务端无效封面标签');
+        } catch (e) {
+          debugPrint('⚠️ [AlbumCover] 清理服务端无效封面失败: $e');
+        }
       }
 
       // 3. 如果没有封面且允许自动刮削
@@ -59,6 +71,9 @@ class AlbumCoverService {
 
       final coverUrl = scrapeResult.coverUrl!;
       final lyrics = scrapeResult.lyrics;
+      final title = scrapeResult.title;
+      final artist = scrapeResult.artist;
+      final album = scrapeResult.album;
 
       debugPrint('✅ [AlbumCover] 刮削成功: $coverUrl');
       if (lyrics != null) {
@@ -69,7 +84,14 @@ class AlbumCoverService {
       // 这样用户不用等下载+上传，立即就能看到封面
 
       // 5. 后台异步上传到NAS（不阻塞UI）
-      _uploadCoverToNasAsync(musicName, coverUrl, lyrics);
+      _uploadCoverToNasAsync(
+        musicName,
+        coverUrl,
+        lyrics,
+        title,
+        artist,
+        album,
+      );
 
       // 6. 立即返回在线封面URL
       debugPrint('🎯 [AlbumCover] 立即返回在线封面，后台上传中...');
@@ -81,7 +103,7 @@ class AlbumCoverService {
   }
 
   /// 在线搜索并获取封面URL和歌词（使用原生QQ音乐API）
-  Future<({String? coverUrl, String? lyrics})?> _scrapeAlbumCoverAndLyrics(String musicName) async {
+  Future<({String? coverUrl, String? lyrics, String? title, String? artist, String? album})?> _scrapeAlbumCoverAndLyrics(String musicName) async {
     try {
       // 解析歌曲名（格式：歌曲名 - 歌手名）
       final parts = musicName.split(' - ');
@@ -142,7 +164,13 @@ class AlbumCoverService {
                   }
                 }
 
-                return (coverUrl: coverUrl, lyrics: lyrics);
+                return (
+                  coverUrl: coverUrl,
+                  lyrics: lyrics,
+                  title: result.title,
+                  artist: result.author,
+                  album: result.album,
+                );
               } else {
                 debugPrint('⚠️ [AlbumCover] $platformName 封面URL验证失败，尝试下一个结果');
               }
@@ -262,8 +290,11 @@ class AlbumCoverService {
   void _uploadCoverToNasAsync(
     String musicName,
     String coverUrl,
-    String? lyrics,
-  ) {
+    String? lyrics, [
+    String? title,
+    String? artist,
+    String? album,
+  ]) {
     // 异步执行，不阻塞主流程
     Future(() async {
       try {
@@ -279,7 +310,14 @@ class AlbumCoverService {
         debugPrint('✅ [AlbumCover] 后台下载完成，开始上传...');
 
         // 2. 上传到服务器
-        await _uploadAlbumCover(musicName, base64Picture, lyrics);
+        await _uploadAlbumCover(
+          musicName,
+          base64Picture,
+          lyrics,
+          title,
+          artist,
+          album,
+        );
 
         debugPrint('✅ [AlbumCover] 后台上传成功');
         if (lyrics != null && lyrics.isNotEmpty) {
@@ -295,8 +333,11 @@ class AlbumCoverService {
   /// 上传封面和歌词到NAS服务器
   Future<void> _uploadAlbumCover(
     String musicName,
-    String base64Picture, [
-    String? lyrics,
+    String base64Picture,
+    String? lyrics, [
+    String? title,
+    String? artist,
+    String? album,
   ]) async {
     debugPrint('📤 [AlbumCover] 上传封面到服务器: $musicName');
 
@@ -304,6 +345,16 @@ class AlbumCoverService {
       'musicname': musicName,
       'picture': base64Picture,
     };
+
+    if (title != null && title.isNotEmpty) {
+      data['title'] = title;
+    }
+    if (artist != null && artist.isNotEmpty) {
+      data['artist'] = artist;
+    }
+    if (album != null && album.isNotEmpty) {
+      data['album'] = album;
+    }
 
     // 如果有歌词，也一起上传
     if (lyrics != null && lyrics.isNotEmpty) {
@@ -331,6 +382,23 @@ class AlbumCoverService {
       debugPrint('❌ [AlbumCover] URL替换失败: $e');
       return nasUrl;
     }
+  }
+
+  /// 检查服务端返回的封面URL是否可用（排除音频代理伪装链接）
+  bool _isUsablePictureUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return false;
+
+    final lower = trimmed.toLowerCase();
+    if (lower.contains('proxy?urlb64=') || lower.contains('proxy%3furlb64%3d')) {
+      return false;
+    }
+
+    if (RegExp(r'\.(mp3|flac|m4a|aac|wav)(\?|$)', caseSensitive: false).hasMatch(lower)) {
+      return false;
+    }
+
+    return true;
   }
 
   /// 释放资源

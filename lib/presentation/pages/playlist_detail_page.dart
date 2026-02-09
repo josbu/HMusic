@@ -8,6 +8,7 @@ import '../providers/local_playlist_provider.dart'; // 🎯 本地播放列表
 import '../providers/direct_mode_provider.dart'; // 🎯 播放模式
 import '../providers/playback_provider.dart';
 import '../providers/device_provider.dart';
+import '../providers/music_library_provider.dart';
 import '../providers/js_proxy_provider.dart'; // 🎯 JS代理（QuickJS）
 import '../providers/js_source_provider.dart'; // 🎯 JS音源服务
 import '../providers/source_settings_provider.dart'; // 🎯 音源设置
@@ -26,6 +27,31 @@ class PlaylistDetailPage extends ConsumerStatefulWidget {
 }
 
 class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
+  Map<String, String> _buildLibraryCoverMap(List<Music> musics) {
+    final map = <String, String>{};
+
+    for (final music in musics) {
+      final picture = music.picture?.trim();
+      if (picture == null || picture.isEmpty) continue;
+
+      final name = music.name.trim();
+      if (name.isNotEmpty) {
+        map[name] = picture;
+      }
+
+      final title = music.title?.trim() ?? '';
+      final artist = music.artist?.trim() ?? '';
+      if (title.isNotEmpty && artist.isNotEmpty) {
+        map['$title - $artist'] = picture;
+      }
+      if (title.isNotEmpty) {
+        map.putIfAbsent(title, () => picture);
+      }
+    }
+
+    return map;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -753,6 +779,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
 
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final playbackState = ref.watch(playbackProvider);
+    final libraryState = ref.watch(musicLibraryProvider);
+    final libraryCoverMap = _buildLibraryCoverMap(libraryState.musicList);
 
     // 🎯 根据模式获取歌曲列表
     List<String> musics;
@@ -818,18 +847,20 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                   final musicName = musics[index];
                   final isLight = Theme.of(context).brightness == Brightness.light;
 
-                  // 🖼️ 获取封面图URL（优先级：完整歌曲对象 > 当前播放状态）
-                  final playbackState = ref.watch(playbackProvider);
+                  // 🖼️ 获取封面图URL（优先级：歌单自带 > 曲库映射 > 当前播放状态）
                   final isCurrentlyPlaying = playbackState.currentMusic?.curMusic == musicName;
 
-                  // 🎯 优先使用歌曲自带的封面图
                   String? coverUrl;
                   if (songs != null && index < songs.length) {
-                    // 直连模式：使用歌曲对象的封面图
+                    // 直连模式：优先使用歌曲对象的封面图
                     coverUrl = songs[index].coverUrl;
                   }
-                  // 如果歌曲没有封面，且正在播放，则使用播放状态的封面
-                  if (coverUrl == null && isCurrentlyPlaying) {
+
+                  if (coverUrl == null || coverUrl.isEmpty) {
+                    coverUrl = libraryCoverMap[musicName.trim()];
+                  }
+
+                  if ((coverUrl == null || coverUrl.isEmpty) && isCurrentlyPlaying) {
                     coverUrl = playbackState.albumCoverUrl;
                   }
 

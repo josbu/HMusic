@@ -2126,8 +2126,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       // 🖼️ 处理封面图（4种情况）
       if (albumCoverUrl != null && albumCoverUrl.isNotEmpty) {
         // 情况1: 在线搜索音乐 - 直接使用搜索结果的封面图
-        debugPrint('🖼️ [PlaybackProvider] 使用搜索结果的封面图: $albumCoverUrl');
-        updateAlbumCover(albumCoverUrl);
+        if (_isValidCoverUrl(albumCoverUrl)) {
+          debugPrint('🖼️ [PlaybackProvider] 使用搜索结果的封面图: $albumCoverUrl');
+          updateAlbumCover(albumCoverUrl);
+        } else if (musicName != null && musicName.isNotEmpty) {
+          debugPrint('⚠️ [PlaybackProvider] 搜索结果封面无效，改为自动搜索: $musicName');
+          _autoFetchAlbumCover(musicName).catchError((e) {
+            debugPrint('🖼️ [AutoCover] 搜索封面失败: $e');
+          });
+        }
       } else if (musicName != null && musicName.isNotEmpty) {
         // 情况2/3/4: 服务器音乐 / 本地音乐 / 直连模式 - 都需要自动搜索封面
         debugPrint('🖼️ [PlaybackProvider] 自动搜索封面: $musicName (当前策略: ${_currentStrategy?.runtimeType})');
@@ -2815,6 +2822,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
   void updateAlbumCover(String coverUrl) {
     if (coverUrl.isNotEmpty) {
+      if (!_isValidCoverUrl(coverUrl)) {
+        debugPrint('⚠️ [PlaybackProvider] 跳过无效封面URL: $coverUrl');
+        return;
+      }
+
       state = state.copyWith(albumCoverUrl: coverUrl);
       print('[Playback] 🖼️  封面图已更新: $coverUrl');
 
@@ -2893,6 +2905,17 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   /// 🔧 验证封面 URL 是否有效
   bool _isValidCoverUrl(String url) {
     if (url.isEmpty) return false;
+    final lower = url.toLowerCase();
+
+    if (lower.contains('proxy?urlb64=') || lower.contains('proxy%3furlb64%3d')) {
+      debugPrint('⚠️ [CoverURL] 检测到音频代理URL被误用为封面: $url');
+      return false;
+    }
+
+    if (RegExp(r'\.(mp3|flac|m4a|aac|wav)(\?|$)', caseSensitive: false).hasMatch(url)) {
+      debugPrint('⚠️ [CoverURL] 检测到音频直链被误用为封面: $url');
+      return false;
+    }
 
     // 检查 QQ 音乐封面 URL
     // 格式：https://y.gtimg.cn/music/photo_new/T002R300x300M000{albumId}.jpg
