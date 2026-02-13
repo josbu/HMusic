@@ -17,6 +17,7 @@ class MusicApiService {
   // null: 未知（可尝试）/ true: 支持 / false: 不支持（本次运行不再尝试）
   bool? _supportsDownloadOneMusicDirname;
   bool? _supportsDownloadOneMusicPlaylistName;
+  bool? _supportsGetPlayerStatus;
 
   MusicApiService(this._client);
 
@@ -281,6 +282,43 @@ class MusicApiService {
     await _client.get('/playurl', queryParameters: {'did': did, 'url': url});
   }
 
+  // 直接推送音频 URL 播放
+  Future<Map<String, dynamic>> pushUrl({
+    required String did,
+    required String url,
+  }) async {
+    final response = await _client.post(
+      '/api/device/pushUrl',
+      data: {'did': did, 'url': url},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  // 获取完整播放状态（新接口）
+  Future<Map<String, dynamic>> getPlayerStatus({required String did}) async {
+    final response = await _client.get(
+      '/getplayerstatus',
+      queryParameters: {'did': did},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// 检测当前后端是否支持 getplayerstatus 接口
+  Future<bool> supportsGetPlayerStatus() async {
+    if (_supportsGetPlayerStatus != null) {
+      return _supportsGetPlayerStatus!;
+    }
+    try {
+      final response = await _client.get('/openapi.json');
+      final paths = response.data['paths'] as Map?;
+      _supportsGetPlayerStatus = paths?.containsKey('/getplayerstatus') ?? false;
+    } catch (e) {
+      debugPrint('⚠️ [MusicApiService] 检测 getplayerstatus 支持失败: $e');
+      _supportsGetPlayerStatus = false;
+    }
+    return _supportsGetPlayerStatus!;
+  }
+
   // 代理播放 - 用于需要代理的链接
   Future<void> playUrlWithProxy({
     required String did,
@@ -339,6 +377,12 @@ class MusicApiService {
     // 网易云、咪咕、酷我、酷狗等所有音乐平台
     debugPrint('🔄 检测到外部URL，需要代理: ${uri.host}');
     return true;
+  }
+
+  /// 构建代理 URL（用于 pushUrl）
+  String buildProxyUrl(String musicUrl) {
+    if (!_needsProxy(musicUrl)) return musicUrl;
+    return '$baseUrl/proxy?urlb64=${_encodeUrlToBase64(musicUrl)}';
   }
 
   // Base64编码URL
