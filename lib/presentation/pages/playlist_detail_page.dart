@@ -11,7 +11,6 @@ import '../providers/device_provider.dart';
 import '../providers/music_library_provider.dart';
 import '../providers/js_proxy_provider.dart'; // 🎯 JS代理（QuickJS）
 import '../providers/js_source_provider.dart'; // 🎯 JS音源服务
-import '../providers/source_settings_provider.dart'; // 🎯 音源设置
 import '../widgets/app_snackbar.dart';
 import '../widgets/app_layout.dart';
 import '../../data/models/music.dart';
@@ -20,7 +19,13 @@ import '../../data/utils/lx_music_info_builder.dart';
 
 class PlaylistDetailPage extends ConsumerStatefulWidget {
   final String playlistName;
-  const PlaylistDetailPage({super.key, required this.playlistName});
+  final bool isLocalPlaylist;
+
+  const PlaylistDetailPage({
+    super.key,
+    required this.playlistName,
+    this.isLocalPlaylist = false,
+  });
 
   @override
   ConsumerState<PlaylistDetailPage> createState() => _PlaylistDetailPageState();
@@ -56,13 +61,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   void initState() {
     super.initState();
     Future.microtask(() {
-      // 🎯 根据播放模式加载对应的数据
-      final mode = ref.read(playbackModeProvider);
-      if (mode == PlaybackMode.miIoTDirect) {
-        // 直连模式：本地播放列表已经在 provider 初始化时加载了
-        // 不需要额外加载
-      } else {
-        // xiaomusic 模式：加载服务器播放列表
+      if (!widget.isLocalPlaylist) {
         ref
             .read(playlistProvider.notifier)
             .loadPlaylistMusics(widget.playlistName);
@@ -71,10 +70,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   }
 
   Future<void> _playWholePlaylist() async {
-    // 🎯 根据播放模式选择不同的播放逻辑
-    final playbackMode = ref.read(playbackModeProvider);
-
-    if (playbackMode == PlaybackMode.miIoTDirect) {
+    if (widget.isLocalPlaylist) {
       // 🎵 直连模式：播放本地歌单
       debugPrint('🎵 [PlaylistDetail] 直连模式播放整个歌单: ${widget.playlistName}');
 
@@ -128,24 +124,29 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
         // 🎵 使用解析到的URL播放
         try {
-          await ref.read(playbackProvider.notifier).playMusic(
-            deviceId: directState.playbackDeviceType, // 🔧 修复：使用 playbackDeviceType
-            musicName: firstSong.displayName,
-            url: playUrl,
-            albumCoverUrl: firstSong.coverUrl,
-          );
+          await ref
+              .read(playbackProvider.notifier)
+              .playMusic(
+                deviceId:
+                    directState
+                        .playbackDeviceType, // 🔧 修复：使用 playbackDeviceType
+                musicName: firstSong.displayName,
+                url: playUrl,
+                albumCoverUrl: firstSong.coverUrl,
+              );
 
           if (mounted) {
-            AppSnackBar.showSuccess(
-              context,
-              '正在播放: ${firstSong.displayName}',
-            );
+            AppSnackBar.showSuccess(context, '正在播放: ${firstSong.displayName}');
           }
         } catch (e) {
           // 🔄 播放失败，可能是缓存URL失效，尝试强制刷新重试
           debugPrint('❌ [PlaylistDetail] 播放失败，尝试强制刷新缓存: $e');
 
-          playUrl = await _resolveUrlWithCache(firstSong, 0, forceRefresh: true);
+          playUrl = await _resolveUrlWithCache(
+            firstSong,
+            0,
+            forceRefresh: true,
+          );
 
           if (playUrl == null || playUrl.isEmpty) {
             if (mounted) {
@@ -159,12 +160,16 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
           // 🔁 使用新解析的URL重试播放
           try {
-            await ref.read(playbackProvider.notifier).playMusic(
-              deviceId: directState.playbackDeviceType, // 🔧 修复：使用 playbackDeviceType
-              musicName: firstSong.displayName,
-              url: playUrl,
-              albumCoverUrl: firstSong.coverUrl,
-            );
+            await ref
+                .read(playbackProvider.notifier)
+                .playMusic(
+                  deviceId:
+                      directState
+                          .playbackDeviceType, // 🔧 修复：使用 playbackDeviceType
+                  musicName: firstSong.displayName,
+                  url: playUrl,
+                  albumCoverUrl: firstSong.coverUrl,
+                );
 
             if (mounted) {
               AppSnackBar.showSuccess(
@@ -176,10 +181,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
             // 第二次也失败，显示错误
             debugPrint('❌ [PlaylistDetail] 重试播放仍失败: $e2');
             if (mounted) {
-              AppSnackBar.showError(
-                context,
-                '播放失败: ${e2.toString()}',
-              );
+              AppSnackBar.showError(context, '播放失败: ${e2.toString()}');
             }
           }
         }
@@ -205,10 +207,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   }
 
   Future<void> _playSingle(String musicName) async {
-    // 🎯 根据播放模式选择不同的播放逻辑
-    final playbackMode = ref.read(playbackModeProvider);
-
-    if (playbackMode == PlaybackMode.miIoTDirect) {
+    if (widget.isLocalPlaylist) {
       // 🎵 直连模式：播放本地歌单中的歌曲
       debugPrint('🎵 [PlaylistDetail] 直连模式播放歌曲: $musicName');
 
@@ -253,54 +252,57 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
         if (playUrl == null || playUrl.isEmpty) {
           if (mounted) {
-            AppSnackBar.showError(
-              context,
-              '无法解析播放链接: $musicName',
-            );
+            AppSnackBar.showError(context, '无法解析播放链接: $musicName');
           }
           return;
         }
 
         // 🎵 使用解析到的URL播放
         try {
-          await ref.read(playbackProvider.notifier).playMusic(
-            deviceId: directState.playbackDeviceType, // 🔧 修复：使用 playbackDeviceType
-            musicName: musicName,
-            url: playUrl,
-            albumCoverUrl: song.coverUrl,
-          );
+          await ref
+              .read(playbackProvider.notifier)
+              .playMusic(
+                deviceId:
+                    directState
+                        .playbackDeviceType, // 🔧 修复：使用 playbackDeviceType
+                musicName: musicName,
+                url: playUrl,
+                albumCoverUrl: song.coverUrl,
+              );
         } catch (e) {
           // 🔄 播放失败，可能是缓存URL失效，尝试强制刷新重试
           debugPrint('❌ [PlaylistDetail] 播放失败，尝试强制刷新缓存: $e');
 
-          playUrl = await _resolveUrlWithCache(song, songIndex, forceRefresh: true);
+          playUrl = await _resolveUrlWithCache(
+            song,
+            songIndex,
+            forceRefresh: true,
+          );
 
           if (playUrl == null || playUrl.isEmpty) {
             if (mounted) {
-              AppSnackBar.showError(
-                context,
-                '无法解析播放链接: $musicName',
-              );
+              AppSnackBar.showError(context, '无法解析播放链接: $musicName');
             }
             return;
           }
 
           // 🔁 使用新解析的URL重试播放
           try {
-            await ref.read(playbackProvider.notifier).playMusic(
-              deviceId: directState.playbackDeviceType, // 🔧 修复：使用 playbackDeviceType
-              musicName: musicName,
-              url: playUrl,
-              albumCoverUrl: song.coverUrl,
-            );
+            await ref
+                .read(playbackProvider.notifier)
+                .playMusic(
+                  deviceId:
+                      directState
+                          .playbackDeviceType, // 🔧 修复：使用 playbackDeviceType
+                  musicName: musicName,
+                  url: playUrl,
+                  albumCoverUrl: song.coverUrl,
+                );
           } catch (e2) {
             // 第二次也失败，显示错误
             debugPrint('❌ [PlaylistDetail] 重试播放仍失败: $e2');
             if (mounted) {
-              AppSnackBar.showError(
-                context,
-                '播放失败: ${e2.toString()}',
-              );
+              AppSnackBar.showError(context, '播放失败: ${e2.toString()}');
             }
           }
         }
@@ -322,13 +324,16 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
       // 🎵 获取当前歌单的歌曲，并转换为 Music 对象列表
       final state = ref.read(playlistProvider);
-      final musicNames = state.currentPlaylist == widget.playlistName
-          ? state.currentPlaylistMusics
-          : <String>[];
+      final musicNames =
+          state.currentPlaylist == widget.playlistName
+              ? state.currentPlaylistMusics
+              : <String>[];
 
       final playlist = musicNames.map((name) => Music(name: name)).toList();
 
-      await ref.read(playbackProvider.notifier).playMusic(
+      await ref
+          .read(playbackProvider.notifier)
+          .playMusic(
             deviceId: did,
             musicName: musicName,
             playlist: playlist, // 🎵 传递播放列表
@@ -340,8 +345,11 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   Future<void> _showMusicOptionsMenu(String musicName, int index) async {
     if (!mounted) return;
 
-    // 检查是否为虚拟播放列表(无法从中移除歌曲引用)
-    final isVirtualPlaylist = _isVirtualPlaylist(widget.playlistName);
+    // 本地元歌单不区分虚拟歌单
+    final isVirtualPlaylist =
+        widget.isLocalPlaylist
+            ? false
+            : _isVirtualPlaylist(widget.playlistName);
 
     final result = await showModalBottomSheet<String>(
       context: context,
@@ -418,28 +426,33 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   /// 虚拟播放列表无法通过 playlistdelmusic 接口删除歌曲
   bool _isVirtualPlaylist(String playlistName) {
     // 常见的虚拟播放列表名称
-    const virtualPlaylists = [
-      '下载',
-      '所有歌曲',
-      '全部',
-      '临时搜索列表',
-      '在线播放',
-      '最近新增',
-    ];
+    const virtualPlaylists = ['下载', '所有歌曲', '全部', '临时搜索列表', '在线播放', '最近新增'];
     return virtualPlaylists.contains(playlistName);
   }
 
   /// 显示播放列表选择器
-  Future<void> _showPlaylistSelector(String musicName, {required bool isMove}) async {
+  Future<void> _showPlaylistSelector(
+    String musicName, {
+    required bool isMove,
+  }) async {
     if (!mounted) return;
+
+    if (widget.isLocalPlaylist) {
+      AppSnackBar.showWarning(context, '本地元歌单暂不支持跨歌单移动/复制');
+      return;
+    }
 
     final state = ref.read(playlistProvider);
     final allPlaylists = state.playlists;
 
     // 过滤掉当前播放列表和虚拟播放列表(虚拟列表不能作为目标)
-    final availablePlaylists = allPlaylists
-        .where((p) => p.name != widget.playlistName && !_isVirtualPlaylist(p.name))
-        .toList();
+    final availablePlaylists =
+        allPlaylists
+            .where(
+              (p) =>
+                  p.name != widget.playlistName && !_isVirtualPlaylist(p.name),
+            )
+            .toList();
 
     if (availablePlaylists.isEmpty) {
       if (mounted) {
@@ -472,9 +485,10 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                     return ListTile(
                       leading: const Icon(Icons.playlist_play_rounded),
                       title: Text(playlist.name),
-                      subtitle: playlist.count != null
-                          ? Text('${playlist.count} 首歌曲')
-                          : null,
+                      subtitle:
+                          playlist.count != null
+                              ? Text('${playlist.count} 首歌曲')
+                              : null,
                       onTap: () => Navigator.pop(context, playlist.name),
                     );
                   },
@@ -492,27 +506,25 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     // 执行移动或复制操作
     try {
       if (isMove) {
-        await ref.read(playlistProvider.notifier).moveMusicToPlaylist(
+        await ref
+            .read(playlistProvider.notifier)
+            .moveMusicToPlaylist(
               musicNames: [musicName],
               sourcePlaylistName: widget.playlistName,
               targetPlaylistName: selectedPlaylist,
             );
         if (mounted) {
-          AppSnackBar.showSuccess(
-            context,
-            '已移动到 $selectedPlaylist',
-          );
+          AppSnackBar.showSuccess(context, '已移动到 $selectedPlaylist');
         }
       } else {
-        await ref.read(playlistProvider.notifier).addMusicToPlaylist(
+        await ref
+            .read(playlistProvider.notifier)
+            .addMusicToPlaylist(
               musicNames: [musicName],
               playlistName: selectedPlaylist,
             );
         if (mounted) {
-          AppSnackBar.showSuccess(
-            context,
-            '已复制到 $selectedPlaylist',
-          );
+          AppSnackBar.showSuccess(context, '已复制到 $selectedPlaylist');
         }
       }
     } catch (e) {
@@ -529,36 +541,39 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     // 确认删除
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('确认删除'),
-        content: Text('确定要从歌单"${widget.playlistName}"中删除"$musicName"吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('确认删除'),
+            content: Text('确定要从歌单"${widget.playlistName}"中删除"$musicName"吗？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('删除'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
     );
 
     if (confirm != true || !mounted) return;
 
     try {
-      // 🎯 根据模式调用不同的删除方法
-      final playbackMode = ref.read(playbackModeProvider);
-      if (playbackMode == PlaybackMode.miIoTDirect) {
-        // 直连模式：使用索引删除
-        await ref.read(localPlaylistProvider.notifier).removeMusicFromPlaylist(
+      if (widget.isLocalPlaylist) {
+        // 本地元歌单：使用索引删除
+        await ref
+            .read(localPlaylistProvider.notifier)
+            .removeMusicFromPlaylist(
               playlistName: widget.playlistName,
               songIndices: [index],
             );
       } else {
-        // xiaomusic 模式：使用歌曲名删除
-        await ref.read(playlistProvider.notifier).removeMusicFromPlaylist(
+        // 服务端歌单：使用歌曲名删除
+        await ref
+            .read(playlistProvider.notifier)
+            .removeMusicFromPlaylist(
               musicNames: [musicName],
               playlistName: widget.playlistName,
             );
@@ -624,18 +639,23 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
         debugPrint('   QuickJS状态:');
         debugPrint('     - isInitialized: ${jsProxyState.isInitialized}');
         debugPrint('     - currentScript: ${jsProxyState.currentScript}');
-        debugPrint('     - hasRequestHandler: ${jsProxyState.hasRequestHandler}');
+        debugPrint(
+          '     - hasRequestHandler: ${jsProxyState.hasRequestHandler}',
+        );
 
         if (jsProxyState.isInitialized && jsProxyState.currentScript != null) {
           debugPrint('   ✅ QuickJS已就绪，开始调用 getMusicUrl()');
 
-          final mapped = (platform == 'qq')
-              ? 'tx'
-              : (platform == 'netease' || platform == '163')
+          final mapped =
+              (platform == 'qq')
+                  ? 'tx'
+                  : (platform == 'netease' || platform == '163')
                   ? 'wy'
                   : platform;
 
-          debugPrint('   调用参数: source=$mapped, songId=$songId, quality=$quality');
+          debugPrint(
+            '   调用参数: source=$mapped, songId=$songId, quality=$quality',
+          );
 
           resolvedUrl = await jsProxy.getMusicUrl(
             source: mapped,
@@ -645,7 +665,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
           );
 
           if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
-            debugPrint('✅ [PlaylistDetail] QuickJS解析成功: ${resolvedUrl.substring(0, resolvedUrl.length > 100 ? 100 : resolvedUrl.length)}...');
+            debugPrint(
+              '✅ [PlaylistDetail] QuickJS解析成功: ${resolvedUrl.substring(0, resolvedUrl.length > 100 ? 100 : resolvedUrl.length)}...',
+            );
           } else {
             debugPrint('❌ [PlaylistDetail] QuickJS解析失败：返回空结果');
           }
@@ -660,7 +682,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
         }
       } catch (e, stackTrace) {
         debugPrint('❌ [PlaylistDetail] QuickJS解析异常: $e');
-        debugPrint('   堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+        debugPrint(
+          '   堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}',
+        );
       }
 
       // 4. 回退到 WebView JS解析
@@ -678,7 +702,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
             );
 
             if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
-              debugPrint('✅ [PlaylistDetail] WebView JS解析成功: ${resolvedUrl.substring(0, resolvedUrl.length > 100 ? 100 : resolvedUrl.length)}...');
+              debugPrint(
+                '✅ [PlaylistDetail] WebView JS解析成功: ${resolvedUrl.substring(0, resolvedUrl.length > 100 ? 100 : resolvedUrl.length)}...',
+              );
             } else {
               debugPrint('❌ [PlaylistDetail] WebView JS解析失败：返回空结果');
             }
@@ -687,7 +713,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
           }
         } catch (e, stackTrace) {
           debugPrint('❌ [PlaylistDetail] WebView JS解析异常: $e');
-          debugPrint('   堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+          debugPrint(
+            '   堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}',
+          );
         }
       }
 
@@ -736,7 +764,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
             resolvedUrl = jsSvc.evaluateToString(js);
 
             if (resolvedUrl.isNotEmpty) {
-              debugPrint('✅ [PlaylistDetail] 内置JS解析成功: ${resolvedUrl.substring(0, resolvedUrl.length > 100 ? 100 : resolvedUrl.length)}...');
+              debugPrint(
+                '✅ [PlaylistDetail] 内置JS解析成功: ${resolvedUrl.substring(0, resolvedUrl.length > 100 ? 100 : resolvedUrl.length)}...',
+              );
             } else {
               debugPrint('❌ [PlaylistDetail] 内置JS解析失败：返回空结果');
             }
@@ -750,13 +780,17 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
           }
         } catch (e, stackTrace) {
           debugPrint('❌ [PlaylistDetail] 内置JS解析异常: $e');
-          debugPrint('   堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+          debugPrint(
+            '   堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}',
+          );
         }
       }
 
       // 6. 解析成功，更新缓存
       if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
-        await ref.read(localPlaylistProvider.notifier).updateSongCache(
+        await ref
+            .read(localPlaylistProvider.notifier)
+            .updateSongCache(
               playlistName: widget.playlistName,
               songIndex: songIndex,
               cachedUrl: resolvedUrl,
@@ -774,10 +808,6 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 🎯 根据播放模式选择数据源
-    final playbackMode = ref.watch(playbackModeProvider);
-    final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
-
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final playbackState = ref.watch(playbackProvider);
     final libraryState = ref.watch(musicLibraryProvider);
@@ -788,8 +818,8 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     List<LocalPlaylistSong>? songs; // 🎯 直连模式的完整歌曲对象（包含封面图）
     bool isLoading;
 
-    if (isDirectMode) {
-      // 直连模式：从本地播放列表获取歌曲（保存完整对象）
+    if (widget.isLocalPlaylist) {
+      // 本地元歌单：从本地播放列表获取歌曲（保存完整对象）
       final localState = ref.watch(localPlaylistProvider);
       isLoading = localState.isLoading;
 
@@ -809,15 +839,29 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       songs = null; // xiaomusic 模式不需要完整对象
       final state = ref.watch(playlistProvider);
       isLoading = state.isLoading;
-      musics = state.currentPlaylist == widget.playlistName
-          ? state.currentPlaylistMusics
-          : <String>[];
+      musics =
+          state.currentPlaylist == widget.playlistName
+              ? state.currentPlaylistMusics
+              : <String>[];
     }
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: Text(widget.playlistName),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(24),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              widget.isLocalPlaylist ? '本地元歌单' : '服务端歌单',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.play_circle_fill_rounded),
@@ -845,10 +889,12 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                 itemCount: musics.length,
                 itemBuilder: (context, index) {
                   final musicName = musics[index];
-                  final isLight = Theme.of(context).brightness == Brightness.light;
+                  final isLight =
+                      Theme.of(context).brightness == Brightness.light;
 
                   // 🖼️ 获取封面图URL（优先级：歌单自带 > 曲库映射 > 当前播放状态）
-                  final isCurrentlyPlaying = playbackState.currentMusic?.curMusic == musicName;
+                  final isCurrentlyPlaying =
+                      playbackState.currentMusic?.curMusic == musicName;
 
                   String? coverUrl;
                   if (songs != null && index < songs.length) {
@@ -860,21 +906,27 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                     coverUrl = libraryCoverMap[musicName.trim()];
                   }
 
-                  if ((coverUrl == null || coverUrl.isEmpty) && isCurrentlyPlaying) {
+                  if ((coverUrl == null || coverUrl.isEmpty) &&
+                      isCurrentlyPlaying) {
                     coverUrl = playbackState.albumCoverUrl;
                   }
 
                   return Container(
-                    margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 0),
+                    margin: const EdgeInsets.symmetric(
+                      vertical: 3,
+                      horizontal: 0,
+                    ),
                     decoration: BoxDecoration(
-                      color: isLight
-                          ? Colors.black.withOpacity(0.03)
-                          : Colors.white.withValues(alpha: 0.05),
+                      color:
+                          isLight
+                              ? Colors.black.withOpacity(0.03)
+                              : Colors.white.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isLight
-                            ? Colors.black.withOpacity(0.06)
-                            : Colors.white.withValues(alpha: 0.1),
+                        color:
+                            isLight
+                                ? Colors.black.withOpacity(0.06)
+                                : Colors.white.withValues(alpha: 0.1),
                         width: 1,
                       ),
                     ),
@@ -886,46 +938,62 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                       minLeadingWidth: 32,
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: coverUrl != null
-                            ? CachedNetworkImage(
-                                imageUrl: coverUrl,
-                                width: 36,
-                                height: 36,
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => Container(
+                        child:
+                            coverUrl != null
+                                ? CachedNetworkImage(
+                                  imageUrl: coverUrl,
                                   width: 36,
                                   height: 36,
-                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                                  fit: BoxFit.cover,
+                                  placeholder:
+                                      (context, url) => Container(
+                                        width: 36,
+                                        height: 36,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary.withOpacity(0.1),
+                                        child: Icon(
+                                          Icons.music_note_rounded,
+                                          size: 18,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
+                                        ),
+                                      ),
+                                  errorWidget:
+                                      (context, url, error) => Container(
+                                        width: 36,
+                                        height: 36,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary.withOpacity(0.1),
+                                        child: Icon(
+                                          Icons.music_note_rounded,
+                                          size: 18,
+                                          color:
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
+                                        ),
+                                      ),
+                                )
+                                : Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
                                   child: Icon(
                                     Icons.music_note_rounded,
                                     size: 18,
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
                                   ),
                                 ),
-                                errorWidget: (context, url, error) => Container(
-                                  width: 36,
-                                  height: 36,
-                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                                  child: Icon(
-                                    Icons.music_note_rounded,
-                                    size: 18,
-                                    color: Theme.of(context).colorScheme.primary,
-                                  ),
-                                ),
-                              )
-                            : Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(
-                                  Icons.music_note_rounded,
-                                  size: 18,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                              ),
                       ),
                       title: Text(
                         musicName,
@@ -933,10 +1001,14 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                         maxLines: 1,
                         style: TextStyle(
                           fontSize: 14,
-                          fontWeight: isCurrentlyPlaying ? FontWeight.w600 : FontWeight.w500,
-                          color: isCurrentlyPlaying
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurface,
+                          fontWeight:
+                              isCurrentlyPlaying
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                          color:
+                              isCurrentlyPlaying
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                       trailing: SizedBox(
@@ -950,14 +1022,18 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                                 : Icons.play_arrow_rounded,
                           ),
                           iconSize: 20,
-                          color: isCurrentlyPlaying
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                          color:
+                              isCurrentlyPlaying
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface.withOpacity(0.7),
                           onPressed: () => _playSingle(musicName),
                         ),
                       ),
                       onTap: () => _playSingle(musicName),
-                      onLongPress: () => _showMusicOptionsMenu(musicName, index),
+                      onLongPress:
+                          () => _showMusicOptionsMenu(musicName, index),
                     ),
                   );
                 },

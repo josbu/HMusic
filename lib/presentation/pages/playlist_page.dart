@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/playlist_provider.dart';
 import '../providers/local_playlist_provider.dart'; // 🆕 本地播放列表 Provider
-import '../providers/playback_provider.dart'; // 🆕 播放状态
-import '../providers/direct_mode_provider.dart'; // 🆕 用于获取播放模式
 import '../providers/device_provider.dart';
 import 'playlist_detail_page.dart';
 import '../widgets/app_snackbar.dart';
@@ -19,23 +17,23 @@ class PlaylistPage extends ConsumerStatefulWidget {
   ConsumerState<PlaylistPage> createState() => _PlaylistPageState();
 }
 
+enum _PlaylistSourceTab { server, local }
+
 class _PlaylistPageState extends ConsumerState<PlaylistPage> {
+  _PlaylistSourceTab _selectedSource = _PlaylistSourceTab.server;
+
+  bool get _showLocalPlaylists => _selectedSource == _PlaylistSourceTab.local;
+
   @override
   void initState() {
     super.initState();
-    // 🎯 根据播放模式选择初始化逻辑
+    // 同时预加载两套歌单数据
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final mode = ref.read(playbackModeProvider);
+      ref.read(localPlaylistProvider.notifier).refreshPlaylists();
 
-      if (mode == PlaybackMode.miIoTDirect) {
-        // 直连模式：加载本地播放列表
-        ref.read(localPlaylistProvider.notifier).refreshPlaylists();
-      } else {
-        // xiaomusic 模式：检查登录状态后加载服务器播放列表
-        final auth = ref.read(authProvider);
-        if (auth is AuthAuthenticated) {
-          ref.read(playlistProvider.notifier).refreshPlaylists();
-        }
+      final auth = ref.read(authProvider);
+      if (auth is AuthAuthenticated) {
+        ref.read(playlistProvider.notifier).refreshPlaylists();
       }
 
       // 🎯 如果需要自动弹出创建对话框
@@ -52,23 +50,14 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 🎯 根据播放模式选择 Provider
-    final playbackMode = ref.watch(playbackModeProvider);
-    final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
+    final localState = ref.watch(localPlaylistProvider);
+    final serverState = ref.watch(playlistProvider);
 
-    // 🎯 根据模式获取状态（分别获取以避免类型推断为 Object）
-    final isLoading = isDirectMode
-        ? ref.watch(localPlaylistProvider).isLoading
-        : ref.watch(playlistProvider).isLoading;
-
-    final error = isDirectMode
-        ? ref.watch(localPlaylistProvider).error
-        : ref.watch(playlistProvider).error;
-
-    // 获取播放列表数组（兼容两种模型）
-    final playlists = isDirectMode
-        ? ref.watch(localPlaylistProvider).playlists
-        : ref.watch(playlistProvider).playlists;
+    final isLoading =
+        _showLocalPlaylists ? localState.isLoading : serverState.isLoading;
+    final error = _showLocalPlaylists ? localState.error : serverState.error;
+    final playlists =
+        _showLocalPlaylists ? localState.playlists : serverState.playlists;
 
     return Scaffold(
       key: const ValueKey('playlist_scaffold'),
@@ -80,7 +69,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
           isLoading: isLoading,
           error: error,
           playlists: playlists,
-          isDirectMode: isDirectMode,
+          showLocalPlaylists: _showLocalPlaylists,
         ),
       ),
       floatingActionButton: Padding(
@@ -104,21 +93,212 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     required bool isLoading,
     required String? error,
     required List<dynamic> playlists,
-    required bool isDirectMode,
+    required bool showLocalPlaylists,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final currentChild = _buildBodyForSource(
+      isLoading: isLoading,
+      error: error,
+      playlists: playlists,
+      showLocalPlaylists: showLocalPlaylists,
+    );
+    final serverState = ref.watch(playlistProvider);
+    final localState = ref.watch(localPlaylistProvider);
+    final serverChild =
+        showLocalPlaylists
+            ? _buildBodyForSource(
+              isLoading: serverState.isLoading,
+              error: serverState.error,
+              playlists: serverState.playlists,
+              showLocalPlaylists: false,
+            )
+            : currentChild;
+    final localChild =
+        showLocalPlaylists
+            ? currentChild
+            : _buildBodyForSource(
+              isLoading: localState.isLoading,
+              error: localState.error,
+              playlists: localState.playlists,
+              showLocalPlaylists: true,
+            );
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 2),
+          child: Container(
+            height: 40,
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withOpacity(0.55),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: colorScheme.outlineVariant.withOpacity(0.35),
+                width: 1,
+              ),
+            ),
+            child: Stack(
+              children: [
+                AnimatedAlign(
+                  duration: const Duration(milliseconds: 320),
+                  curve: Curves.easeInOutCubicEmphasized,
+                  alignment:
+                      _showLocalPlaylists
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: 0.5,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 1),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: colorScheme.primary.withOpacity(0.32),
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    _buildSourceSegment(
+                      title: '服务端歌单',
+                      selected: !_showLocalPlaylists,
+                      onTap: () {
+                        if (_selectedSource == _PlaylistSourceTab.server) {
+                          return;
+                        }
+                        setState(() {
+                          _selectedSource = _PlaylistSourceTab.server;
+                        });
+                        ref.read(playlistProvider.notifier).refreshPlaylists();
+                      },
+                    ),
+                    _buildSourceSegment(
+                      title: '本地元歌单',
+                      selected: _showLocalPlaylists,
+                      onTap: () {
+                        if (_selectedSource == _PlaylistSourceTab.local) return;
+                        setState(() {
+                          _selectedSource = _PlaylistSourceTab.local;
+                        });
+                        ref
+                            .read(localPlaylistProvider.notifier)
+                            .refreshPlaylists();
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: ClipRect(
+            child: Stack(
+              children: [
+                IgnorePointer(
+                  ignoring: _showLocalPlaylists,
+                  child: AnimatedSlide(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOutCubicEmphasized,
+                    offset:
+                        _showLocalPlaylists
+                            ? const Offset(-0.08, 0)
+                            : Offset.zero,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeInOut,
+                      opacity: _showLocalPlaylists ? 0 : 1,
+                      child: serverChild,
+                    ),
+                  ),
+                ),
+                IgnorePointer(
+                  ignoring: !_showLocalPlaylists,
+                  child: AnimatedSlide(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOutCubicEmphasized,
+                    offset:
+                        _showLocalPlaylists
+                            ? Offset.zero
+                            : const Offset(0.08, 0),
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeInOut,
+                      opacity: _showLocalPlaylists ? 1 : 0,
+                      child: localChild,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBodyForSource({
+    required bool isLoading,
+    required String? error,
+    required List<dynamic> playlists,
+    required bool showLocalPlaylists,
   }) {
     if (isLoading && playlists.isEmpty) {
       return _buildLoadingIndicator();
     }
     if (error != null) {
-      return _buildErrorState(error, isDirectMode);
+      return _buildErrorState(error, showLocalPlaylists);
     }
     if (playlists.isEmpty) {
-      return _buildInitialState(isDirectMode);
+      return _buildInitialState(showLocalPlaylists);
     }
-    return _buildPlaylistsList(playlists, isDirectMode);
+    return _buildPlaylistsList(playlists, showLocalPlaylists);
   }
 
-  Widget _buildInitialState(bool isDirectMode) {
+  Widget _buildSourceSegment({
+    required String title,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          focusColor: Colors.transparent,
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
+          child: Center(
+            child: AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color:
+                    selected
+                        ? colorScheme.primary
+                        : colorScheme.onSurface.withOpacity(0.72),
+              ),
+              child: Text(title),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInitialState(bool showLocalPlaylists) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return Center(
       key: const ValueKey('playlist_initial'),
@@ -141,20 +321,23 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            isDirectMode
-                ? '点击右下角 + 创建你的第一个歌单'
-                : '在这里创建和管理你的音乐收藏',
+            showLocalPlaylists ? '点击右下角 + 创建你的第一个本地元歌单' : '在这里创建和管理服务端歌单',
             style: TextStyle(fontSize: 16, color: onSurface.withOpacity(0.6)),
           ),
           const SizedBox(height: 16),
-          // 直连模式不显示"加载歌单"按钮（本地存储无需加载）
-          if (!isDirectMode)
+          if (showLocalPlaylists)
+            FilledButton.icon(
+              onPressed: _showCreatePlaylistDialog,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('创建歌单'),
+            )
+          else
             FilledButton.icon(
               onPressed: () {
                 ref.read(playlistProvider.notifier).refreshPlaylists();
               },
               icon: const Icon(Icons.refresh_rounded),
-              label: const Text('加载歌单'),
+              label: const Text('刷新歌单'),
             ),
         ],
       ),
@@ -168,7 +351,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     );
   }
 
-  Widget _buildErrorState(String error, bool isDirectMode) {
+  Widget _buildErrorState(String error, bool showLocalPlaylists) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return Center(
       key: const ValueKey('playlist_error'),
@@ -201,7 +384,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
             const SizedBox(height: 20),
             ElevatedButton.icon(
               onPressed: () {
-                if (isDirectMode) {
+                if (showLocalPlaylists) {
                   ref.read(localPlaylistProvider.notifier).refreshPlaylists();
                 } else {
                   ref.read(playlistProvider.notifier).refreshPlaylists();
@@ -216,16 +399,16 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     );
   }
 
-  Widget _buildPlaylistsList(List<dynamic> playlists, bool isDirectMode) {
-    // 🎯 获取可删除播放列表列表（仅 xiaomusic 模式需要）
-    final deletablePlaylists = isDirectMode
-        ? <String>{} // 直连模式所有播放列表都可删除
-        : ref.watch(playlistProvider).deletablePlaylists;
+  Widget _buildPlaylistsList(List<dynamic> playlists, bool showLocalPlaylists) {
+    final deletablePlaylists =
+        showLocalPlaylists
+            ? <String>{}
+            : ref.watch(playlistProvider).deletablePlaylists;
 
     return RefreshIndicator(
       key: const ValueKey('playlist_refresh'),
       onRefresh: () {
-        if (isDirectMode) {
+        if (showLocalPlaylists) {
           return ref.read(localPlaylistProvider.notifier).refreshPlaylists();
         } else {
           return ref.read(playlistProvider.notifier).refreshPlaylists();
@@ -245,28 +428,29 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
               itemCount: playlists.length,
               itemBuilder: (context, index) {
                 final playlist = playlists[index];
-                // 🎯 兼容两种模型访问属性
-                final String playlistName =
-                    isDirectMode ? playlist.name : playlist.name;
-                final int playlistCount = isDirectMode
-                    ? playlist.count
-                    : (playlist.count ?? 0);
-                final bool deletable = isDirectMode
-                    ? true // 直连模式所有播放列表都可删除
-                    : deletablePlaylists.contains(playlistName);
+                final String playlistName = playlist.name;
+                final int playlistCount =
+                    showLocalPlaylists ? playlist.count : (playlist.count ?? 0);
+                final bool deletable =
+                    showLocalPlaylists
+                        ? true
+                        : deletablePlaylists.contains(playlistName);
 
-                final isLight = Theme.of(context).brightness == Brightness.light;
+                final isLight =
+                    Theme.of(context).brightness == Brightness.light;
                 return Container(
                   margin: const EdgeInsets.symmetric(vertical: 3.0),
                   decoration: BoxDecoration(
-                    color: isLight
-                        ? Colors.black.withOpacity(0.03)
-                        : Colors.white.withValues(alpha: 0.05),
+                    color:
+                        isLight
+                            ? Colors.black.withOpacity(0.03)
+                            : Colors.white.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: isLight
-                          ? Colors.black.withOpacity(0.06)
-                          : Colors.white.withValues(alpha: 0.1),
+                      color:
+                          isLight
+                              ? Colors.black.withOpacity(0.06)
+                              : Colors.white.withValues(alpha: 0.1),
                       width: 1,
                     ),
                   ),
@@ -315,8 +499,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // 🎯 仅 xiaomusic 模式显示播放按钮（直连模式暂不支持播放列表）
-                        if (!isDirectMode)
+                        // 服务端歌单支持一键播放
+                        if (!showLocalPlaylists)
                           IconButton(
                             icon: const Icon(Icons.play_circle_fill_rounded),
                             color: Theme.of(context).colorScheme.primary,
@@ -327,7 +511,10 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                   ref.read(deviceProvider).selectedDeviceId;
                               if (did == null) {
                                 if (mounted) {
-                                  AppSnackBar.showWarning(context, '请先在设置中配置 NAS 服务器');
+                                  AppSnackBar.showWarning(
+                                    context,
+                                    '请先在设置中配置 NAS 服务器',
+                                  );
                                 }
                                 return;
                               }
@@ -351,6 +538,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                     builder:
                                         (_) => PlaylistDetailPage(
                                           playlistName: playlistName,
+                                          isLocalPlaylist: showLocalPlaylists,
                                         ),
                                   ),
                                 );
@@ -380,8 +568,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                 );
                                 if (ok == true) {
                                   try {
-                                    // 🎯 根据模式调用对应的删除方法
-                                    if (isDirectMode) {
+                                    if (showLocalPlaylists) {
                                       await ref
                                           .read(localPlaylistProvider.notifier)
                                           .deletePlaylist(playlistName);
@@ -398,10 +585,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                     }
                                   } catch (e) {
                                     if (mounted) {
-                                      AppSnackBar.showError(
-                                        context,
-                                        '删除失败：$e',
-                                      );
+                                      AppSnackBar.showError(context, '删除失败：$e');
                                     }
                                   }
                                 }
@@ -436,6 +620,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                           builder:
                               (_) => PlaylistDetailPage(
                                 playlistName: playlistName,
+                                isLocalPlaylist: showLocalPlaylists,
                               ),
                         ),
                       );
@@ -454,9 +639,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     final controller = TextEditingController();
     bool _requestedFocus = false;
 
-    // 🎯 检查当前播放模式
-    final playbackMode = ref.read(playbackModeProvider);
-    final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
+    final showLocalPlaylists = _showLocalPlaylists;
 
     showModalBottomSheet(
       context: context,
@@ -561,10 +744,11 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                     : () async {
                                       final name = controller.text.trim();
                                       try {
-                                        // 🎯 根据模式调用对应的创建方法
-                                        if (isDirectMode) {
+                                        if (showLocalPlaylists) {
                                           await ref
-                                              .read(localPlaylistProvider.notifier)
+                                              .read(
+                                                localPlaylistProvider.notifier,
+                                              )
                                               .createPlaylist(name);
                                         } else {
                                           await ref
