@@ -186,10 +186,18 @@ class MusicApiService {
     debugPrint('保存设置结果(saveSetting): $saveResult');
 
     // 播放音乐
+    // 某些老版本服务端在 playmusiclist 上响应较慢（可达 10s+）
+    // 这里做限时等待：快速返回给 UI，后续由状态轮询同步真实播放状态
     final playResult = await playMusicList(
       did: did,
       listName: "在线播放",
       musicName: "$musicTitle - $musicAuthor",
+    ).timeout(
+      const Duration(seconds: 3),
+      onTimeout: () {
+        debugPrint('⚠️ playMusicList 超时(3s)，进入状态轮询等待实际播放');
+        return {'ret': 'TIMEOUT_PENDING'};
+      },
     );
     debugPrint('播放结果: $playResult');
   }
@@ -311,7 +319,8 @@ class MusicApiService {
     try {
       final response = await _client.get('/openapi.json');
       final paths = response.data['paths'] as Map?;
-      _supportsGetPlayerStatus = paths?.containsKey('/getplayerstatus') ?? false;
+      _supportsGetPlayerStatus =
+          paths?.containsKey('/getplayerstatus') ?? false;
     } catch (e) {
       debugPrint('⚠️ [MusicApiService] 检测 getplayerstatus 支持失败: $e');
       _supportsGetPlayerStatus = false;
@@ -626,11 +635,14 @@ class MusicApiService {
         return false;
       }
 
-      _supportsDownloadOneMusicPlaylistName =
-          properties.containsKey('playlist_name');
+      _supportsDownloadOneMusicPlaylistName = properties.containsKey(
+        'playlist_name',
+      );
       return _supportsDownloadOneMusicPlaylistName!;
     } catch (e) {
-      debugPrint('⚠️ [MusicApiService] 检测 downloadonemusic.playlist_name 支持失败: $e');
+      debugPrint(
+        '⚠️ [MusicApiService] 检测 downloadonemusic.playlist_name 支持失败: $e',
+      );
       _supportsDownloadOneMusicPlaylistName = false;
       return false;
     }

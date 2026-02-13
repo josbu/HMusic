@@ -5,6 +5,8 @@ import 'music_api_service.dart';
 import 'playback_strategy.dart';
 import 'audio_handler_service.dart';
 
+enum _PlaybackApiGroup { playUrl, legacy }
+
 /// 远程播放策略实现
 /// 通过API控制播放设备播放音乐
 class RemotePlaybackStrategy implements PlaybackStrategy {
@@ -18,6 +20,10 @@ class RemotePlaybackStrategy implements PlaybackStrategy {
 
   // 🔧 当前封面图 URL,用于通知栏显示
   String? _albumCoverUrl;
+  bool? _canUsePlayUrlGroup;
+  _PlaybackApiGroup? _activeApiGroup;
+  String? _lastKnownMusicName;
+  bool? _lastKnownIsPlaying;
 
   RemotePlaybackStrategy({
     required MusicApiService apiService,
@@ -69,15 +75,17 @@ class RemotePlaybackStrategy implements PlaybackStrategy {
       );
 
       // 🔧 设置初始播放状态,确保通知栏显示
-      _audioHandler!.playbackState.add(PlaybackState(
-        processingState: AudioProcessingState.loading,
-        playing: false,
-        controls: [
-          MediaControl.skipToPrevious,
-          MediaControl.play,
-          MediaControl.skipToNext,
-        ],
-      ));
+      _audioHandler!.playbackState.add(
+        PlaybackState(
+          processingState: AudioProcessingState.loading,
+          playing: false,
+          controls: [
+            MediaControl.skipToPrevious,
+            MediaControl.play,
+            MediaControl.skipToNext,
+          ],
+        ),
+      );
 
       debugPrint('🔧 [RemotePlayback] 已初始化通知栏为远程播放模式');
     }
@@ -166,23 +174,12 @@ class RemotePlaybackStrategy implements PlaybackStrategy {
     int? duration,
   }) async {
     debugPrint('🎵 [RemotePlayback] 播放音乐: $musicName (设备: $_deviceId)');
+    if (musicName.isNotEmpty) {
+      _lastKnownMusicName = musicName;
+    }
 
-    // 如果有直链URL，使用 playOnlineMusic API 播放
-    // 🎯 修复：playOnlineMusic 已修复为只发送 music_list_json 字段，避免 500 错误
-    // 注意：playUrlSmart/playUrl 不可靠，会播放错误的歌曲
     if (url != null && url.isNotEmpty) {
-      debugPrint('🎵 [RemotePlayback] 使用 playOnlineMusic API 播放在线音乐');
-      // 解析歌曲名和歌手
-      final parts = musicName.split(' - ');
-      final title = parts.isNotEmpty ? parts[0].trim() : musicName;
-      final author = parts.length > 1 ? parts.sublist(1).join(' - ').trim() : '未知歌手';
-
-      await _apiService.playOnlineMusic(
-        did: _deviceId,
-        musicUrl: url,
-        musicTitle: title,
-        musicAuthor: author,
-      );
+      await _playOnlineMusicWithCompatibility(musicName: musicName, url: url);
     } else {
       // 否则，使用音乐名称播放（服务器本地音乐）
       debugPrint('🎵 [RemotePlayback] 播放服务器本地音乐');
@@ -203,12 +200,37 @@ class RemotePlaybackStrategy implements PlaybackStrategy {
       listName: listName,
       musicName: musicName,
     );
+    _activeApiGroup = _PlaybackApiGroup.legacy;
   }
 
   @override
   Future<PlayingMusic?> getCurrentStatus() async {
     try {
-      final response = await _apiService.getCurrentPlaying(did: _deviceId);
+      final supportsNewGroup = await _shouldUsePlayUrlGroup();
+      final useNewGroup =
+          _activeApiGroup == _PlaybackApiGroup.legacy
+              ? false
+              : supportsNewGroup;
+      Map<String, dynamic> response;
+
+      if (useNewGroup) {
+        try {
+          final rawResponse = await _apiService.getPlayerStatus(did: _deviceId);
+          response = _convertPlayerStatus(rawResponse);
+        } catch (e) {
+          _degradeToLegacyApi('getPlayerStatus 异常，回退旧分组: $e');
+          response = await _apiService.getCurrentPlaying(did: _deviceId);
+        }
+      } else {
+        // 旧分组逻辑保持不变
+        response = await _apiService.getCurrentPlaying(did: _deviceId);
+      }
+
+      final curMusic = (response['cur_music'] ?? '').toString().trim();
+      if (curMusic.isNotEmpty) {
+        _lastKnownMusicName = curMusic;
+      }
+
       final status = PlayingMusic.fromJson(response);
 
       // 🔧 更新通知栏媒体信息和播放状态
@@ -222,18 +244,22 @@ class RemotePlaybackStrategy implements PlaybackStrategy {
         );
 
         // 🔧 同时更新播放状态和进度,确保通知栏正确显示
-        _audioHandler!.playbackState.add(_audioHandler!.playbackState.value.copyWith(
-          playing: status.isPlaying,
-          processingState: AudioProcessingState.ready, // 🔧 设置为 ready 才能显示进度条
-          updatePosition: Duration(seconds: status.offset), // 🔧 更新当前进度
-          bufferedPosition: Duration(seconds: status.duration), // 🔧 设置缓冲进度
-          controls: [
-            MediaControl.skipToPrevious,
-            status.isPlaying ? MediaControl.pause : MediaControl.play,
-            MediaControl.skipToNext,
-          ],
-        ));
-        debugPrint('🔧 [RemotePlayback] 已更新通知栏: playing=${status.isPlaying}, position=${status.offset}s/${status.duration}s, cover=$_albumCoverUrl');
+        _audioHandler!.playbackState.add(
+          _audioHandler!.playbackState.value.copyWith(
+            playing: status.isPlaying,
+            processingState: AudioProcessingState.ready, // 🔧 设置为 ready 才能显示进度条
+            updatePosition: Duration(seconds: status.offset), // 🔧 更新当前进度
+            bufferedPosition: Duration(seconds: status.duration), // 🔧 设置缓冲进度
+            controls: [
+              MediaControl.skipToPrevious,
+              status.isPlaying ? MediaControl.pause : MediaControl.play,
+              MediaControl.skipToNext,
+            ],
+          ),
+        );
+        debugPrint(
+          '🔧 [RemotePlayback] 已更新通知栏: playing=${status.isPlaying}, position=${status.offset}s/${status.duration}s, cover=$_albumCoverUrl',
+        );
       }
 
       return status;
@@ -241,6 +267,220 @@ class RemotePlaybackStrategy implements PlaybackStrategy {
       debugPrint('❌ [RemotePlayback] 获取播放状态失败: $e');
       return null;
     }
+  }
+
+  /// 🔧 转换 getPlayerStatus 返回格式为 PlayingMusic 兼容格式
+  Map<String, dynamic> _convertPlayerStatus(Map<String, dynamic> status) {
+    final detail = status['play_song_detail'] as Map<String, dynamic>?;
+
+    final isPlaying = _mapPlayerStatusToIsPlaying(status);
+
+    // play_song_detail.position/duration 是毫秒，需要转成秒
+    final durationMs = detail?['duration'] as int?;
+    final positionMs = detail?['position'] as int?;
+    final duration =
+        durationMs != null
+            ? (durationMs / 1000).round()
+            : (status['duration'] as int? ?? 0);
+    final offset =
+        positionMs != null
+            ? (positionMs / 1000).round()
+            : (status['offset'] as int? ?? 0);
+
+    final currentMusic =
+        (detail?['title'] ?? status['cur_music'] ?? '').toString().trim();
+    final finalMusic =
+        currentMusic.isNotEmpty ? currentMusic : (_lastKnownMusicName ?? '');
+    _lastKnownIsPlaying = isPlaying;
+
+    return {
+      'ret': status['ret'] ?? 'ok',
+      'is_playing': isPlaying,
+      'cur_music': finalMusic,
+      'cur_playlist': status['cur_playlist'] ?? status['playlist'] ?? '',
+      'offset': offset,
+      'duration': duration,
+    };
+  }
+
+  bool _mapPlayerStatusToIsPlaying(Map<String, dynamic> status) {
+    final raw =
+        status['is_playing'] ??
+        status['playing'] ??
+        status['play_status'] ??
+        status['status'];
+
+    if (raw is bool) return raw;
+    if (raw is num) {
+      final code = raw.toInt();
+      if (code == 1) return true;
+      if (code == 0 || code == 2) return false;
+      debugPrint('⚠️ [RemotePlayback] 未知 player status 数值: $code，沿用上次状态');
+      return _lastKnownIsPlaying ?? false;
+    }
+    if (raw is String) {
+      final value = raw.trim().toLowerCase();
+      if (value == '1' || value == 'true' || value == 'playing') return true;
+      if (value == '0' ||
+          value == '2' ||
+          value == 'false' ||
+          value == 'pause' ||
+          value == 'paused') {
+        return false;
+      }
+      debugPrint('⚠️ [RemotePlayback] 未知 player status 字符串: "$raw"，沿用上次状态');
+      return _lastKnownIsPlaying ?? false;
+    }
+    return _lastKnownIsPlaying ?? false;
+  }
+
+  void _degradeToLegacyApi(String reason) {
+    if (_canUsePlayUrlGroup != false) {
+      debugPrint('⚠️ [RemotePlayback] 降级到旧 API 流程: $reason');
+    }
+    _canUsePlayUrlGroup = false;
+    _activeApiGroup = _PlaybackApiGroup.legacy;
+  }
+
+  String? get activeApiGroupName {
+    if (_activeApiGroup == null) return null;
+    return _activeApiGroup == _PlaybackApiGroup.playUrl ? 'playurl' : 'legacy';
+  }
+
+  void restoreActiveApiGroup(String? value) {
+    if (value == 'playurl') {
+      _activeApiGroup = _PlaybackApiGroup.playUrl;
+    } else if (value == 'legacy') {
+      _activeApiGroup = _PlaybackApiGroup.legacy;
+    }
+  }
+
+  Future<bool> _shouldUsePlayUrlGroup() async {
+    if (_canUsePlayUrlGroup != null) {
+      return _canUsePlayUrlGroup!;
+    }
+
+    final supported = await _apiService.supportsGetPlayerStatus();
+    _canUsePlayUrlGroup = supported;
+    debugPrint(
+      '🔧 [RemotePlayback] API分组选择: ${supported ? "新分组(/playurl + /getplayerstatus)" : "旧分组(/playmusiclist + /playingmusic)"}',
+    );
+    return supported;
+  }
+
+  Future<void> _playOnlineMusicWithCompatibility({
+    required String musicName,
+    required String url,
+  }) async {
+    final useNewGroup = await _shouldUsePlayUrlGroup();
+    final proxyUrl = _apiService.buildProxyUrl(url);
+
+    if (useNewGroup) {
+      // 新分组：/playurl + /getplayerstatus
+      try {
+        debugPrint('🎵 [RemotePlayback] 使用 playUrl API 播放');
+        await _apiService.playUrl(did: _deviceId, url: proxyUrl);
+        final applied = await _verifyPlayUrlApplied(
+          expectedMusicName: musicName,
+        );
+        if (!applied) {
+          throw Exception('playUrl 已返回成功，但设备状态未切换');
+        }
+        _activeApiGroup = _PlaybackApiGroup.playUrl;
+        return;
+      } catch (playUrlError) {
+        _degradeToLegacyApi('playUrl 失败，回退旧分组: $playUrlError');
+      }
+    }
+
+    // 旧分组：playOnlineMusic（内部 saveSetting + playmusiclist）
+    debugPrint('🎵 [RemotePlayback] 使用 playOnlineMusic API（旧分组）');
+    final parts = musicName.split(' - ');
+    final title = parts.isNotEmpty ? parts[0].trim() : musicName;
+    final author =
+        parts.length > 1 ? parts.sublist(1).join(' - ').trim() : '未知歌手';
+
+    await _apiService.playOnlineMusic(
+      did: _deviceId,
+      musicUrl: url,
+      musicTitle: title,
+      musicAuthor: author,
+    );
+    _activeApiGroup = _PlaybackApiGroup.legacy;
+  }
+
+  Future<bool> _verifyPlayUrlApplied({
+    required String expectedMusicName,
+  }) async {
+    try {
+      final useNewGroup = await _shouldUsePlayUrlGroup();
+      final expected = expectedMusicName.trim();
+      final probeSchedule = <Duration>[
+        const Duration(milliseconds: 500),
+        const Duration(milliseconds: 900),
+        const Duration(milliseconds: 1400),
+      ];
+
+      Duration waited = Duration.zero;
+      String current = '';
+      bool isPlaying = false;
+
+      for (final delay in probeSchedule) {
+        final waitFor = delay - waited;
+        if (waitFor > Duration.zero) {
+          await Future.delayed(waitFor);
+        }
+        waited = delay;
+
+        if (useNewGroup) {
+          try {
+            final raw = await _apiService.getPlayerStatus(did: _deviceId);
+            final status = _mapPlayerStatusToIsPlaying(raw);
+            final detail = raw['play_song_detail'] as Map<String, dynamic>?;
+            final positionMs = detail?['position'] as int?;
+            final positionSec =
+                positionMs != null ? (positionMs / 1000).round() : 0;
+            if (status && positionSec >= 1) {
+              return true;
+            }
+            isPlaying = status;
+            current = (detail?['title'] ?? '').toString().trim();
+          } catch (_) {
+            final status = await _apiService.getCurrentPlaying(did: _deviceId);
+            isPlaying = status['is_playing'] == true;
+            current = (status['cur_music'] ?? '').toString().trim();
+            final matched =
+                current.isNotEmpty &&
+                _normalizeSongName(current) == _normalizeSongName(expected);
+            if (matched || isPlaying) {
+              return true;
+            }
+          }
+        } else {
+          final status = await _apiService.getCurrentPlaying(did: _deviceId);
+          isPlaying = status['is_playing'] == true;
+          current = (status['cur_music'] ?? '').toString().trim();
+          final matched =
+              current.isNotEmpty &&
+              _normalizeSongName(current) == _normalizeSongName(expected);
+          if (matched || isPlaying) {
+            return true;
+          }
+        }
+      }
+
+      debugPrint(
+        '⚠️ [RemotePlayback] playUrl 校验未通过: cur_music="$current", is_playing=$isPlaying, expected="$expected"',
+      );
+      return false;
+    } catch (e) {
+      debugPrint('⚠️ [RemotePlayback] playUrl 校验失败: $e');
+      return false;
+    }
+  }
+
+  String _normalizeSongName(String name) {
+    return name.toLowerCase().replaceAll(RegExp(r'\s+'), '');
   }
 
   /// 🔧 更新封面图 URL

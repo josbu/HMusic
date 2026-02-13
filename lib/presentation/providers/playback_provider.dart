@@ -24,6 +24,7 @@ import 'device_provider.dart';
 import 'music_library_provider.dart';
 import 'direct_mode_provider.dart'; // 🎯 直连模式Provider
 import 'playback_queue_provider.dart'; // 🎯 播放队列Provider
+import 'source_settings_provider.dart'; // 🎯 音源策略设置
 import 'lyric_provider.dart'; // 🎯 歌词Provider
 import 'js_proxy_provider.dart'; // 🎯 QuickJS代理
 import 'js_source_provider.dart'; // 🎯 WebView JS 和 LocalJS 解析（两个都在这里）
@@ -159,6 +160,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   DateTime? _lastUpdateTime;
   DateTime? _lastProgressUpdate; // 上次UI进度更新时间
   DateTime? _lastRefreshTime; // 上次状态刷新时间
+  bool _remoteRefreshInFlight = false; // 远程状态刷新并发锁
   // 保存服务器最后返回的原始进度，用于本地预测基准
   int? _lastServerOffset;
 
@@ -179,8 +181,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   static const String _localPlaybackKey = 'local_playback_state';
   static const String _localPlaybackUrlKey = 'local_playback_url';
   static const String _localPlaybackCoverKey = 'local_playback_cover';
-  static const String _directModePlaybackKey = 'direct_mode_playback_state'; // 🆕 直连模式专用
-  static const String _directModePlaybackCoverKey = 'direct_mode_playback_cover'; // 🆕 直连模式专用
+  static const String _remotePlaybackKey = 'remote_playback_state';
+  static const String _remotePlaybackCoverKey = 'remote_playback_cover';
+  static const String _remotePlaybackApiGroupKey = 'remote_playback_api_group';
+  static const String _directModePlaybackKey =
+      'direct_mode_playback_state'; // 🆕 直连模式专用
+  static const String _directModePlaybackCoverKey =
+      'direct_mode_playback_cover'; // 🆕 直连模式专用
 
   // 🎵 播放历史记录（用于随机播放的"上一首"功能）
   final List<String> _playHistory = []; // 保存最近播放过的歌曲名
@@ -236,17 +243,25 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       if (playbackMode == PlaybackMode.miIoTDirect) {
         // 🎯 直连模式：从 DirectModeProvider 获取设备并初始化策略
         final directState = ref.read(directModeProvider);
-        debugPrint('🔧 [PlaybackProvider] 直连模式状态类型: ${directState.runtimeType}');
+        debugPrint(
+          '🔧 [PlaybackProvider] 直连模式状态类型: ${directState.runtimeType}',
+        );
 
         if (directState is DirectModeAuthenticated) {
           debugPrint('🔧 [PlaybackProvider] ✅ 直连模式已登录');
-          debugPrint('🔧 [PlaybackProvider] 设备数量: ${directState.devices.length}');
-          debugPrint('🔧 [PlaybackProvider] 播放设备类型: ${directState.playbackDeviceType}');
+          debugPrint(
+            '🔧 [PlaybackProvider] 设备数量: ${directState.devices.length}',
+          );
+          debugPrint(
+            '🔧 [PlaybackProvider] 播放设备类型: ${directState.playbackDeviceType}',
+          );
 
           // 🎵 无论是本地播放还是小爱音箱播放，都初始化策略
           debugPrint('🔧 [PlaybackProvider] 🎯 开始初始化直连模式播放策略');
           await _switchToDirectModeStrategy(directState);
-          debugPrint('🔧 [PlaybackProvider] 策略初始化结果: ${_currentStrategy != null ? "成功" : "失败"}');
+          debugPrint(
+            '🔧 [PlaybackProvider] 策略初始化结果: ${_currentStrategy != null ? "成功" : "失败"}',
+          );
         } else if (directState is DirectModeInitial) {
           debugPrint('⚠️ [PlaybackProvider] ❌ 直连模式未登录（DirectModeInitial）');
           debugPrint('⚠️ [PlaybackProvider] 提示：请先登录小米账号');
@@ -254,9 +269,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           debugPrint('⚠️ [PlaybackProvider] 🔄 直连模式正在登录中（DirectModeLoading）');
         } else if (directState is DirectModeError) {
           debugPrint('⚠️ [PlaybackProvider] ❌ 直连模式登录失败（DirectModeError）');
-          debugPrint('⚠️ [PlaybackProvider] 错误信息: ${(directState as DirectModeError).message}');
+          debugPrint(
+            '⚠️ [PlaybackProvider] 错误信息: ${(directState as DirectModeError).message}',
+          );
         } else {
-          debugPrint('⚠️ [PlaybackProvider] ❓ 未知的直连模式状态: ${directState.runtimeType}');
+          debugPrint(
+            '⚠️ [PlaybackProvider] ❓ 未知的直连模式状态: ${directState.runtimeType}',
+          );
         }
       } else {
         // 🎯 xiaomusic 模式：从 DeviceProvider 获取设备并初始化策略
@@ -267,8 +286,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
         // 2. 获取当前选中的设备并初始化策略
         final deviceState = ref.read(deviceProvider);
-        debugPrint('🔧 [PlaybackProvider] 设备列表加载完成: ${deviceState.devices.length} 个设备');
-        debugPrint('🔧 [PlaybackProvider] 当前选中设备ID: ${deviceState.selectedDeviceId ?? "null"}');
+        debugPrint(
+          '🔧 [PlaybackProvider] 设备列表加载完成: ${deviceState.devices.length} 个设备',
+        );
+        debugPrint(
+          '🔧 [PlaybackProvider] 当前选中设备ID: ${deviceState.selectedDeviceId ?? "null"}',
+        );
 
         if (deviceState.selectedDeviceId != null &&
             deviceState.devices.isNotEmpty) {
@@ -277,7 +300,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             deviceState.selectedDeviceId!,
             deviceState.devices,
           );
-          debugPrint('🔧 [PlaybackProvider] 策略初始化结果: ${_currentStrategy != null ? "成功" : "失败"}');
+          debugPrint(
+            '🔧 [PlaybackProvider] 策略初始化结果: ${_currentStrategy != null ? "成功" : "失败"}',
+          );
         } else {
           debugPrint('⚠️ [PlaybackProvider] ❌ 无设备或未选中设备，跳过策略初始化');
           if (deviceState.devices.isEmpty) {
@@ -299,12 +324,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       }
 
       debugPrint('✅ [PlaybackProvider] ========== 初始化完成 ==========');
-      debugPrint('✅ [PlaybackProvider] 当前策略: ${_currentStrategy != null ? (_currentStrategy!.isLocalMode ? "本地播放" : "远程控制") : "未初始化"}');
+      debugPrint(
+        '✅ [PlaybackProvider] 当前策略: ${_currentStrategy != null ? (_currentStrategy!.isLocalMode ? "本地播放" : "远程控制") : "未初始化"}',
+      );
     } catch (e, stackTrace) {
       // 初始化失败，设置错误状态但不抛出异常
       debugPrint('❌ [PlaybackProvider] ========== 初始化失败 ==========');
       debugPrint('❌ [PlaybackProvider] 错误: $e');
-      debugPrint('❌ [PlaybackProvider] 堆栈: ${stackTrace.toString().split('\n').take(5).join('\n')}');
+      debugPrint(
+        '❌ [PlaybackProvider] 堆栈: ${stackTrace.toString().split('\n').take(5).join('\n')}',
+      );
       state = state.copyWith(
         isLoading: false,
         hasLoaded: true,
@@ -357,7 +386,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         return; // 非直连模式时忽略
       }
 
-      if (next is DirectModeAuthenticated && previous is DirectModeAuthenticated) {
+      if (next is DirectModeAuthenticated &&
+          previous is DirectModeAuthenticated) {
         // 🎵 检查播放设备类型是否变化
         if (next.playbackDeviceType != previous.playbackDeviceType) {
           debugPrint(
@@ -366,7 +396,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           _currentDeviceId = null; // 重置设备ID，准备切换策略
           _switchToDirectModeStrategy(next);
         }
-      } else if (next is DirectModeAuthenticated && previous is! DirectModeAuthenticated) {
+      } else if (next is DirectModeAuthenticated &&
+          previous is! DirectModeAuthenticated) {
         // 从未登录变为已登录，初始化播放策略
         debugPrint('🎵 [PlaybackProvider] 检测到直连模式登录成功，初始化播放策略');
         _switchToDirectModeStrategy(next);
@@ -438,7 +469,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       final deviceState = ref.read(deviceProvider);
       if (deviceState.selectedDeviceId != null) {
         debugPrint('🎵 [PlaybackProvider] xiaomusic 模式有设备，初始化远程策略');
-        await _switchStrategy(deviceState.selectedDeviceId!, deviceState.devices);
+        await _switchStrategy(
+          deviceState.selectedDeviceId!,
+          deviceState.devices,
+        );
       } else {
         debugPrint('⚠️ [PlaybackProvider] xiaomusic 模式无设备，等待选择设备后初始化');
       }
@@ -446,7 +480,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   }
 
   // 🎯 切换到直连模式播放策略
-  Future<void> _switchToDirectModeStrategy(DirectModeAuthenticated directState) async {
+  Future<void> _switchToDirectModeStrategy(
+    DirectModeAuthenticated directState,
+  ) async {
     try {
       final playbackDeviceType = directState.playbackDeviceType;
 
@@ -463,7 +499,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       if (playbackDeviceType == 'local') {
         // 🎵 本地播放模式
         debugPrint('🎵 [PlaybackProvider] ========== 本地播放模式 ==========');
-        _deviceSwitchProtectionUntil = DateTime.now().add(const Duration(milliseconds: 1500));
+        _deviceSwitchProtectionUntil = DateTime.now().add(
+          const Duration(milliseconds: 1500),
+        );
         debugPrint('🎵 [PlaybackProvider] 创建本地播放策略');
 
         // 🎯 尝试获取 MusicApiService（用于搜索音乐，可选）
@@ -472,7 +510,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         // 🎯 如果 apiServiceProvider 为 null（直连模式下未登录 xiaomusic）
         // 尝试从 SharedPreferences 读取保存的服务器配置并创建临时 MusicApiService
         if (apiService == null) {
-          debugPrint('⚠️ [PlaybackProvider] apiServiceProvider 为 null，尝试从本地配置创建');
+          debugPrint(
+            '⚠️ [PlaybackProvider] apiServiceProvider 为 null，尝试从本地配置创建',
+          );
 
           try {
             final prefs = await SharedPreferences.getInstance();
@@ -498,7 +538,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
               // apiService 保持为 null，LocalPlaybackStrategy 会处理这种情况
             }
           } catch (e) {
-            debugPrint('⚠️ [PlaybackProvider] 创建临时 MusicApiService 失败: $e，使用完全独立模式');
+            debugPrint(
+              '⚠️ [PlaybackProvider] 创建临时 MusicApiService 失败: $e，使用完全独立模式',
+            );
             // 🎯 失败时也使用完全独立模式
             apiService = null;
           }
@@ -510,7 +552,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         _currentDeviceId = 'local';
 
         try {
-          await LocalPlaybackStrategy.handlerReady.timeout(const Duration(seconds: 2));
+          await LocalPlaybackStrategy.handlerReady.timeout(
+            const Duration(seconds: 2),
+          );
         } catch (_) {}
 
         // 🎵 监听本地播放器状态流
@@ -526,11 +570,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           localStrategy.refreshNotification();
 
           // 🖼️ 本地模式自动搜索封面图
-          if (status.curMusic.isNotEmpty && _lastCoverSearchSong != status.curMusic) {
-            debugPrint('🖼️ [PlaybackProvider-本地Stream] 歌曲切换,清除旧封面: $_lastCoverSearchSong -> ${status.curMusic}');
+          if (status.curMusic.isNotEmpty &&
+              _lastCoverSearchSong != status.curMusic) {
+            debugPrint(
+              '🖼️ [PlaybackProvider-本地Stream] 歌曲切换,清除旧封面: $_lastCoverSearchSong -> ${status.curMusic}',
+            );
             state = state.copyWith(albumCoverUrl: null);
             _lastCoverSearchSong = status.curMusic;
-            debugPrint('🖼️ [PlaybackProvider-本地Stream] ✅ 触发封面自动搜索: ${status.curMusic}');
+            debugPrint(
+              '🖼️ [PlaybackProvider-本地Stream] ✅ 触发封面自动搜索: ${status.curMusic}',
+            );
             _autoFetchAlbumCover(status.curMusic).catchError((e) {
               debugPrint('🖼️ [AutoCover] 异步搜索封面失败: $e');
             });
@@ -591,7 +640,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             await refreshStatus(silent: true);
 
             // 💾 保存直连模式播放状态（每次状态变化都保存）
-            if (state.currentMusic != null && state.currentMusic!.curMusic.isNotEmpty) {
+            if (state.currentMusic != null &&
+                state.currentMusic!.curMusic.isNotEmpty) {
               await _saveDirectModePlayback(state.currentMusic!);
             }
           },
@@ -611,16 +661,24 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
               // 🎯 如果 apiServiceProvider 为 null（直连模式下未登录 xiaomusic）
               // 尝试从 SharedPreferences 读取保存的服务器配置并创建临时 MusicApiService
               if (apiService == null) {
-                debugPrint('⚠️ [PlaybackProvider-MiIoT] apiServiceProvider 为 null，尝试从本地配置创建');
+                debugPrint(
+                  '⚠️ [PlaybackProvider-MiIoT] apiServiceProvider 为 null，尝试从本地配置创建',
+                );
 
                 try {
                   final prefs = await SharedPreferences.getInstance();
-                  final serverUrl = prefs.getString(AppConstants.prefsServerUrl);
+                  final serverUrl = prefs.getString(
+                    AppConstants.prefsServerUrl,
+                  );
                   final username = prefs.getString(AppConstants.prefsUsername);
                   final password = prefs.getString(AppConstants.prefsPassword);
 
-                  if (serverUrl != null && username != null && password != null) {
-                    debugPrint('✅ [PlaybackProvider-MiIoT] 找到保存的服务器配置: $serverUrl');
+                  if (serverUrl != null &&
+                      username != null &&
+                      password != null) {
+                    debugPrint(
+                      '✅ [PlaybackProvider-MiIoT] 找到保存的服务器配置: $serverUrl',
+                    );
 
                     // 创建临时的 DioClient 和 MusicApiService
                     final tempClient = DioClient(
@@ -630,7 +688,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
                     );
                     apiService = MusicApiService(tempClient);
 
-                    debugPrint('✅ [PlaybackProvider-MiIoT] 成功创建临时 MusicApiService');
+                    debugPrint(
+                      '✅ [PlaybackProvider-MiIoT] 成功创建临时 MusicApiService',
+                    );
                   } else {
                     debugPrint('⚠️ [PlaybackProvider-MiIoT] 未找到服务器配置，完全独立模式');
                     // 🎯 完全独立模式：返回 null，由调用方处理
@@ -638,7 +698,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
                     return null;
                   }
                 } catch (e) {
-                  debugPrint('⚠️ [PlaybackProvider-MiIoT] 创建临时 MusicApiService 失败: $e，完全独立模式');
+                  debugPrint(
+                    '⚠️ [PlaybackProvider-MiIoT] 创建临时 MusicApiService 失败: $e，完全独立模式',
+                  );
                   return null;
                 }
               }
@@ -666,7 +728,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         // 🎵 设置播放列表（从音乐库获取）
         try {
           final libraryState = ref.read(musicLibraryProvider);
-          debugPrint('🎵 [PlaybackProvider] 音乐库歌曲数量: ${libraryState.musicList.length}');
+          debugPrint(
+            '🎵 [PlaybackProvider] 音乐库歌曲数量: ${libraryState.musicList.length}',
+          );
 
           if (libraryState.musicList.isNotEmpty) {
             int startIndex = 0;
@@ -679,8 +743,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
                 debugPrint('🎵 [PlaybackProvider] 找到当前播放歌曲索引: $startIndex');
               }
             }
-            directStrategy.setPlaylist(libraryState.musicList, startIndex: startIndex);
-            debugPrint('✅ [PlaybackProvider] 已设置直连播放列表: ${libraryState.musicList.length} 首');
+            directStrategy.setPlaylist(
+              libraryState.musicList,
+              startIndex: startIndex,
+            );
+            debugPrint(
+              '✅ [PlaybackProvider] 已设置直连播放列表: ${libraryState.musicList.length} 首',
+            );
           } else {
             debugPrint('⚠️ [PlaybackProvider] 音乐库为空，暂不设置播放列表');
           }
@@ -701,7 +770,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         );
 
         debugPrint('✅ [PlaybackProvider] 直连模式策略切换完成');
-        debugPrint('✅ [PlaybackProvider] 当前策略是否为null: ${_currentStrategy == null}');
+        debugPrint(
+          '✅ [PlaybackProvider] 当前策略是否为null: ${_currentStrategy == null}',
+        );
 
         // 🔊 获取并显示真实音量
         try {
@@ -718,7 +789,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       }
     } catch (e, stackTrace) {
       debugPrint('❌ [PlaybackProvider] 切换直连模式策略失败: $e');
-      debugPrint('❌ [PlaybackProvider] 堆栈: ${stackTrace.toString().split('\n').take(5).join('\n')}');
+      debugPrint(
+        '❌ [PlaybackProvider] 堆栈: ${stackTrace.toString().split('\n').take(5).join('\n')}',
+      );
     }
   }
 
@@ -727,7 +800,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     try {
       debugPrint('🎵 [PlaybackProvider] ========== 开始切换播放策略 ==========');
       debugPrint('🎵 [PlaybackProvider] 目标设备ID: $deviceId');
-      debugPrint('🎵 [PlaybackProvider] 设备列表: ${devices.map((d) => '${d.name}(${d.id})').join(', ')}');
+      debugPrint(
+        '🎵 [PlaybackProvider] 设备列表: ${devices.map((d) => '${d.name}(${d.id})').join(', ')}',
+      );
 
       // 🔧 智能判断是否需要清空UI状态
       // 如果是首次初始化（_currentDeviceId == null），保留缓存数据，避免闪烁
@@ -748,7 +823,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       // 🔧 直接用设备ID判断，不依赖设备列表（更可靠）
       final isLocalMode = (deviceId == 'local_device');
-      debugPrint('🎵 [PlaybackProvider] 目标设备是否为本地: $isLocalMode (ID: $deviceId)');
+      debugPrint(
+        '🎵 [PlaybackProvider] 目标设备是否为本地: $isLocalMode (ID: $deviceId)',
+      );
 
       // 查找设备信息（仅用于显示名称）
       final device = devices.firstWhere(
@@ -782,14 +859,18 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       // 🔧 使用直接判断的 isLocalMode，而不是 device.isLocalDevice
       if (isLocalMode) {
         debugPrint('🎵 [PlaybackProvider] ========== 本地播放模式 ==========');
-        _deviceSwitchProtectionUntil = DateTime.now().add(const Duration(milliseconds: 1500));
+        _deviceSwitchProtectionUntil = DateTime.now().add(
+          const Duration(milliseconds: 1500),
+        );
         debugPrint('🎵 [PlaybackProvider] 切换到本地播放模式');
 
         final localStrategy = LocalPlaybackStrategy(apiService: apiService);
         _currentStrategy = localStrategy;
 
         try {
-          await LocalPlaybackStrategy.handlerReady.timeout(const Duration(seconds: 2));
+          await LocalPlaybackStrategy.handlerReady.timeout(
+            const Duration(seconds: 2),
+          );
         } catch (_) {}
 
         // 🎵 监听本地播放器状态流
@@ -806,15 +887,20 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
           // 🖼️ 本地模式自动搜索封面图
           // 🔧 修复: 当歌曲切换时,主动更新封面
-          if (status.curMusic.isNotEmpty && _lastCoverSearchSong != status.curMusic) {
-            debugPrint('🖼️ [PlaybackProvider-本地Stream] 歌曲切换,清除旧封面: $_lastCoverSearchSong -> ${status.curMusic}');
+          if (status.curMusic.isNotEmpty &&
+              _lastCoverSearchSong != status.curMusic) {
+            debugPrint(
+              '🖼️ [PlaybackProvider-本地Stream] 歌曲切换,清除旧封面: $_lastCoverSearchSong -> ${status.curMusic}',
+            );
 
             // 🔧 先清除旧封面,避免显示上一首歌的封面
             state = state.copyWith(albumCoverUrl: null);
 
             _lastCoverSearchSong = status.curMusic; // 记录本次搜索歌曲
 
-            debugPrint('🖼️ [PlaybackProvider-本地Stream] ✅ 触发封面自动搜索: ${status.curMusic}');
+            debugPrint(
+              '🖼️ [PlaybackProvider-本地Stream] ✅ 触发封面自动搜索: ${status.curMusic}',
+            );
             _autoFetchAlbumCover(status.curMusic).catchError((e) {
               debugPrint('🖼️ [AutoCover] 异步搜索封面失败: $e');
             });
@@ -862,7 +948,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           }
 
           // 🔧 恢复缓存的播放状态（如果有）
-          if (cachedUrl != null && cachedMusic != null && cachedUrl.isNotEmpty) {
+          if (cachedUrl != null &&
+              cachedMusic != null &&
+              cachedUrl.isNotEmpty) {
             debugPrint('🔧 [PlaybackProvider] 恢复本地播放缓存');
             debugPrint('   - 歌曲: ${cachedMusic.curMusic}');
             debugPrint('   - URL: $cachedUrl');
@@ -942,11 +1030,18 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           if (libraryState.musicList.isNotEmpty) {
             int startIndex = 0;
             if (state.currentMusic != null) {
-              final idx = libraryState.musicList.indexWhere((m) => m.name == state.currentMusic!.curMusic);
+              final idx = libraryState.musicList.indexWhere(
+                (m) => m.name == state.currentMusic!.curMusic,
+              );
               if (idx >= 0) startIndex = idx;
             }
-            localStrategy.setPlaylist(libraryState.musicList, startIndex: startIndex);
-            debugPrint('🎵 [PlaybackProvider] 已恢复本地播放列表: ${libraryState.musicList.length} 首');
+            localStrategy.setPlaylist(
+              libraryState.musicList,
+              startIndex: startIndex,
+            );
+            debugPrint(
+              '🎵 [PlaybackProvider] 已恢复本地播放列表: ${libraryState.musicList.length} 首',
+            );
           } else {
             debugPrint('⚠️ [PlaybackProvider] 音乐库为空，暂不设置本地播放列表');
           }
@@ -956,14 +1051,25 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       } else {
         debugPrint('🎵 [PlaybackProvider] ========== 远程控制模式 ==========');
         debugPrint('🎵 [PlaybackProvider] 切换到远程控制模式 (设备: ${device.name})');
-        _deviceSwitchProtectionUntil = DateTime.now().add(const Duration(milliseconds: 1500));
+        _deviceSwitchProtectionUntil = DateTime.now().add(
+          const Duration(milliseconds: 1500),
+        );
 
         final remoteStrategy = RemotePlaybackStrategy(
           apiService: apiService,
           deviceId: deviceId,
           deviceName: device.name, // 🔧 传入设备名称
-          audioHandler: LocalPlaybackStrategy.sharedAudioHandler, // 🔧 传入 AudioHandler
+          audioHandler:
+              LocalPlaybackStrategy.sharedAudioHandler, // 🔧 传入 AudioHandler
         );
+
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final cachedGroup = prefs.getString(
+            _remotePlaybackApiGroupKeyFor(deviceId),
+          );
+          remoteStrategy.restoreActiveApiGroup(cachedGroup);
+        } catch (_) {}
 
         // 🔧 设置状态变化回调,远程操作后立即刷新 APP 状态
         remoteStrategy.onStatusChanged = () {
@@ -974,6 +1080,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         };
 
         _currentStrategy = remoteStrategy;
+
+        // 先恢复远程缓存，避免首轮 getplayerstatus 为空标题导致 UI 闪空
+        await _loadRemotePlayback(deviceId);
 
         // 启动状态刷新定时器
         _startStatusRefreshTimer();
@@ -1034,12 +1143,18 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
           // 🖼️ 本地模式也需要自动搜索封面图
           debugPrint('🖼️ [PlaybackProvider-本地] 检查是否需要搜索封面');
-          debugPrint('🖼️ [PlaybackProvider-本地] currentMusic: ${status.curMusic}');
-          debugPrint('🖼️ [PlaybackProvider-本地] albumCoverUrl: ${state.albumCoverUrl}');
+          debugPrint(
+            '🖼️ [PlaybackProvider-本地] currentMusic: ${status.curMusic}',
+          );
+          debugPrint(
+            '🖼️ [PlaybackProvider-本地] albumCoverUrl: ${state.albumCoverUrl}',
+          );
 
           if (status.curMusic.isNotEmpty &&
               (state.albumCoverUrl == null || state.albumCoverUrl!.isEmpty)) {
-            debugPrint('🖼️ [PlaybackProvider-本地] ✅ 触发封面自动搜索: ${status.curMusic}');
+            debugPrint(
+              '🖼️ [PlaybackProvider-本地] ✅ 触发封面自动搜索: ${status.curMusic}',
+            );
             _autoFetchAlbumCover(status.curMusic).catchError((e) {
               debugPrint('🖼️ [AutoCover] 异步搜索封面失败: $e');
             });
@@ -1059,7 +1174,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       try {
         final status = await _currentStrategy!.getCurrentStatus();
-        debugPrint('🎵 [PlaybackProvider] 直连模式状态: ${status?.curMusic}, 播放中=${status?.isPlaying}');
+        debugPrint(
+          '🎵 [PlaybackProvider] 直连模式状态: ${status?.curMusic}, 播放中=${status?.isPlaying}',
+        );
 
         if (status != null) {
           // 🎯 检测歌曲切换
@@ -1092,7 +1209,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           // 🖼️ 自动搜索封面图
           if (status.curMusic.isNotEmpty &&
               (state.albumCoverUrl == null || state.albumCoverUrl!.isEmpty)) {
-            debugPrint('🖼️ [PlaybackProvider-直连] ✅ 触发封面自动搜索: ${status.curMusic}');
+            debugPrint(
+              '🖼️ [PlaybackProvider-直连] ✅ 触发封面自动搜索: ${status.curMusic}',
+            );
             _autoFetchAlbumCover(status.curMusic).catchError((e) {
               debugPrint('🖼️ [AutoCover] 异步搜索封面失败: $e');
             });
@@ -1134,7 +1253,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       print('🎵 跳过过于频繁的状态刷新请求');
       return;
     }
+
+    if (_remoteRefreshInFlight) {
+      debugPrint('🎵 [PlaybackProvider] 远程状态刷新进行中，跳过本次请求');
+      return;
+    }
+
     _lastRefreshTime = now;
+    _remoteRefreshInFlight = true;
 
     try {
       if (!silent) {
@@ -1205,7 +1331,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           currentMusic.duration > 0) {
         final oldSongName = state.currentMusic!.curMusic;
         final newSongName = currentMusic.curMusic;
-        if (oldSongName != newSongName) {
+        // 新接口可能短暂返回空标题，空标题不视为切歌，避免误重置进度
+        if (newSongName.isNotEmpty && oldSongName != newSongName) {
           isSongChanged = true;
           print('🎵 检测到歌曲切换: "$oldSongName" -> "$newSongName"');
         }
@@ -1249,6 +1376,28 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       // 🛡️ 乐观更新保护：如果在保护期内，保留本地的歌曲名和播放状态
       // 这是为了防止定时器的 refreshStatus() 覆盖 playOnlineItem 的乐观更新
       PlayingMusic? finalMusic = currentMusic;
+
+      // /getplayerstatus 某些阶段可能没有歌曲名，避免用空值覆盖当前歌曲
+      if (finalMusic != null &&
+          finalMusic.curMusic.trim().isEmpty &&
+          state.currentMusic != null &&
+          state.currentMusic!.curMusic.trim().isNotEmpty) {
+        finalMusic = PlayingMusic(
+          ret: finalMusic.ret,
+          curMusic: state.currentMusic!.curMusic,
+          curPlaylist:
+              finalMusic.curPlaylist.isNotEmpty
+                  ? finalMusic.curPlaylist
+                  : state.currentMusic!.curPlaylist,
+          isPlaying: finalMusic.isPlaying,
+          offset: finalMusic.offset,
+          duration:
+              finalMusic.duration > 0
+                  ? finalMusic.duration
+                  : state.currentMusic!.duration,
+        );
+      }
+
       if (_optimisticUpdateProtectionUntil != null &&
           DateTime.now().isBefore(_optimisticUpdateProtectionUntil!)) {
         debugPrint('🛡️ [PlaybackProvider] 保护期内，保留本地歌曲名和播放状态');
@@ -1289,7 +1438,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           // 直连模式：检查本地收藏
           final favoriteService = DirectModeFavoriteService();
           isFavorite = await favoriteService.isFavorite(currentMusic.curMusic);
-          debugPrint('🎯 [收藏检查] 直连模式 - ${currentMusic.curMusic}: ${isFavorite ? "已收藏" : "未收藏"}');
+          debugPrint(
+            '🎯 [收藏检查] 直连模式 - ${currentMusic.curMusic}: ${isFavorite ? "已收藏" : "未收藏"}',
+          );
         } else {
           // xiaomusic模式：重置为false（由服务器端管理）
           isFavorite = false;
@@ -1306,6 +1457,11 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         isFavorite: isFavorite,
         currentPlaylistSongs: playlistSongs,
       );
+
+      // 远程模式也持久化最后播放信息，供重启后恢复显示
+      if (finalMusic != null && finalMusic.curMusic.trim().isNotEmpty) {
+        await _saveRemotePlayback(finalMusic);
+      }
 
       // 智能更新预测基准
       if (needsRecalibration) {
@@ -1339,15 +1495,20 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       // 🖼️ 自动搜索封面图（适用于服务端本地歌曲）
       debugPrint('🖼️ [PlaybackProvider] 检查是否需要搜索封面');
-      debugPrint('🖼️ [PlaybackProvider] currentMusic: ${currentMusic?.curMusic}');
-      debugPrint('🖼️ [PlaybackProvider] albumCoverUrl: ${state.albumCoverUrl}');
+      debugPrint(
+        '🖼️ [PlaybackProvider] currentMusic: ${currentMusic?.curMusic}',
+      );
+      debugPrint(
+        '🖼️ [PlaybackProvider] albumCoverUrl: ${state.albumCoverUrl}',
+      );
       debugPrint('🖼️ [PlaybackProvider] isSongChanged: $isSongChanged');
 
-      if (currentMusic != null &&
+      final coverSongName = (currentMusic?.curMusic ?? '').trim();
+      if (coverSongName.isNotEmpty &&
           (state.albumCoverUrl == null || state.albumCoverUrl!.isEmpty)) {
-        debugPrint('🖼️ [PlaybackProvider] ✅ 触发封面自动搜索: ${currentMusic.curMusic}');
+        debugPrint('🖼️ [PlaybackProvider] ✅ 触发封面自动搜索: $coverSongName');
         // 异步搜索封面图，不阻塞主流程
-        _autoFetchAlbumCover(currentMusic.curMusic).catchError((e) {
+        _autoFetchAlbumCover(coverSongName).catchError((e) {
           print('🖼️ [AutoCover] 异步搜索封面失败: $e');
         });
       } else {
@@ -1374,7 +1535,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         // 需要 APP 端检测歌曲是否接近结尾并主动推送下一首
         await _checkXiaomusicAutoNext(currentMusic);
       } else {
-        debugPrint('ℹ️ [PlaybackProvider] 当前模式不需要进度预测定时器（${_currentStrategy?.runtimeType ?? "未初始化"}）');
+        debugPrint(
+          'ℹ️ [PlaybackProvider] 当前模式不需要进度预测定时器（${_currentStrategy?.runtimeType ?? "未初始化"}）',
+        );
       }
 
       // 保护期结束后清理标记
@@ -1397,6 +1560,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         isLoading: silent ? state.isLoading : false,
         hasLoaded: true,
       );
+    } finally {
+      _remoteRefreshInFlight = false;
     }
   }
 
@@ -1494,7 +1659,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         final directState = ref.read(directModeProvider);
         if (directState is! DirectModeAuthenticated) {
           state = state.copyWith(error: '请先登录小米账号（直连模式）');
-        } else if (directState.playbackDeviceType.isEmpty) { // 🔧 修复：检查 playbackDeviceType
+        } else if (directState.playbackDeviceType.isEmpty) {
+          // 🔧 修复：检查 playbackDeviceType
           state = state.copyWith(error: '请先选择播放设备（本地播放或小爱音箱）');
         } else {
           state = state.copyWith(error: '播放策略初始化失败，请尝试重新启动应用');
@@ -1523,14 +1689,17 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       state = state.copyWith(currentMusic: updatedMusic);
 
       // 🎯 设置乐观更新保护期（2秒内不接受远程状态的 isPlaying 更新）
-      _optimisticUpdateProtectionUntil = DateTime.now().add(const Duration(seconds: 2));
+      _optimisticUpdateProtectionUntil = DateTime.now().add(
+        const Duration(seconds: 2),
+      );
       debugPrint('🛡️ [PlaybackProvider] 设置乐观更新保护期: 2秒');
 
       // 🔧 只有 xiaomusic 远程模式需要更新进度定时器
       // - 本地模式：通过statusStream自动更新（不需要）
       // - 直连模式：通过策略轮询更新（不需要）
       // - xiaomusic远程模式：需要本地预测进度
-      if (!_currentStrategy!.isLocalMode && _currentStrategy is! MiIoTDirectPlaybackStrategy) {
+      if (!_currentStrategy!.isLocalMode &&
+          _currentStrategy is! MiIoTDirectPlaybackStrategy) {
         _lastServerOffset = state.currentMusic!.offset;
         _lastUpdateTime = DateTime.now();
         _startProgressTimer(true);
@@ -1568,7 +1737,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         final directState = ref.read(directModeProvider);
         if (directState is! DirectModeAuthenticated) {
           state = state.copyWith(error: '请先登录小米账号（直连模式）');
-        } else if (directState.playbackDeviceType.isEmpty) { // 🔧 修复：检查 playbackDeviceType
+        } else if (directState.playbackDeviceType.isEmpty) {
+          // 🔧 修复：检查 playbackDeviceType
           state = state.copyWith(error: '请先选择播放设备（本地播放或小爱音箱）');
         } else {
           state = state.copyWith(error: '播放策略初始化失败，请尝试重新启动应用');
@@ -1597,13 +1767,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       state = state.copyWith(currentMusic: updatedMusic);
 
       // 🎯 设置乐观更新保护期（2秒内不接受远程状态的 isPlaying 更新）
-      _optimisticUpdateProtectionUntil = DateTime.now().add(const Duration(seconds: 2));
+      _optimisticUpdateProtectionUntil = DateTime.now().add(
+        const Duration(seconds: 2),
+      );
       debugPrint('🛡️ [PlaybackProvider] 设置乐观更新保护期: 2秒');
 
       // 🔧 只有 xiaomusic 远程模式需要更新进度定时器
       // - 本地模式：通过statusStream自动更新（不需要）
       // - 直连模式：通过策略轮询更新（不需要）
-      if (!_currentStrategy!.isLocalMode && _currentStrategy is! MiIoTDirectPlaybackStrategy) {
+      if (!_currentStrategy!.isLocalMode &&
+          _currentStrategy is! MiIoTDirectPlaybackStrategy) {
         _startProgressTimer(false);
       }
     }
@@ -1653,7 +1826,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         // 🔧 只有 xiaomusic 远程模式需要更新进度定时器
         // - 本地模式：通过statusStream自动更新（不需要）
         // - 直连模式：通过策略轮询更新（不需要）
-        if (!_currentStrategy!.isLocalMode && _currentStrategy is! MiIoTDirectPlaybackStrategy) {
+        if (!_currentStrategy!.isLocalMode &&
+            _currentStrategy is! MiIoTDirectPlaybackStrategy) {
           _startProgressTimer(!isPlaying);
           if (!isPlaying) {
             _lastServerOffset = state.currentMusic!.offset;
@@ -1732,11 +1906,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           final playbackMode = ref.read(playbackModeProvider);
           if (playbackMode == PlaybackMode.miIoTDirect) {
             final queueState = ref.read(playbackQueueProvider);
-            if (queueState.queue != null && queueState.queue!.items.isNotEmpty) {
+            if (queueState.queue != null &&
+                queueState.queue!.items.isNotEmpty) {
               debugPrint('🎵 [PlaybackProvider] 直连模式检测到播放队列');
-              final prevItem = ref.read(playbackQueueProvider.notifier).previous();
+              final prevItem =
+                  ref.read(playbackQueueProvider.notifier).previous();
               if (prevItem != null) {
-                debugPrint('🎵 [PlaybackProvider] 使用队列播放上一首: ${prevItem.title}');
+                debugPrint(
+                  '🎵 [PlaybackProvider] 使用队列播放上一首: ${prevItem.title}',
+                );
 
                 // 🎯 立即乐观更新 UI（无转圈）
                 _applyOptimisticUpdate(prevItem);
@@ -1761,11 +1939,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           // 🎯 优先级2：xiaomusic模式 + 有播放队列 → 使用懒加载队列逻辑
           if (playbackMode == PlaybackMode.xiaomusic) {
             final queueState = ref.read(playbackQueueProvider);
-            if (queueState.queue != null && queueState.queue!.items.isNotEmpty) {
+            if (queueState.queue != null &&
+                queueState.queue!.items.isNotEmpty) {
               debugPrint('🎵 [PlaybackProvider] xiaomusic模式检测到播放队列');
-              final prevItem = ref.read(playbackQueueProvider.notifier).previous();
+              final prevItem =
+                  ref.read(playbackQueueProvider.notifier).previous();
               if (prevItem != null) {
-                debugPrint('🎵 [PlaybackProvider] xiaomusic队列播放上一首: ${prevItem.title}');
+                debugPrint(
+                  '🎵 [PlaybackProvider] xiaomusic队列播放上一首: ${prevItem.title}',
+                );
 
                 // 🎯 playOnlineItem 内部会做乐观更新，直接调用
                 await playOnlineItem(prevItem);
@@ -1807,7 +1989,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   /// 🎯 立即乐观更新 UI（无转圈），用于 next/previous 队列播放
   void _applyOptimisticUpdate(PlaylistItem item) {
     // 设置保护期
-    _optimisticUpdateProtectionUntil = DateTime.now().add(const Duration(seconds: 10));
+    _optimisticUpdateProtectionUntil = DateTime.now().add(
+      const Duration(seconds: 10),
+    );
     debugPrint('🛡️ [_applyOptimisticUpdate] 设置乐观更新保护期: 10秒');
 
     final optimisticMusic = PlayingMusic(
@@ -1820,7 +2004,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     );
     state = state.copyWith(
       currentMusic: optimisticMusic,
-      isLoading: false,  // 🎯 立即显示播放状态，不转圈
+      isLoading: false, // 🎯 立即显示播放状态，不转圈
       error: null,
       albumCoverUrl: item.coverUrl,
     );
@@ -1869,11 +2053,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           final playbackMode = ref.read(playbackModeProvider);
           if (playbackMode == PlaybackMode.miIoTDirect) {
             final queueState = ref.read(playbackQueueProvider);
-            if (queueState.queue != null && queueState.queue!.items.isNotEmpty) {
+            if (queueState.queue != null &&
+                queueState.queue!.items.isNotEmpty) {
               debugPrint('🎵 [PlaybackProvider] 直连模式检测到播放队列');
               final nextItem = ref.read(playbackQueueProvider.notifier).next();
               if (nextItem != null) {
-                debugPrint('🎵 [PlaybackProvider] 使用队列播放下一首: ${nextItem.title}');
+                debugPrint(
+                  '🎵 [PlaybackProvider] 使用队列播放下一首: ${nextItem.title}',
+                );
 
                 // 🎯 立即乐观更新 UI（无转圈）
                 _applyOptimisticUpdate(nextItem);
@@ -1898,11 +2085,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           // 🎯 优先级2：xiaomusic模式 + 有播放队列 → 使用懒加载队列逻辑
           if (playbackMode == PlaybackMode.xiaomusic) {
             final queueState = ref.read(playbackQueueProvider);
-            if (queueState.queue != null && queueState.queue!.items.isNotEmpty) {
+            if (queueState.queue != null &&
+                queueState.queue!.items.isNotEmpty) {
               debugPrint('🎵 [PlaybackProvider] xiaomusic模式检测到播放队列');
               final nextItem = ref.read(playbackQueueProvider.notifier).next();
               if (nextItem != null) {
-                debugPrint('🎵 [PlaybackProvider] xiaomusic队列播放下一首: ${nextItem.title}');
+                debugPrint(
+                  '🎵 [PlaybackProvider] xiaomusic队列播放下一首: ${nextItem.title}',
+                );
 
                 // 🎯 playOnlineItem 内部会做乐观更新，直接调用
                 await playOnlineItem(nextItem);
@@ -2051,29 +2241,40 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       // 🎯 乐观更新：立即更新UI显示歌曲信息，不等待音箱响应
       // 🎯 检查是否在保护期内，如果是则不覆盖 playOnlineItem 的乐观更新
-      final inProtectionPeriod = _optimisticUpdateProtectionUntil != null &&
+      final inProtectionPeriod =
+          _optimisticUpdateProtectionUntil != null &&
           DateTime.now().isBefore(_optimisticUpdateProtectionUntil!);
 
       if (musicName != null && musicName.isNotEmpty) {
+        final existingMusic = state.currentMusic;
+        final keepExistingDuration =
+            inProtectionPeriod &&
+            existingMusic != null &&
+            existingMusic.curMusic == musicName &&
+            existingMusic.duration > 0;
+
         final optimisticMusic = PlayingMusic(
           ret: 'OK',
           curMusic: musicName,
           curPlaylist: '',
           isPlaying: true, // 乐观地认为会播放成功
-          duration: 0, // 时长暂时未知
+          // 保护期内如果上一层已写入有效时长（如 playOnlineItem），不要重置为 0
+          duration: keepExistingDuration ? existingMusic.duration : 0,
           offset: 0, // 进度从0开始
         );
 
         state = state.copyWith(
           currentMusic: optimisticMusic,
-          isLoading: inProtectionPeriod ? false : true,  // 🎯 保护期内不设置 loading
+          isLoading: inProtectionPeriod ? false : true, // 🎯 保护期内不设置 loading
           error: null,
           albumCoverUrl: albumCoverUrl, // 如果有封面图，立即显示
         );
-        debugPrint('✨ [PlaybackProvider] 乐观更新UI: $musicName (保护期: $inProtectionPeriod)');
+        debugPrint(
+          '✨ [PlaybackProvider] 乐观更新UI: $musicName (保护期: $inProtectionPeriod)',
+        );
       } else {
         state = state.copyWith(
-          isLoading: inProtectionPeriod ? false : true,  // 🎯 保护期内不设置 loading
+          isLoading: inProtectionPeriod ? false : true, // 🎯 保护期内不设置 loading
           error: null,
         );
       }
@@ -2100,20 +2301,26 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           localStrategy.setPlaylist(playlist, startIndex: playIndex);
         } else if (_currentStrategy is MiIoTDirectPlaybackStrategy) {
           // 直连模式
-          final directStrategy = _currentStrategy as MiIoTDirectPlaybackStrategy;
+          final directStrategy =
+              _currentStrategy as MiIoTDirectPlaybackStrategy;
           directStrategy.setPlaylist(playlist, startIndex: playIndex);
         }
 
         // 🎯 方案A：同时更新 PlaybackQueueProvider（统一队列管理）
         // 将 Music 列表转换为 PlaylistItem 列表
-        final queueItems = playlist.map((m) => PlaylistItem.fromMusic(m)).toList();
-        ref.read(playbackQueueProvider.notifier).setQueue(
-          queueName: '播放列表',
-          source: PlaylistSource.musicLibrary,
-          items: queueItems,
-          startIndex: playIndex,
+        final queueItems =
+            playlist.map((m) => PlaylistItem.fromMusic(m)).toList();
+        ref
+            .read(playbackQueueProvider.notifier)
+            .setQueue(
+              queueName: '播放列表',
+              source: PlaylistSource.musicLibrary,
+              items: queueItems,
+              startIndex: playIndex,
+            );
+        debugPrint(
+          '🎯 [PlaybackProvider] 已同步更新 PlaybackQueueProvider，共 ${queueItems.length} 首',
         );
-        debugPrint('🎯 [PlaybackProvider] 已同步更新 PlaybackQueueProvider，共 ${queueItems.length} 首');
 
         debugPrint('🎵 [PlaybackProvider] 播放列表已设置，开始索引: $playIndex');
       }
@@ -2137,7 +2344,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         }
       } else if (musicName != null && musicName.isNotEmpty) {
         // 情况2/3/4: 服务器音乐 / 本地音乐 / 直连模式 - 都需要自动搜索封面
-        debugPrint('🖼️ [PlaybackProvider] 自动搜索封面: $musicName (当前策略: ${_currentStrategy?.runtimeType})');
+        debugPrint(
+          '🖼️ [PlaybackProvider] 自动搜索封面: $musicName (当前策略: ${_currentStrategy?.runtimeType})',
+        );
         _autoFetchAlbumCover(musicName).catchError((e) {
           debugPrint('🖼️ [AutoCover] 搜索封面失败: $e');
         });
@@ -2266,9 +2475,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       // 需要继续轮询才能检测到歌曲切换并触发自动下一首
       final queueState = ref.read(playbackQueueProvider);
       if (queueState.queue != null && queueState.queue!.items.isNotEmpty) {
-        _statusRefreshTimer = Timer.periodic(const Duration(seconds: 3), (
-          _,
-        ) {
+        _statusRefreshTimer = Timer.periodic(const Duration(seconds: 3), (_) {
           refreshStatus(silent: true);
         });
         debugPrint('⏰ 暂停状态但有播放队列，保持低频轮询（3秒）用于自动下一首检测');
@@ -2337,7 +2544,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final jsonStr = prefs.getString(_localPlaybackKey);
-      debugPrint('🔧 [PlaybackProvider] 缓存内容: ${jsonStr?.substring(0, jsonStr.length > 100 ? 100 : jsonStr.length) ?? "null"}');
+      debugPrint(
+        '🔧 [PlaybackProvider] 缓存内容: ${jsonStr?.substring(0, jsonStr.length > 100 ? 100 : jsonStr.length) ?? "null"}',
+      );
 
       if (jsonStr == null || jsonStr.isEmpty) {
         debugPrint('🔧 [PlaybackProvider] 没有播放缓存，跳过恢复');
@@ -2391,9 +2600,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       await prefs.setString(_localPlaybackKey, jsonEncode(data));
 
       // 保存 URL
-      final url = (_currentStrategy is LocalPlaybackStrategy)
-          ? (_currentStrategy as LocalPlaybackStrategy).currentMusicUrl
-          : null;
+      final url =
+          (_currentStrategy is LocalPlaybackStrategy)
+              ? (_currentStrategy as LocalPlaybackStrategy).currentMusicUrl
+              : null;
 
       debugPrint('💾 [PlaybackProvider] 保存播放缓存');
       debugPrint('   - 歌曲名: ${status.curMusic}');
@@ -2413,6 +2623,86 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       }
     } catch (e) {
       debugPrint('❌ [PlaybackProvider] 保存播放缓存失败: $e');
+    }
+  }
+
+  String _remotePlaybackKeyFor(String deviceId) {
+    return '${_remotePlaybackKey}_$deviceId';
+  }
+
+  String _remotePlaybackCoverKeyFor(String deviceId) {
+    return '${_remotePlaybackCoverKey}_$deviceId';
+  }
+
+  String _remotePlaybackApiGroupKeyFor(String deviceId) {
+    return '${_remotePlaybackApiGroupKey}_$deviceId';
+  }
+
+  Future<void> _loadRemotePlayback(String deviceId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString(_remotePlaybackKeyFor(deviceId));
+      if (jsonStr == null || jsonStr.isEmpty) return;
+
+      final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+      final pm = PlayingMusic(
+        ret: data['ret'] as String? ?? 'OK',
+        curMusic: data['curMusic'] as String? ?? '',
+        curPlaylist: (data['curPlaylist'] as String?) ?? '在线播放',
+        isPlaying: false, // 恢复展示态，实际播放态以远端轮询为准
+        offset: data['offset'] as int? ?? 0,
+        duration: data['duration'] as int? ?? 0,
+      );
+      final cachedCover = prefs.getString(_remotePlaybackCoverKeyFor(deviceId));
+
+      if (pm.curMusic.trim().isEmpty) return;
+
+      state = state.copyWith(
+        currentMusic: pm,
+        albumCoverUrl:
+            (cachedCover != null && cachedCover.isNotEmpty)
+                ? cachedCover
+                : state.albumCoverUrl,
+        hasLoaded: true,
+        isLoading: false,
+      );
+
+      debugPrint('💾 [PlaybackProvider] 已恢复远程播放缓存: ${pm.curMusic}');
+    } catch (e) {
+      debugPrint('❌ [PlaybackProvider] 恢复远程播放缓存失败: $e');
+    }
+  }
+
+  Future<void> _saveRemotePlayback(PlayingMusic status) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final did = ref.read(deviceProvider).selectedDeviceId ?? _currentDeviceId;
+      if (did == null || did.isEmpty) return;
+      final data = {
+        'deviceId': did,
+        'ret': status.ret,
+        'curMusic': status.curMusic,
+        'curPlaylist': status.curPlaylist,
+        'isPlaying': status.isPlaying,
+        'offset': status.offset,
+        'duration': status.duration,
+      };
+      await prefs.setString(_remotePlaybackKeyFor(did), jsonEncode(data));
+      if (_currentStrategy is RemotePlaybackStrategy) {
+        final group =
+            (_currentStrategy as RemotePlaybackStrategy).activeApiGroupName;
+        if (group != null && group.isNotEmpty) {
+          await prefs.setString(_remotePlaybackApiGroupKeyFor(did), group);
+        }
+      }
+      if (state.albumCoverUrl != null && state.albumCoverUrl!.isNotEmpty) {
+        await prefs.setString(
+          _remotePlaybackCoverKeyFor(did),
+          state.albumCoverUrl!,
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ [PlaybackProvider] 保存远程播放缓存失败: $e');
     }
   }
 
@@ -2458,7 +2748,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       } else if (nextItem.isServer) {
         // 🎵 服务器歌曲（xiaomusic 模式）：直连模式下无法播放
         // 因为直连模式没有 xiaomusic 服务端来解析音乐
-        debugPrint('⚠️ [PlaybackProvider] 服务器歌曲在直连模式下无法播放: ${nextItem.displayName}');
+        debugPrint(
+          '⚠️ [PlaybackProvider] 服务器歌曲在直连模式下无法播放: ${nextItem.displayName}',
+        );
         // 尝试跳到下一首
         final nextNext = ref.read(playbackQueueProvider.notifier).next();
         if (nextNext != null && !nextNext.isServer) {
@@ -2531,9 +2823,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         !_xiaomusicAutoNextTriggered) {
       // 歌曲名发生了变化，检查新歌是否在 APP 队列中
       final queue = queueState.queue!;
-      final isInQueue = queue.items.any((item) => item.displayName == currentSongName);
+      final isInQueue = queue.items.any(
+        (item) => item.displayName == currentSongName,
+      );
 
-      final wasNearEnd = _xiaomusicLastDuration > 10 &&
+      final wasNearEnd =
+          _xiaomusicLastDuration > 10 &&
           _xiaomusicLastPosition > 10 &&
           (_xiaomusicLastDuration - _xiaomusicLastPosition) < nearEndThreshold;
       final isAtStart = position < 10;
@@ -2580,14 +2875,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
     // ========== 检测方式A：position 接近 duration ==========
     // 🎯 阈值基于时长动态调整，避免短歌过早触发
-    final isNearEnd = duration > 10 &&
+    final isNearEnd =
+        duration > 10 &&
         position > 10 &&
         shouldCountNearEnd &&
         position > (duration * 0.85);
 
     // ========== 检测方式B：位置跳跃检测 ==========
     // 上一次接近结尾 → 这一次回到开头（同一首歌循环播放的情况）
-    final wasNearEnd = _xiaomusicLastDuration > 10 &&
+    final wasNearEnd =
+        _xiaomusicLastDuration > 10 &&
         _xiaomusicLastPosition > 10 &&
         (_xiaomusicLastDuration - _xiaomusicLastPosition) < nearEndThreshold;
     final jumpedToStart = position < 10;
@@ -2605,10 +2902,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         ((isNearEnd && _xiaomusicNearEndHits >= 2) || isPositionJump) &&
         !_xiaomusicAutoNextTriggered;
 
-      if (shouldTrigger) {
-      final reason = isNearEnd ? '接近结尾(剩${duration - position}秒)' : '位置跳跃(${_xiaomusicLastPosition}s→${position}s)';
+    if (shouldTrigger) {
+      final reason =
+          isNearEnd
+              ? '接近结尾(剩${duration - position}秒)'
+              : '位置跳跃(${_xiaomusicLastPosition}s→${position}s)';
       debugPrint('🎵 [xiaomusic-AutoNext] 检测到歌曲播放完成 [$reason]');
-      debugPrint('🎵 [xiaomusic-AutoNext] 当前: $currentSongName, position=$position, duration=$duration');
+      debugPrint(
+        '🎵 [xiaomusic-AutoNext] 当前: $currentSongName, position=$position, duration=$duration',
+      );
       debugPrint('🎵 [xiaomusic-AutoNext] 触发自动下一首...');
 
       // 设置保护标志，防止重复触发
@@ -2634,8 +2936,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     }
 
     // 🔄 更新上一次轮询的位置（必须在检测之后更新）
-      _xiaomusicLastPosition = position;
-      _xiaomusicLastDuration = duration;
+    _xiaomusicLastPosition = position;
+    _xiaomusicLastDuration = duration;
   }
 
   /// 🎵 统一的在线歌曲播放方法（懒加载方式）
@@ -2667,7 +2969,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       // 🎯 关键修复：在 URL 解析开始前就设置保护期和乐观更新
       // 这样定时器的 refreshStatus() 就不会覆盖我们的乐观更新
-      _optimisticUpdateProtectionUntil = DateTime.now().add(const Duration(seconds: 15));
+      _optimisticUpdateProtectionUntil = DateTime.now().add(
+        const Duration(seconds: 15),
+      );
       debugPrint('🛡️ [playOnlineItem] 设置乐观更新保护期: 15秒（覆盖整个 URL 解析 + 播放过程）');
 
       // 🎯 立即乐观更新 UI，不等待 URL 解析
@@ -2681,7 +2985,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       );
       state = state.copyWith(
         currentMusic: optimisticMusic,
-        isLoading: false,  // 🎯 立即显示播放状态，不转圈
+        isLoading: false, // 🎯 立即显示播放状态，不转圈
         error: null,
         albumCoverUrl: item.coverUrl,
       );
@@ -2689,22 +2993,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       // 🎯 懒加载：解析 URL
       debugPrint('🎵 [playOnlineItem] 开始解析 URL...');
-      final url = await _resolveUrlByJS(
-        platform: item.platform!,
-        songId: item.songId!,
-        quality: '320k',
-        title: item.title,
-        artist: item.artist,
-        album: item.album,
-        duration: item.duration,
-        coverUrl: item.coverUrl,
-      );
+      final url = await _resolveUrlWithPerSongFallback(item);
 
       if (url == null || url.isEmpty) {
         throw Exception('无法解析播放 URL');
       }
 
-      debugPrint('✅ [playOnlineItem] URL 解析成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...');
+      debugPrint(
+        '✅ [playOnlineItem] URL 解析成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...',
+      );
 
       // 🎯 通过 playMusic 播放（自动适配 xiaomusic/直连模式）
       await playMusic(
@@ -2724,25 +3021,210 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       // 🖼️ 如果没有封面，自动搜索
       if (item.coverUrl == null || item.coverUrl!.isEmpty) {
         debugPrint('🖼️ [playOnlineItem] 封面未缓存，开始搜索');
-        _autoFetchAlbumCover(item.displayName).then((_) {
-          if (state.albumCoverUrl != null && state.albumCoverUrl!.isNotEmpty) {
-            ref.read(playbackQueueProvider.notifier).updateCurrentCover(state.albumCoverUrl!);
-            debugPrint('✅ [playOnlineItem] 封面已缓存到队列');
-          }
-        }).catchError((e) {
-          debugPrint('⚠️ [playOnlineItem] 封面搜索失败: $e');
-        });
+        _autoFetchAlbumCover(item.displayName)
+            .then((_) {
+              if (state.albumCoverUrl != null &&
+                  state.albumCoverUrl!.isNotEmpty) {
+                ref
+                    .read(playbackQueueProvider.notifier)
+                    .updateCurrentCover(state.albumCoverUrl!);
+                debugPrint('✅ [playOnlineItem] 封面已缓存到队列');
+              }
+            })
+            .catchError((e) {
+              debugPrint('⚠️ [playOnlineItem] 封面搜索失败: $e');
+            });
       }
 
       debugPrint('✅ [playOnlineItem] 播放流程完成');
     } catch (e, stackTrace) {
       debugPrint('❌ [playOnlineItem] 播放失败: $e');
-      debugPrint('❌ [playOnlineItem] 堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+      debugPrint(
+        '❌ [playOnlineItem] 堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}',
+      );
       state = state.copyWith(error: '播放失败: ${e.toString()}', isLoading: false);
       // 🎯 失败时清除保护期
       _optimisticUpdateProtectionUntil = null;
       rethrow;
     }
+  }
+
+  /// 🎯 单曲级回退解析：
+  /// 先按设置策略的首选平台解析，失败后再跨平台搜同一首并解析
+  Future<String?> _resolveUrlWithPerSongFallback(PlaylistItem item) async {
+    final settings = ref.read(sourceSettingsProvider);
+    final nativeSearch = ref.read(nativeMusicSearchServiceProvider);
+    final platforms = _buildPerSongResolvePlan(settings.jsSearchStrategy);
+    final query = _buildSongSearchQuery(item.title, item.artist);
+
+    debugPrint(
+      '🎵 [单曲回退] 开始: ${item.displayName}, 队列平台=${item.platform}, 策略=${settings.jsSearchStrategy}, 计划=$platforms',
+    );
+
+    for (int i = 0; i < platforms.length; i++) {
+      final platform = platforms[i];
+      try {
+        if (i == 0 &&
+            item.platform != null &&
+            item.songId != null &&
+            _isSamePlatform(platform, item.platform!)) {
+          final directUrl = await _resolveUrlByJS(
+            platform: item.platform!,
+            songId: item.songId!,
+            quality: '320k',
+            title: item.title,
+            artist: item.artist,
+            album: item.album,
+            duration: item.duration,
+            coverUrl: item.coverUrl,
+          );
+          if (directUrl != null && directUrl.isNotEmpty) {
+            return directUrl;
+          }
+        } else {
+          debugPrint('🎵 [单曲回退] 尝试平台=$platform，搜索="$query"');
+          final candidates = await _searchByPlatform(
+            nativeSearch: nativeSearch,
+            platform: platform,
+            query: query,
+          );
+          if (candidates.isEmpty) {
+            debugPrint('⚠️ [单曲回退] 平台=$platform 搜索无结果');
+            continue;
+          }
+
+          final best = _pickBestCandidate(
+            candidates: candidates,
+            title: item.title,
+            artist: item.artist,
+          );
+          if (best == null || best.songId == null || best.songId!.isEmpty) {
+            debugPrint('⚠️ [单曲回退] 平台=$platform 无可解析候选');
+            continue;
+          }
+
+          final fallbackUrl = await _resolveUrlByJS(
+            platform: best.platform ?? platform,
+            songId: best.songId!,
+            quality: '320k',
+            title: best.title,
+            artist: best.author,
+            album: best.album,
+            duration: best.duration,
+            coverUrl: best.picture,
+          );
+          if (fallbackUrl != null && fallbackUrl.isNotEmpty) {
+            debugPrint(
+              '✅ [单曲回退] 解析成功: 平台=$platform, 歌曲=${best.title} - ${best.author}',
+            );
+            return fallbackUrl;
+          }
+          debugPrint('⚠️ [单曲回退] 平台=$platform 解析失败');
+        }
+      } catch (e) {
+        debugPrint('⚠️ [单曲回退] 平台=$platform 异常: $e');
+      }
+    }
+
+    debugPrint('❌ [单曲回退] 所有平台解析失败: ${item.displayName}');
+    return null;
+  }
+
+  List<String> _buildPerSongResolvePlan(String strategy) {
+    switch (strategy) {
+      case 'qqOnly':
+        return const ['qq'];
+      case 'kuwoOnly':
+        return const ['kuwo'];
+      case 'neteaseOnly':
+        return const ['netease'];
+      case 'kuwoFirst':
+        return const ['kuwo', 'qq', 'netease'];
+      case 'neteaseFirst':
+        return const ['netease', 'qq', 'kuwo'];
+      case 'qqFirst':
+      default:
+        return const ['qq', 'kuwo', 'netease'];
+    }
+  }
+
+  String _buildSongSearchQuery(String title, String artist) {
+    final t = title.trim();
+    final a = artist.trim();
+    return a.isEmpty ? t : '$t $a';
+  }
+
+  bool _isSamePlatform(String p1, String p2) {
+    final a = p1.toLowerCase();
+    final b = p2.toLowerCase();
+    if ((a == 'qq' || a == 'tx') && (b == 'qq' || b == 'tx')) return true;
+    if ((a == 'kuwo' || a == 'kw') && (b == 'kuwo' || b == 'kw')) return true;
+    if ((a == 'netease' || a == 'wy') && (b == 'netease' || b == 'wy')) {
+      return true;
+    }
+    return a == b;
+  }
+
+  Future<List<OnlineMusicResult>> _searchByPlatform({
+    required NativeMusicSearchService nativeSearch,
+    required String platform,
+    required String query,
+  }) async {
+    switch (platform) {
+      case 'qq':
+      case 'tx':
+        return await nativeSearch.searchQQ(query: query, page: 1);
+      case 'kuwo':
+      case 'kw':
+        return await nativeSearch.searchKuwo(query: query, page: 1);
+      case 'netease':
+      case 'wy':
+        return await nativeSearch.searchNetease(query: query, page: 1);
+      default:
+        return const <OnlineMusicResult>[];
+    }
+  }
+
+  OnlineMusicResult? _pickBestCandidate({
+    required List<OnlineMusicResult> candidates,
+    required String title,
+    required String artist,
+  }) {
+    if (candidates.isEmpty) return null;
+
+    final targetTitle = _normalizeSongText(title);
+    final targetArtist = _normalizeSongText(artist);
+
+    for (final c in candidates) {
+      final cTitle = _normalizeSongText(c.title);
+      final cArtist = _normalizeSongText(c.author);
+      if (cTitle == targetTitle && cArtist == targetArtist) {
+        return c;
+      }
+    }
+
+    for (final c in candidates) {
+      final cTitle = _normalizeSongText(c.title);
+      final cArtist = _normalizeSongText(c.author);
+      final titleMatch =
+          cTitle.contains(targetTitle) || targetTitle.contains(cTitle);
+      final artistMatch =
+          targetArtist.isEmpty ||
+          cArtist.contains(targetArtist) ||
+          targetArtist.contains(cArtist);
+      if (titleMatch && artistMatch) {
+        return c;
+      }
+    }
+
+    return candidates.first;
+  }
+
+  String _normalizeSongText(String text) {
+    return text
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll(RegExp(r'[·•\-\(\)\[\]【】（）]'), '');
   }
 
   /// 💾 保存直连模式播放状态
@@ -2766,7 +3248,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       // 保存封面图
       if (state.albumCoverUrl != null && state.albumCoverUrl!.isNotEmpty) {
-        await prefs.setString(_directModePlaybackCoverKey, state.albumCoverUrl!);
+        await prefs.setString(
+          _directModePlaybackCoverKey,
+          state.albumCoverUrl!,
+        );
         debugPrint('   - ✅ 封面已保存');
       }
     } catch (e) {
@@ -2840,7 +3325,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         (_currentStrategy as RemotePlaybackStrategy).updateAlbumCover(coverUrl);
       } else if (_currentStrategy is MiIoTDirectPlaybackStrategy) {
         // 🎯 直连模式：也要更新封面图到策略，用于通知栏显示
-        (_currentStrategy as MiIoTDirectPlaybackStrategy).setAlbumCover(coverUrl);
+        (_currentStrategy as MiIoTDirectPlaybackStrategy).setAlbumCover(
+          coverUrl,
+        );
         debugPrint('🖼️ [PlaybackProvider] 直连模式封面图已传给策略: $coverUrl');
       }
     }
@@ -2907,12 +3394,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     if (url.isEmpty) return false;
     final lower = url.toLowerCase();
 
-    if (lower.contains('proxy?urlb64=') || lower.contains('proxy%3furlb64%3d')) {
+    if (lower.contains('proxy?urlb64=') ||
+        lower.contains('proxy%3furlb64%3d')) {
       debugPrint('⚠️ [CoverURL] 检测到音频代理URL被误用为封面: $url');
       return false;
     }
 
-    if (RegExp(r'\.(mp3|flac|m4a|aac|wav)(\?|$)', caseSensitive: false).hasMatch(url)) {
+    if (RegExp(
+      r'\.(mp3|flac|m4a|aac|wav)(\?|$)',
+      caseSensitive: false,
+    ).hasMatch(url)) {
       debugPrint('⚠️ [CoverURL] 检测到音频直链被误用为封面: $url');
       return false;
     }
@@ -3213,7 +3704,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   }
 
   /// 🎵 播放歌单中的指定歌曲
-  Future<void> playSongFromPlaylist(String songName, String playlistName) async {
+  Future<void> playSongFromPlaylist(
+    String songName,
+    String playlistName,
+  ) async {
     if (songName.isEmpty) {
       debugPrint('⚠️ [播放歌曲] 歌曲名称为空');
       state = state.copyWith(error: '歌曲名称不能为空');
@@ -3244,10 +3738,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       debugPrint('✅ [播放歌曲] 歌曲播放成功: $songName');
     } catch (e) {
       debugPrint('❌ [播放歌曲] 播放失败: $e');
-      state = state.copyWith(
-        isLoading: false,
-        error: '播放失败: ${e.toString()}',
-      );
+      state = state.copyWith(isLoading: false, error: '播放失败: ${e.toString()}');
     }
   }
 
@@ -3518,10 +4009,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           debugPrint('✅ [XiaoMusic] 服务器端定时已设置: $minutes 分钟');
         } else {
           debugPrint('⏰ [XiaoMusic] 取消服务器端定时');
-          await apiService.executeCommand(
-            did: selectedDid,
-            command: '取消定时关机',
-          );
+          await apiService.executeCommand(did: selectedDid, command: '取消定时关机');
           state = state.copyWith(timerMinutes: 0);
           debugPrint('✅ [XiaoMusic] 已取消定时');
         }
@@ -3580,7 +4068,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     }
 
     // 从歌单中随机选择一首（排除当前播放的歌曲）
-    final availableSongs = playlist.where((song) => song != currentSong).toList();
+    final availableSongs =
+        playlist.where((song) => song != currentSong).toList();
 
     if (availableSongs.isEmpty) {
       // 歌单只有一首歌，重新播放当前歌曲
@@ -3590,10 +4079,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     }
 
     // 随机选择
-    final random = DateTime.now().millisecondsSinceEpoch % availableSongs.length;
+    final random =
+        DateTime.now().millisecondsSinceEpoch % availableSongs.length;
     final nextSong = availableSongs[random];
 
-    debugPrint('🎲 [播放模式] 随机选择: $nextSong (歌单共${playlist.length}首，可选${availableSongs.length}首)');
+    debugPrint(
+      '🎲 [播放模式] 随机选择: $nextSong (歌单共${playlist.length}首，可选${availableSongs.length}首)',
+    );
 
     // 添加当前歌曲到历史记录
     if (currentSong != null && currentSong.isNotEmpty) {
@@ -3602,10 +4094,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
     try {
       // 播放选中的歌曲
-      await playMusic(
-        deviceId: _currentDeviceId ?? '',
-        musicName: nextSong,
-      );
+      await playMusic(deviceId: _currentDeviceId ?? '', musicName: nextSong);
     } catch (e) {
       debugPrint('❌ [播放模式] 随机播放失败: $e');
       state = state.copyWith(isLoading: false, error: '随机播放失败: $e');
@@ -3674,7 +4163,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     Map<String, dynamic>? extra,
   }) async {
     try {
-      debugPrint('🔍 [JS解析] 开始解析: platform=$platform, songId=$songId, quality=$quality');
+      debugPrint(
+        '🔍 [JS解析] 开始解析: platform=$platform, songId=$songId, quality=$quality',
+      );
       final musicInfo = buildLxMusicInfo(
         songId: songId,
         title: title,
@@ -3699,7 +4190,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             musicInfo: musicInfo,
           );
           if (url != null && url.isNotEmpty) {
-            debugPrint('✅ [JS解析] QuickJS成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...');
+            debugPrint(
+              '✅ [JS解析] QuickJS成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...',
+            );
             return url;
           }
           debugPrint('⚠️ [JS解析] QuickJS返回空URL');
@@ -3719,7 +4212,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             quality: quality,
           );
           if (url != null && url.isNotEmpty) {
-            debugPrint('✅ [JS解析] WebView成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...');
+            debugPrint(
+              '✅ [JS解析] WebView成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...',
+            );
             return url;
           }
           debugPrint('⚠️ [JS解析] WebView返回空URL');
@@ -3763,7 +4258,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           """;
           final url = jsSvc.evaluateToString(js);
           if (url.isNotEmpty) {
-            debugPrint('✅ [JS解析] LocalJS成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...');
+            debugPrint(
+              '✅ [JS解析] LocalJS成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...',
+            );
             return url;
           }
           debugPrint('⚠️ [JS解析] LocalJS返回空URL');
@@ -3831,7 +4328,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       debugPrint('✅ [PlaybackProvider] playFromQueue 完成');
     } catch (e, stackTrace) {
       debugPrint('❌ [PlaybackProvider] playFromQueue 失败: $e');
-      debugPrint('❌ 堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+      debugPrint(
+        '❌ 堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}',
+      );
       state = state.copyWith(error: '从队列播放失败: ${e.toString()}');
       rethrow;
     }
@@ -3887,10 +4386,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       debugPrint('✅ [队列播放] URL获取成功');
 
       // 使用策略播放
-      await _currentStrategy!.playMusic(
-        musicName: item.displayName,
-        url: url,
-      );
+      await _currentStrategy!.playMusic(musicName: item.displayName, url: url);
 
       debugPrint('✅ [队列播放] 播放命令已发送');
 
@@ -3901,15 +4397,20 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       } else {
         // 如果队列没有封面，自动搜索并缓存
         debugPrint('🖼️ [队列播放] 封面未缓存，开始搜索');
-        _autoFetchAlbumCover(item.displayName).then((coverUrl) {
-          // 搜索成功后缓存到队列
-          if (state.albumCoverUrl != null && state.albumCoverUrl!.isNotEmpty) {
-            ref.read(playbackQueueProvider.notifier).updateCurrentCover(state.albumCoverUrl!);
-            debugPrint('✅ [队列播放] 封面已缓存到队列');
-          }
-        }).catchError((e) {
-          debugPrint('⚠️ [队列播放] 封面搜索失败: $e');
-        });
+        _autoFetchAlbumCover(item.displayName)
+            .then((coverUrl) {
+              // 搜索成功后缓存到队列
+              if (state.albumCoverUrl != null &&
+                  state.albumCoverUrl!.isNotEmpty) {
+                ref
+                    .read(playbackQueueProvider.notifier)
+                    .updateCurrentCover(state.albumCoverUrl!);
+                debugPrint('✅ [队列播放] 封面已缓存到队列');
+              }
+            })
+            .catchError((e) {
+              debugPrint('⚠️ [队列播放] 封面搜索失败: $e');
+            });
       }
 
       // 🔧 歌词处理：LyricProvider 会自动监听 currentMusic 变化并获取歌词
@@ -3924,7 +4425,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       debugPrint('✅ [队列播放] 播放成功');
     } catch (e, stackTrace) {
       debugPrint('❌ [队列播放] 播放失败: $e');
-      debugPrint('❌ [队列播放] 堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+      debugPrint(
+        '❌ [队列播放] 堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}',
+      );
       state = state.copyWith(error: '队列播放失败: ${e.toString()}');
       rethrow;
     }
@@ -3946,10 +4449,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       if (playlist == null) {
         debugPrint('⚠️ [直连歌单] 歌单不存在: $playlistName');
-        state = state.copyWith(
-          isLoading: false,
-          error: '歌单不存在: $playlistName',
-        );
+        state = state.copyWith(isLoading: false, error: '歌单不存在: $playlistName');
         return;
       }
 
@@ -3962,7 +4462,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         return;
       }
 
-      debugPrint('✅ [直连歌单] 找到歌单: ${playlist.name}, 共 ${playlist.songs.length} 首歌');
+      debugPrint(
+        '✅ [直连歌单] 找到歌单: ${playlist.name}, 共 ${playlist.songs.length} 首歌',
+      );
 
       // 🎯 播放第一首歌曲
       final firstSong = playlist.songs.first;
@@ -3971,17 +4473,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       // 🎯 检查策略是否已初始化
       if (_currentStrategy == null) {
         debugPrint('❌ [直连歌单] 播放策略未初始化');
-        state = state.copyWith(
-          isLoading: false,
-          error: '播放策略未初始化，请检查设备连接',
-        );
+        state = state.copyWith(isLoading: false, error: '播放策略未初始化，请检查设备连接');
         return;
       }
 
       // 🎵 更新当前播放列表信息（用于UI显示）
-      state = state.copyWith(
-        currentPlaylistSongs: playlist.songs,
-      );
+      state = state.copyWith(currentPlaylistSongs: playlist.songs);
 
       // 🎯 播放第一首歌曲
       await playMusic(
@@ -3993,7 +4490,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       state = state.copyWith(isLoading: false);
     } catch (e, stackTrace) {
       debugPrint('❌ [直连歌单] 播放失败: $e');
-      debugPrint('❌ [直连歌单] 堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}');
+      debugPrint(
+        '❌ [直连歌单] 堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}',
+      );
       state = state.copyWith(
         isLoading: false,
         error: '播放歌单失败: ${e.toString()}',
