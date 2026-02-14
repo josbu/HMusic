@@ -277,8 +277,6 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
                 fit: BoxFit.fitWidth,
               ),
             ),
-            const SizedBox(width: 4),
-            const _PlaybackModeBadge(),
             const Spacer(),
             // Upload button - only show on music library tab (index 3)
             if (_selectedIndex == 3)
@@ -771,62 +769,6 @@ class _PlayTabIcon extends ConsumerWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// 独立的播放模式标记 — 隔离 playbackModeProvider 的 watch 范围，
-/// 避免模式变化触发整个 MainPage 重建。
-class _PlaybackModeBadge extends ConsumerWidget {
-  const _PlaybackModeBadge();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(playbackModeProvider);
-    final isXiaomusic = mode == PlaybackMode.xiaomusic;
-
-    final Color bgColor;
-    final Color fgColor;
-    final IconData icon;
-    final String label;
-
-    if (isXiaomusic) {
-      bgColor = Colors.blue.withValues(alpha: 0.12);
-      fgColor = Colors.blue;
-      icon = Icons.dns_rounded;
-      label = 'xiaomusic';
-    } else {
-      bgColor = Colors.orange.withValues(alpha: 0.12);
-      fgColor = Colors.orange;
-      icon = Icons.wifi_tethering_rounded;
-      label = '直连';
-    }
-
-    return Transform.translate(
-      offset: const Offset(0, 8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 12, color: fgColor),
-            const SizedBox(width: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: fgColor,
-                height: 1.2,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

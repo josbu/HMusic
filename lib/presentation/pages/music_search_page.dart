@@ -1427,6 +1427,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
             musicName: '${item.title} - ${item.author}',
             url: playUrl,
             albumCoverUrl: item.picture, // 🎨 传入封面图URL（搜索结果自带）
+            playlistName: '搜索结果',
           );
 
       debugPrint('[DirectMode] ✅ 播放请求已通过 PlaybackProvider 发送');

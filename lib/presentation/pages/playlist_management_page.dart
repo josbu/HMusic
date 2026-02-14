@@ -586,6 +586,7 @@ class _PlaylistDetailPageState extends ConsumerState<_PlaylistDetailPage> {
         musicName: musicName,
         url: '', // URL 为空时，playMusic 会尝试搜索解析
         albumCoverUrl: result.picture,
+        playlistName: _playlist.name,
       );
 
       debugPrint('✅ [歌单播放] 播放请求已发送');

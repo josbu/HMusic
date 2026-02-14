@@ -885,21 +885,29 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
           SizedBox(
             height: fixedSubtitleHeight,
             child: Center(
-              child:
-                  (currentMusic != null && currentMusic.curPlaylist != null)
-                      ? Text(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (currentMusic != null && currentMusic.curPlaylist != null)
+                    Flexible(
+                      child: Text(
                         currentMusic.curPlaylist,
                         style: TextStyle(
                           fontSize: subtitleFontSize,
                           fontWeight: FontWeight.w500,
-                          color: onSurface.withOpacity(0.7),
+                          color: onSurface.withValues(alpha: 0.7),
                           height: subtitleLineHeight,
                         ),
                         textAlign: TextAlign.center,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                      )
-                      : const SizedBox.shrink(),
+                      ),
+                    ),
+                  if (currentMusic != null && currentMusic.curPlaylist != null)
+                    const SizedBox(width: 6),
+                  const _PlaybackModeBadge(),
+                ],
+              ),
             ),
           ),
         ],
@@ -1611,6 +1619,58 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 播放模式小角标 — 独立 ConsumerWidget 隔离 playbackModeProvider 的 watch 范围
+class _PlaybackModeBadge extends ConsumerWidget {
+  const _PlaybackModeBadge();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(playbackModeProvider);
+    final isXiaomusic = mode == PlaybackMode.xiaomusic;
+
+    final Color bgColor;
+    final Color fgColor;
+    final IconData icon;
+    final String label;
+
+    if (isXiaomusic) {
+      bgColor = Colors.blue.withValues(alpha: 0.15);
+      fgColor = Colors.blue;
+      icon = Icons.dns_rounded;
+      label = 'xiaomusic';
+    } else {
+      bgColor = Colors.orange.withValues(alpha: 0.15);
+      fgColor = Colors.orange;
+      icon = Icons.wifi_tethering_rounded;
+      label = '直连';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: fgColor),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: fgColor,
+              height: 1.2,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -216,6 +216,24 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     // 🔧 不要在构造函数中恢复播放数据，避免在设备确定前显示数据
   }
 
+  /// 获取当前播放队列的真实名称（歌单名/搜索结果名等）
+  /// 优先级：playbackQueueProvider 队列名 > 当前 state 已有值 > fallback
+  String _getCurrentQueueName({String fallback = ''}) {
+    try {
+      final queueState = ref.read(playbackQueueProvider);
+      final queueName = queueState.queue?.queueName;
+      if (queueName != null && queueName.isNotEmpty) {
+        return queueName;
+      }
+    } catch (_) {}
+    // 队列为空时（如重启后），保留 state 中已缓存恢复的歌单名
+    final existing = state.currentMusic?.curPlaylist;
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
+    }
+    return fallback;
+  }
+
   @override
   void dispose() {
     _statusRefreshTimer?.cancel();
@@ -1133,8 +1151,20 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
       // 从本地播放器获取状态
       try {
-        final status = await _currentStrategy!.getCurrentStatus();
+        var status = await _currentStrategy!.getCurrentStatus();
         if (status != null) {
+          // 🎯 用真实队列名替换策略返回的模式描述
+          final realQueueName = _getCurrentQueueName(fallback: status.curPlaylist);
+          if (realQueueName != status.curPlaylist) {
+            status = PlayingMusic(
+              ret: status.ret,
+              curMusic: status.curMusic,
+              curPlaylist: realQueueName,
+              isPlaying: status.isPlaying,
+              offset: status.offset,
+              duration: status.duration,
+            );
+          }
           state = state.copyWith(
             currentMusic: status,
             hasLoaded: true,
@@ -1173,12 +1203,25 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       debugPrint('🎵 [PlaybackProvider] 直连模式，从策略获取状态');
 
       try {
-        final status = await _currentStrategy!.getCurrentStatus();
+        var status = await _currentStrategy!.getCurrentStatus();
         debugPrint(
           '🎵 [PlaybackProvider] 直连模式状态: ${status?.curMusic}, 播放中=${status?.isPlaying}',
         );
 
         if (status != null) {
+          // 🎯 用真实队列名替换策略返回的模式描述
+          final realQueueName = _getCurrentQueueName(fallback: status.curPlaylist);
+          if (realQueueName != status.curPlaylist) {
+            status = PlayingMusic(
+              ret: status.ret,
+              curMusic: status.curMusic,
+              curPlaylist: realQueueName,
+              isPlaying: status.isPlaying,
+              offset: status.offset,
+              duration: status.duration,
+            );
+          }
+
           // 🎯 检测歌曲切换
           bool isSongChanged = false;
           if (state.currentMusic != null && status.curMusic.isNotEmpty) {
@@ -1444,6 +1487,23 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         } else {
           // xiaomusic模式：重置为false（由服务器端管理）
           isFavorite = false;
+        }
+      }
+
+      // 🎯 远程模式：用本地队列名覆盖服务器返回的歌单名（如 "全部"）
+      // 服务器返回的 cur_playlist 是 xiaomusic 内部歌单名，
+      // 而用户实际可能在从搜索结果/自定义歌单播放
+      if (finalMusic != null) {
+        final realQueueName = _getCurrentQueueName();
+        if (realQueueName.isNotEmpty && realQueueName != finalMusic.curPlaylist) {
+          finalMusic = PlayingMusic(
+            ret: finalMusic.ret,
+            curMusic: finalMusic.curMusic,
+            curPlaylist: realQueueName,
+            isPlaying: finalMusic.isPlaying,
+            offset: finalMusic.offset,
+            duration: finalMusic.duration,
+          );
         }
       }
 
@@ -1949,8 +2009,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
                   '🎵 [PlaybackProvider] xiaomusic队列播放上一首: ${prevItem.title}',
                 );
 
-                // 🎯 playOnlineItem 内部会做乐观更新，直接调用
-                await playOnlineItem(prevItem);
+                // 🎯 根据歌曲类型分发播放
+                await _playNextItem(prevItem);
 
                 // 🎯 静默刷新
                 await Future.delayed(const Duration(milliseconds: 500));
@@ -1997,7 +2057,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     final optimisticMusic = PlayingMusic(
       ret: 'OK',
       curMusic: item.displayName,
-      curPlaylist: '',
+      curPlaylist: _getCurrentQueueName(),
       isPlaying: true,
       duration: item.duration ?? 0,
       offset: 0,
@@ -2094,8 +2154,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
                   '🎵 [PlaybackProvider] xiaomusic队列播放下一首: ${nextItem.title}',
                 );
 
-                // 🎯 playOnlineItem 内部会做乐观更新，直接调用
-                await playOnlineItem(nextItem);
+                // 🎯 根据歌曲类型分发播放
+                await _playNextItem(nextItem);
 
                 // 🎯 静默刷新
                 await Future.delayed(const Duration(milliseconds: 500));
@@ -2200,6 +2260,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     String? albumCoverUrl, // 🖼️ 新增：支持直接传入封面图URL（搜索音乐）
     List<Music>? playlist, // 🎵 新增：播放列表（用于本地播放上一曲/下一曲）
     int? startIndex, // 🎵 新增：开始播放的索引
+    String? playlistName, // 🎵 新增：歌单名称（用于 UI 显示和 API 调用）
   }) async {
     // 🎵 使用策略模式播放
     if (_currentStrategy == null) {
@@ -2256,7 +2317,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         final optimisticMusic = PlayingMusic(
           ret: 'OK',
           curMusic: musicName,
-          curPlaylist: '',
+          curPlaylist: _getCurrentQueueName(),
           isPlaying: true, // 乐观地认为会播放成功
           // 保护期内如果上一层已写入有效时长（如 playOnlineItem），不要重置为 0
           duration: keepExistingDuration ? existingMusic.duration : 0,
@@ -2313,7 +2374,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         ref
             .read(playbackQueueProvider.notifier)
             .setQueue(
-              queueName: '播放列表',
+              queueName: playlistName ?? '播放列表',
               source: PlaylistSource.musicLibrary,
               items: queueItems,
               startIndex: playIndex,
@@ -2847,7 +2908,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         if (nextItem != null) {
           debugPrint('🎵 [xiaomusic-AutoNext] 下一首: ${nextItem.displayName}');
           try {
-            await playOnlineItem(nextItem);
+            await _playNextItem(nextItem);
             debugPrint('✅ [xiaomusic-AutoNext] 自动下一首播放成功(异常切换检测)');
           } catch (e) {
             debugPrint('❌ [xiaomusic-AutoNext] 自动下一首播放失败: $e');
@@ -2923,7 +2984,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
         // 使用统一的播放方法
         try {
-          await playOnlineItem(nextItem);
+          await _playNextItem(nextItem);
           debugPrint('✅ [xiaomusic-AutoNext] 自动下一首播放成功');
         } catch (e) {
           debugPrint('❌ [xiaomusic-AutoNext] 自动下一首播放失败: $e');
@@ -2938,6 +2999,28 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     // 🔄 更新上一次轮询的位置（必须在检测之后更新）
     _xiaomusicLastPosition = position;
     _xiaomusicLastDuration = duration;
+  }
+
+  /// 🎵 根据歌曲类型自动分发播放方法
+  ///
+  /// - server 类型：使用 playMusic（xiaomusic 服务器本地歌曲）
+  /// - online 类型：使用 playOnlineItem（在线搜索歌曲，需 JS 解析 URL）
+  Future<void> _playNextItem(PlaylistItem item) async {
+    if (item.isOnline) {
+      await playOnlineItem(item);
+    } else {
+      // server / local 类型：直接用 playMusic
+      final deviceId = ref.read(deviceProvider).selectedDeviceId;
+      if (deviceId == null) {
+        throw Exception('未选择播放设备');
+      }
+      await playMusic(
+        deviceId: deviceId,
+        musicName: item.displayName,
+        albumCoverUrl: item.coverUrl,
+        playlistName: _getCurrentQueueName(),
+      );
+    }
   }
 
   /// 🎵 统一的在线歌曲播放方法（懒加载方式）
@@ -2978,7 +3061,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       final optimisticMusic = PlayingMusic(
         ret: 'OK',
         curMusic: item.displayName,
-        curPlaylist: '',
+        curPlaylist: _getCurrentQueueName(),
         isPlaying: true,
         duration: item.duration ?? 0,
         offset: 0,

@@ -116,6 +116,9 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
             deviceId: selectedDid,
             musicName: musicName,
             playlist: playlist, // 🎵 传递播放列表
+            playlistName: libraryState.searchQuery.isNotEmpty
+                ? '搜索: ${libraryState.searchQuery}'
+                : '曲库',
           );
 
       if (mounted) {

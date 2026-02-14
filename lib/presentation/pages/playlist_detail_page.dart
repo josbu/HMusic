@@ -133,6 +133,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                 musicName: firstSong.displayName,
                 url: playUrl,
                 albumCoverUrl: firstSong.coverUrl,
+                playlistName: widget.playlistName,
               );
 
           if (mounted) {
@@ -169,6 +170,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                   musicName: firstSong.displayName,
                   url: playUrl,
                   albumCoverUrl: firstSong.coverUrl,
+                  playlistName: widget.playlistName,
                 );
 
             if (mounted) {
@@ -268,6 +270,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                 musicName: musicName,
                 url: playUrl,
                 albumCoverUrl: song.coverUrl,
+                playlistName: widget.playlistName,
               );
         } catch (e) {
           // 🔄 播放失败，可能是缓存URL失效，尝试强制刷新重试
@@ -297,6 +300,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                   musicName: musicName,
                   url: playUrl,
                   albumCoverUrl: song.coverUrl,
+                  playlistName: widget.playlistName,
                 );
           } catch (e2) {
             // 第二次也失败，显示错误
@@ -337,6 +341,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
             deviceId: did,
             musicName: musicName,
             playlist: playlist, // 🎵 传递播放列表
+            playlistName: widget.playlistName, // 🎵 传递歌单名
           );
     }
   }
