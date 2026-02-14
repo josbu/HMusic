@@ -165,8 +165,7 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
   }
 
   void _handleSearchTextChanged() {
-    // Keep UI (clear button visibility) in sync
-    if (mounted) setState(() {});
+    // 清除按钮的显隐改由 ValueListenableBuilder 驱动，不再 setState 全量重建
 
     // Ignore input while IME is composing (e.g., Pinyin on macOS)
     if (_searchController.value.composing.isValid) {
@@ -193,8 +192,6 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    final authState = ref.watch(authProvider);
-
     // 🎯 监听 Tab 索引变化（从其他页面切换 Tab 时触发）
     ref.listen<int>(mainTabIndexProvider, (previous, next) {
       if (next != _selectedIndex) {
@@ -227,7 +224,7 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
                 // Part 1: Header (Title, Refresh, User Info)
                 Material(
                   color: Theme.of(context).colorScheme.surface,
-                  child: _buildHeader(context, authState),
+                  child: _buildHeader(context),
                 ),
 
                 // Part 2: Device Selector or Search Bar
@@ -253,14 +250,17 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
             left: 0,
             right: 0,
             bottom: 0,
-            child: SafeArea(top: false, child: _buildModernBottomNav()),
+            child: SafeArea(
+              top: false,
+              child: RepaintBoundary(child: _buildModernBottomNav()),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context, AuthState authState) {
+  Widget _buildHeader(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Padding(
@@ -351,52 +351,55 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
     return Container(
       key: ValueKey<String>('secondary_section_$_selectedIndex'),
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-      child: TextField(
-        key: const ValueKey('online_search_field'),
-        controller: _searchController,
-        style: TextStyle(color: onSurface),
-        decoration: InputDecoration(
-          hintText: '在线搜索歌曲...',
-          hintStyle: TextStyle(color: onSurface.withOpacity(0.5)),
-          prefixIcon: Icon(
-            Icons.search_rounded,
-            color: onSurface.withOpacity(0.6),
-          ),
-          suffixIcon:
-              _searchController.text.isNotEmpty
-                  ? IconButton(
-                    icon: Icon(
-                      Icons.clear_rounded,
-                      color: onSurface.withOpacity(0.6),
-                    ),
-                    onPressed: () {
-                      _searchController.clear();
-                      ref.read(musicSearchProvider.notifier).clearSearch();
-                      setState(() {});
-                    },
-                  )
-                  : null,
-          filled: true,
-          fillColor: onSurface.withOpacity(0.05),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16.0),
-            borderSide: BorderSide.none,
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            vertical: 8,
-            horizontal: 16,
-          ),
-        ),
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: _searchController,
+        builder: (context, value, _) {
+          return TextField(
+            key: const ValueKey('online_search_field'),
+            controller: _searchController,
+            style: TextStyle(color: onSurface),
+            decoration: InputDecoration(
+              hintText: '在线搜索歌曲...',
+              hintStyle: TextStyle(color: onSurface.withOpacity(0.5)),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                color: onSurface.withOpacity(0.6),
+              ),
+              suffixIcon:
+                  value.text.isNotEmpty
+                      ? IconButton(
+                        icon: Icon(
+                          Icons.clear_rounded,
+                          color: onSurface.withOpacity(0.6),
+                        ),
+                        onPressed: () {
+                          _searchController.clear();
+                          ref.read(musicSearchProvider.notifier).clearSearch();
+                        },
+                      )
+                      : null,
+              filled: true,
+              fillColor: onSurface.withOpacity(0.05),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16.0),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                vertical: 8,
+                horizontal: 16,
+              ),
+            ),
+          );
+        },
       ),
     );
   }
 
   Widget _buildModernBottomNav() {
-    // 获取底部安全区域高度（包括小白条）
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final gestureInset = MediaQuery.of(context).systemGestureInsets.bottom;
-    final hasGesture = gestureInset > 0 || bottomPadding > 0;
-    final onSurface = Theme.of(context).colorScheme.onSurface;
+    // 使用精确订阅 paddingOf 替代 MediaQuery.of，避免键盘弹出时
+    // viewInsets 变化引发全页面重建（BackdropFilter 高斯模糊重绘很昂贵）
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+    final hasGesture = bottomPadding > 0;
 
     return Container(
       margin: EdgeInsets.only(
@@ -486,7 +489,10 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
                 transitionBuilder: (child, animation) =>
                     ScaleTransition(scale: animation, child: child),
                 child: index == 0
-                    ? _buildPlayTabIcon(isSelected, activeColor, inactiveColor)
+                    ? _PlayTabIcon(
+                        key: ValueKey<String>('play_tab_$isSelected'),
+                        isSelected: isSelected,
+                      )
                     : Icon(
                         isSelected ? activeIcon : icon,
                         key: ValueKey<String>('nav_icon_${index}_$isSelected'),
@@ -508,100 +514,6 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildPlayTabIcon(bool isSelected, Color activeColor, Color inactiveColor) {
-    final playback = ref.watch(playbackProvider);
-    final cover = playback.albumCoverUrl;
-    final isPlaying = playback.currentMusic?.isPlaying ?? false;
-    final borderColor = (isSelected ? activeColor : inactiveColor).withValues(alpha: 0.6);
-
-    // 计算播放进度 (0.0 - 1.0)
-    final offset = playback.currentMusic?.offset ?? 0;
-    final duration = playback.currentMusic?.duration ?? 0;
-    final progress = duration > 0 ? (offset / duration).clamp(0.0, 1.0) : 0.0;
-
-    Widget image = Container(
-      width: 26,
-      height: 26,
-      decoration: BoxDecoration(
-        color: inactiveColor.withValues(alpha: 0.15),
-        shape: BoxShape.circle,
-      ),
-      child: Icon(
-        Icons.play_circle_filled_rounded,
-        size: 16,
-        color: isSelected ? activeColor : inactiveColor,
-      ),
-    );
-
-    if (cover != null && cover.isNotEmpty) {
-      final thumb = Container(
-        width: 26,
-        height: 26,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: CachedNetworkImage(
-          imageUrl: cover,
-          fit: BoxFit.cover,
-          fadeInDuration: const Duration(milliseconds: 150),
-          errorWidget: (_, __, ___) => Icon(
-            Icons.music_note_rounded,
-            size: 16,
-            color: inactiveColor,
-          ),
-        ),
-      );
-      image = thumb;
-    }
-
-    return Stack(
-      key: ValueKey<String>('play_tab_icon_${cover ?? 'none'}_${isPlaying}_$isSelected'),
-      clipBehavior: Clip.none,
-      children: [
-        // 外围进度圈
-        SizedBox(
-          width: 30,
-          height: 30,
-          child: CircularProgressIndicator(
-            value: progress,
-            strokeWidth: 2.0,
-            backgroundColor: borderColor.withValues(alpha: 0.2),
-            valueColor: AlwaysStoppedAnimation<Color>(
-              isSelected ? activeColor : inactiveColor,
-            ),
-          ),
-        ),
-        // 封面图 (居中)
-        Positioned(
-          left: 2,
-          top: 2,
-          child: image,
-        ),
-        // 播放状态指示器
-        Positioned(
-          right: -2,
-          bottom: -2,
-          child: Container(
-            width: 14,
-            height: 14,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              shape: BoxShape.circle,
-              border: Border.all(color: borderColor, width: 1),
-            ),
-            alignment: Alignment.center,
-            child: Icon(
-              isPlaying ? Icons.equalizer_rounded : Icons.pause_rounded,
-              size: 10,
-              color: isSelected ? activeColor : inactiveColor,
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -756,5 +668,107 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
         );
       }
     }
+  }
+}
+
+/// 独立的播放 Tab 图标 — 隔离 playbackProvider 的 watch 范围，
+/// 避免播放状态更新触发整个 MainPage 重建。
+class _PlayTabIcon extends ConsumerWidget {
+  final bool isSelected;
+
+  const _PlayTabIcon({super.key, required this.isSelected});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final playback = ref.watch(playbackProvider);
+    final cover = playback.albumCoverUrl;
+    final isPlaying = playback.currentMusic?.isPlaying ?? false;
+
+    final activeColor = Theme.of(context).colorScheme.primary;
+    final inactiveColor = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.7);
+    final borderColor = (isSelected ? activeColor : inactiveColor).withValues(
+      alpha: 0.6,
+    );
+
+    // 计算播放进度 (0.0 - 1.0)
+    final offset = playback.currentMusic?.offset ?? 0;
+    final duration = playback.currentMusic?.duration ?? 0;
+    final progress = duration > 0 ? (offset / duration).clamp(0.0, 1.0) : 0.0;
+
+    Widget image = Container(
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        color: inactiveColor.withValues(alpha: 0.15),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        Icons.play_circle_filled_rounded,
+        size: 16,
+        color: isSelected ? activeColor : inactiveColor,
+      ),
+    );
+
+    if (cover != null && cover.isNotEmpty) {
+      image = Container(
+        width: 26,
+        height: 26,
+        decoration: const BoxDecoration(shape: BoxShape.circle),
+        clipBehavior: Clip.antiAlias,
+        child: CachedNetworkImage(
+          imageUrl: cover,
+          fit: BoxFit.cover,
+          fadeInDuration: const Duration(milliseconds: 150),
+          errorWidget: (_, __, ___) => Icon(
+            Icons.music_note_rounded,
+            size: 16,
+            color: inactiveColor,
+          ),
+        ),
+      );
+    }
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        // 外围进度圈
+        SizedBox(
+          width: 30,
+          height: 30,
+          child: CircularProgressIndicator(
+            value: progress,
+            strokeWidth: 2.0,
+            backgroundColor: borderColor.withValues(alpha: 0.2),
+            valueColor: AlwaysStoppedAnimation<Color>(
+              isSelected ? activeColor : inactiveColor,
+            ),
+          ),
+        ),
+        // 封面图 (居中)
+        Positioned(left: 2, top: 2, child: image),
+        // 播放状态指示器
+        Positioned(
+          right: -2,
+          bottom: -2,
+          child: Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              shape: BoxShape.circle,
+              border: Border.all(color: borderColor, width: 1),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              isPlaying ? Icons.equalizer_rounded : Icons.pause_rounded,
+              size: 10,
+              color: isSelected ? activeColor : inactiveColor,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
