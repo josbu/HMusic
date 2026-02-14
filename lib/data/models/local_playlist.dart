@@ -139,7 +139,12 @@ class LocalPlaylistSong {
   }
 
   /// 显示名称（歌名 - 歌手）
-  String get displayName => '$title - $artist';
+  /// 智能检测 title 是否已包含 artist，避免重复拼接
+  String get displayName {
+    if (artist.isEmpty || artist == '未知歌手') return title;
+    if (title.endsWith(' - $artist')) return title;
+    return '$title - $artist';
+  }
 
   /// 是否为在线音乐
   bool get isOnline => platform != null && songId != null;

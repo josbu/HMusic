@@ -976,7 +976,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              _formatDuration(displayTime),
+              totalTime > 0 ? _formatDuration(displayTime) : '--:--',
               style: TextStyle(color: onSurface.withOpacity(0.7)),
             ),
             Text(

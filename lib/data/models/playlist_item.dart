@@ -216,7 +216,14 @@ class PlaylistItem {
   }
 
   /// 获取显示名称（格式：歌名 - 歌手）
-  String get displayName => '$title - $artist';
+  /// 智能检测 title 是否已包含 artist，避免重复拼接
+  String get displayName {
+    // 如果 artist 为空或未知，直接返回 title
+    if (artist.isEmpty || artist == '未知歌手') return title;
+    // 如果 title 已经以 " - artist" 结尾，不再重复拼接
+    if (title.endsWith(' - $artist')) return title;
+    return '$title - $artist';
+  }
 
   /// 是否为本地音乐
   bool get isLocal => sourceType == 'local';

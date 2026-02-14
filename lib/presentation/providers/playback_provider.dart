@@ -1120,6 +1120,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
         _currentStrategy = remoteStrategy;
 
+        // 🎯 设置自动下一首热身保护期（10秒）
+        // 启动后首次轮询 audio_id 可能与缓存不同，不应触发自动下一首
+        _xiaomusicAutoNextWarmupUntil = DateTime.now().add(
+          const Duration(seconds: 10),
+        );
+        _xiaomusicLastAudioId = null; // 重置，避免与缓存的旧值误匹配
+        debugPrint('🛡️ [PlaybackProvider] 设置自动下一首热身保护期: 10秒');
+
         // 🎯 覆盖 audioHandler 回调，让通知栏控制路由到 PlaybackProvider
         // 这样通知栏的上下曲会经过播放队列逻辑（支持元歌单），
         // 暂停/播放也会经过乐观更新和保护期机制
@@ -2953,6 +2961,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   int _xiaomusicLastDuration = 0;
   int _xiaomusicNearEndHits = 0;
   String? _xiaomusicLastAudioId; // 🎯 追踪 audio_id 变化
+  DateTime? _xiaomusicAutoNextWarmupUntil; // 🎯 启动热身保护期，避免首次轮询误触发
 
   /// 🎯 xiaomusic 模式：检测歌曲是否接近结尾并触发自动下一首
   ///
@@ -3052,7 +3061,16 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     // 🎯 当歌名没变但 audio_id 变了，说明服务端切到了同名但不同源的歌曲
     // 例如：元歌单的「伤不起」播完 → 服务端「全部」列表里的「伤不起」
     final currentAudioId = _currentStrategy?.lastAudioId;
-    if (currentAudioId != null &&
+
+    // 🛡️ 热身保护期内不做 audio_id 变化检测（避免启动时缓存旧值误触发）
+    final inWarmup = _xiaomusicAutoNextWarmupUntil != null &&
+        DateTime.now().isBefore(_xiaomusicAutoNextWarmupUntil!);
+    if (inWarmup) {
+      // 热身期：只更新追踪值，不触发检测
+      if (currentAudioId != null) {
+        _xiaomusicLastAudioId = currentAudioId;
+      }
+    } else if (currentAudioId != null &&
         _xiaomusicLastAudioId != null &&
         currentAudioId != _xiaomusicLastAudioId &&
         !_xiaomusicAutoNextTriggered) {

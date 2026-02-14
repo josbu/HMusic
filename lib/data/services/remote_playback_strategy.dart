@@ -189,7 +189,7 @@ class RemotePlaybackStrategy implements PlaybackStrategy {
       if (didPrePause) {
         try {
           debugPrint('🔄 [RemotePlayback] 先暂停 playUrl 播放，避免切换竞争');
-          await _apiService.pauseMusic(did: _deviceId);
+          await _apiService.stopDevice(did: _deviceId);
           await Future.delayed(const Duration(milliseconds: 200));
         } catch (_) {}
       }
@@ -410,7 +410,7 @@ class RemotePlaybackStrategy implements PlaybackStrategy {
     if (didPrePause) {
       try {
         debugPrint('🔄 [RemotePlayback] 先暂停 legacy 播放，避免切换竞争');
-        await _apiService.pauseMusic(did: _deviceId);
+        await _apiService.stopDevice(did: _deviceId);
         await Future.delayed(const Duration(milliseconds: 200));
       } catch (_) {
         // 暂停失败不影响后续播放
