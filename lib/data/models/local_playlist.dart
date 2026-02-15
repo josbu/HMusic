@@ -1,4 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
+import '../../core/utils/platform_id.dart';
 
 part 'local_playlist.g.dart';
 
@@ -9,6 +10,12 @@ class LocalPlaylist {
   final String id; // 播放列表唯一标识
   final String name; // 播放列表名称
   final List<LocalPlaylistSong> songs; // 歌曲列表
+  final String? sourcePlatform; // 导入来源平台（tx/kw/wy）
+  final String? sourcePlaylistId; // 导入来源歌单ID
+  final String? sourceUrl; // 导入来源链接
+  final DateTime? importedAt; // 导入时间
+  @JsonKey(defaultValue: 'xiaomusic')
+  final String modeScope; // 可见范围：xiaomusic/direct/shared
   final DateTime createdAt; // 创建时间
   final DateTime updatedAt; // 更新时间
 
@@ -16,6 +23,11 @@ class LocalPlaylist {
     required this.id,
     required this.name,
     required this.songs,
+    this.sourcePlatform,
+    this.sourcePlaylistId,
+    this.sourceUrl,
+    this.importedAt,
+    this.modeScope = 'xiaomusic',
     required this.createdAt,
     required this.updatedAt,
   });
@@ -32,6 +44,11 @@ class LocalPlaylist {
       id: now.millisecondsSinceEpoch.toString(),
       name: name,
       songs: [],
+      sourcePlatform: null,
+      sourcePlaylistId: null,
+      sourceUrl: null,
+      importedAt: null,
+      modeScope: 'xiaomusic',
       createdAt: now,
       updatedAt: now,
     );
@@ -42,6 +59,11 @@ class LocalPlaylist {
     String? id,
     String? name,
     List<LocalPlaylistSong>? songs,
+    String? sourcePlatform,
+    String? sourcePlaylistId,
+    String? sourceUrl,
+    DateTime? importedAt,
+    String? modeScope,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -49,6 +71,11 @@ class LocalPlaylist {
       id: id ?? this.id,
       name: name ?? this.name,
       songs: songs ?? this.songs,
+      sourcePlatform: sourcePlatform ?? this.sourcePlatform,
+      sourcePlaylistId: sourcePlaylistId ?? this.sourcePlaylistId,
+      sourceUrl: sourceUrl ?? this.sourceUrl,
+      importedAt: importedAt ?? this.importedAt,
+      modeScope: modeScope ?? this.modeScope,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -66,11 +93,27 @@ class LocalPlaylist {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
 
-    return other is LocalPlaylist && other.id == id;
+    return other is LocalPlaylist &&
+        other.id == id &&
+        other.name == name &&
+        other.sourcePlatform == sourcePlatform &&
+        other.sourcePlaylistId == sourcePlaylistId &&
+        other.sourceUrl == sourceUrl &&
+        other.importedAt == importedAt &&
+        other.modeScope == modeScope;
   }
 
   @override
-  int get hashCode => id.hashCode;
+  int get hashCode =>
+      Object.hash(
+        id,
+        name,
+        sourcePlatform,
+        sourcePlaylistId,
+        sourceUrl,
+        importedAt,
+        modeScope,
+      );
 }
 
 /// 本地播放列表中的歌曲信息（简化版）
@@ -86,6 +129,7 @@ class LocalPlaylistSong {
   final String? cachedUrl; // 🎯 缓存的播放链接
   final DateTime? urlExpireTime; // 🎯 链接过期时间（6小时有效期）
   final int? duration; // 🎯 歌曲时长（秒），用于进度条显示
+  final Map<String, String>? platformSongIds; // 跨平台 songId 映射
 
   const LocalPlaylistSong({
     required this.title,
@@ -97,6 +141,7 @@ class LocalPlaylistSong {
     this.cachedUrl,
     this.urlExpireTime,
     this.duration,
+    this.platformSongIds,
   });
 
   factory LocalPlaylistSong.fromJson(Map<String, dynamic> json) =>
@@ -120,6 +165,7 @@ class LocalPlaylistSong {
       songId: songId,
       coverUrl: coverUrl,
       duration: duration,
+      platformSongIds: {PlatformId.normalize(platform): songId},
     );
   }
 
@@ -170,6 +216,7 @@ class LocalPlaylistSong {
     String? cachedUrl,
     DateTime? urlExpireTime,
     int? duration,
+    Map<String, String>? platformSongIds,
   }) {
     return LocalPlaylistSong(
       title: title ?? this.title,
@@ -181,6 +228,7 @@ class LocalPlaylistSong {
       cachedUrl: cachedUrl ?? this.cachedUrl,
       urlExpireTime: urlExpireTime ?? this.urlExpireTime,
       duration: duration ?? this.duration,
+      platformSongIds: platformSongIds ?? this.platformSongIds,
     );
   }
 
@@ -200,7 +248,8 @@ class LocalPlaylistSong {
         other.songId == songId &&
         other.localPath == localPath &&
         other.cachedUrl == cachedUrl &&
-        other.urlExpireTime == urlExpireTime;
+        other.urlExpireTime == urlExpireTime &&
+        PlatformId.platformSongIdsEqual(other.platformSongIds, platformSongIds);
   }
 
   @override
@@ -213,6 +262,11 @@ class LocalPlaylistSong {
       localPath,
       cachedUrl,
       urlExpireTime,
+      Object.hashAll(
+        (platformSongIds?.entries.toList() ??
+                const <MapEntry<String, String>>[])
+            .map((e) => Object.hash(e.key, e.value)),
+      ),
     );
   }
 }

@@ -1,8 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/utils/platform_id.dart';
 import '../../data/models/local_playlist.dart';
+import '../../data/models/local_playlist_model.dart';
+import 'direct_mode_provider.dart';
 
 /// 本地播放列表状态
 class LocalPlaylistState {
@@ -29,145 +35,218 @@ class LocalPlaylistState {
   }
 }
 
-/// 本地播放列表管理器（用于直连模式）
-/// 使用 SharedPreferences 存储，完全本地化，无需服务器
+/// 本地播放列表管理器（用于本地元歌单）
+/// SharedPreferences 存储优化：歌单元数据 + 每个歌单歌曲分 key
 class LocalPlaylistNotifier extends StateNotifier<LocalPlaylistState> {
   LocalPlaylistNotifier() : super(const LocalPlaylistState()) {
     _init();
   }
 
-  static const String _cacheKey = 'local_playlists_cache';
+  static const String _legacyCacheKey = 'local_playlists_cache';
+  static const String _legacyDirectModeKey = 'direct_mode_playlists';
+  static const String _migrationDoneKey = 'playlist_migration_done';
 
-  /// 初始化：加载本地播放列表
+  static const String _metaKey = 'local_playlists_meta';
+  static const String _songsKeyPrefix = 'local_playlist_songs_';
+
+  Future<void>? _writeLock;
+
   Future<void> _init() async {
     await loadPlaylists();
   }
 
-  /// 从 SharedPreferences 加载播放列表
+  Future<T> _serialWrite<T>(Future<T> Function() action) async {
+    while (_writeLock != null) {
+      await _writeLock;
+    }
+
+    final completer = Completer<void>();
+    _writeLock = completer.future;
+    try {
+      return await action();
+    } finally {
+      _writeLock = null;
+      completer.complete();
+    }
+  }
+
   Future<void> loadPlaylists() async {
     try {
       state = state.copyWith(isLoading: true);
 
       final prefs = await SharedPreferences.getInstance();
-      final jsonStr = prefs.getString(_cacheKey);
+      await _migrateLegacyIfNeeded(prefs);
 
-      if (jsonStr == null || jsonStr.isEmpty) {
-        debugPrint('📋 [LocalPlaylist] 没有缓存的播放列表');
-        state = state.copyWith(playlists: [], isLoading: false);
+      final metaJson = prefs.getString(_metaKey);
+      if (metaJson == null || metaJson.isEmpty) {
+        state = state.copyWith(playlists: [], isLoading: false, error: null);
         return;
       }
 
-      final List<dynamic> jsonList = jsonDecode(jsonStr);
-      final playlists = jsonList
-          .map((json) => LocalPlaylist.fromJson(json as Map<String, dynamic>))
-          .toList();
+      final List<dynamic> metaList = jsonDecode(metaJson) as List<dynamic>;
+      final playlists = <LocalPlaylist>[];
 
+      for (final entry in metaList) {
+        final meta = Map<String, dynamic>.from(entry as Map);
+        final playlistId = (meta['id'] ?? '').toString();
+        if (playlistId.isEmpty) continue;
+
+        final songsJson = prefs.getString('$_songsKeyPrefix$playlistId');
+        final songs = <LocalPlaylistSong>[];
+        if (songsJson != null && songsJson.isNotEmpty) {
+          final List<dynamic> rawSongs = jsonDecode(songsJson) as List<dynamic>;
+          songs.addAll(
+            rawSongs.map(
+              (s) => _normalizeSong(
+                LocalPlaylistSong.fromJson(Map<String, dynamic>.from(s as Map)),
+              ),
+            ),
+          );
+        }
+
+        final playlist = LocalPlaylist(
+          id: playlistId,
+          name: (meta['name'] ?? '').toString(),
+          songs: songs,
+          sourcePlatform: _normalizeNullablePlatform(
+            meta['sourcePlatform']?.toString(),
+          ),
+          sourcePlaylistId: meta['sourcePlaylistId']?.toString(),
+          sourceUrl: meta['sourceUrl']?.toString(),
+          importedAt: _parseDate(meta['importedAt']),
+          modeScope: _normalizeModeScope(meta['modeScope']?.toString()),
+          createdAt: _parseDate(meta['createdAt']) ?? DateTime.now(),
+          updatedAt: _parseDate(meta['updatedAt']) ?? DateTime.now(),
+        );
+        playlists.add(playlist);
+      }
+
+      state = state.copyWith(
+        playlists: playlists,
+        isLoading: false,
+        error: null,
+      );
       debugPrint('✅ [LocalPlaylist] 加载了 ${playlists.length} 个播放列表');
-      state = state.copyWith(playlists: playlists, isLoading: false, error: null);
     } catch (e) {
       debugPrint('❌ [LocalPlaylist] 加载播放列表失败: $e');
       state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
-  /// 刷新播放列表（与 PlaylistProvider API 一致）
   Future<void> refreshPlaylists() async {
     await loadPlaylists();
   }
 
-  /// 保存播放列表到 SharedPreferences
-  Future<void> _savePlaylists() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonList = state.playlists.map((p) => p.toJson()).toList();
-      final jsonStr = jsonEncode(jsonList);
-      await prefs.setString(_cacheKey, jsonStr);
-      debugPrint('💾 [LocalPlaylist] 已保存 ${state.playlists.length} 个播放列表');
-    } catch (e) {
-      debugPrint('❌ [LocalPlaylist] 保存播放列表失败: $e');
+  Future<void> _savePlaylists(List<LocalPlaylist> playlists) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final meta =
+        playlists
+            .map(
+              (p) => {
+                'id': p.id,
+                'name': p.name,
+                'sourcePlatform': p.sourcePlatform,
+                'sourcePlaylistId': p.sourcePlaylistId,
+                'sourceUrl': p.sourceUrl,
+                'importedAt': p.importedAt?.toIso8601String(),
+                'modeScope': p.modeScope,
+                'createdAt': p.createdAt.toIso8601String(),
+                'updatedAt': p.updatedAt.toIso8601String(),
+              },
+            )
+            .toList();
+
+    await prefs.setString(_metaKey, jsonEncode(meta));
+
+    for (final playlist in playlists) {
+      final songsJson = jsonEncode(
+        playlist.songs.map((s) => s.toJson()).toList(),
+      );
+      await prefs.setString('$_songsKeyPrefix${playlist.id}', songsJson);
     }
+
+    final allKeys = prefs.getKeys();
+    final activeSongKeys =
+        playlists.map((p) => '$_songsKeyPrefix${p.id}').toSet();
+    for (final key in allKeys) {
+      if (key.startsWith(_songsKeyPrefix) && !activeSongKeys.contains(key)) {
+        await prefs.remove(key);
+      }
+    }
+
+    final totalJson = jsonEncode(playlists.map((p) => p.toJson()).toList());
+    final totalBytes = utf8.encode(totalJson).length;
+    debugPrint(
+      '💾 [LocalPlaylist] 已保存 ${playlists.length} 个播放列表，约 ${totalBytes} bytes',
+    );
   }
 
-  /// 创建播放列表
-  Future<void> createPlaylist(String name) async {
-    try {
-      state = state.copyWith(isLoading: true);
-
-      // 检查名称是否重复
+  Future<void> createPlaylist(String name, {String modeScope = 'xiaomusic'}) {
+    return _serialWrite(() async {
+      final scope = _normalizeModeScope(modeScope);
       final exists = state.playlists.any((p) => p.name == name);
       if (exists) {
         throw Exception('播放列表"$name"已存在');
       }
 
-      final newPlaylist = LocalPlaylist.create(name: name);
-      final updatedPlaylists = [...state.playlists, newPlaylist];
+      final now = DateTime.now();
+      final newPlaylist = LocalPlaylist(
+        id: now.millisecondsSinceEpoch.toString(),
+        name: name,
+        songs: const [],
+        modeScope: scope,
+        createdAt: now,
+        updatedAt: now,
+      );
 
-      state = state.copyWith(playlists: updatedPlaylists, isLoading: false);
-      await _savePlaylists();
-
-      debugPrint('✅ [LocalPlaylist] 创建播放列表: $name');
-    } catch (e) {
-      debugPrint('❌ [LocalPlaylist] 创建播放列表失败: $e');
-      state = state.copyWith(isLoading: false, error: e.toString());
-      rethrow;
-    }
+      final updated = [...state.playlists, newPlaylist];
+      state = state.copyWith(playlists: updated, isLoading: false, error: null);
+      await _savePlaylists(updated);
+    });
   }
 
-  /// 删除播放列表（通过名称，与 PlaylistProvider API 一致）
-  Future<void> deletePlaylist(String playlistName) async {
-    try {
-      state = state.copyWith(isLoading: true);
+  Future<void> deletePlaylist(String playlistName, {String? modeScope}) {
+    return _serialWrite(() async {
+      final scope = modeScope == null ? null : _normalizeModeScope(modeScope);
+      final updated =
+          state.playlists.where((p) {
+            final nameMatch = p.name == playlistName;
+            if (!nameMatch) return true;
+            if (scope == null) return false;
+            return p.modeScope != scope;
+          }).toList();
 
-      final updatedPlaylists =
-          state.playlists.where((p) => p.name != playlistName).toList();
-
-      state = state.copyWith(playlists: updatedPlaylists, isLoading: false);
-      await _savePlaylists();
-
-      debugPrint('✅ [LocalPlaylist] 删除播放列表: $playlistName');
-    } catch (e) {
-      debugPrint('❌ [LocalPlaylist] 删除播放列表失败: $e');
-      state = state.copyWith(isLoading: false, error: e.toString());
-      rethrow;
-    }
+      state = state.copyWith(playlists: updated, isLoading: false, error: null);
+      await _savePlaylists(updated);
+    });
   }
 
-  /// 添加歌曲到播放列表
-  /// [playlistName] 播放列表名称
-  /// [songs] 要添加的歌曲列表
   Future<void> addMusicToPlaylist({
     required String playlistName,
     required List<LocalPlaylistSong> songs,
-  }) async {
-    try {
-      state = state.copyWith(isLoading: true);
-
-      final playlistIndex =
-          state.playlists.indexWhere((p) => p.name == playlistName);
-
-      if (playlistIndex == -1) {
+  }) {
+    return _serialWrite(() async {
+      final index = state.playlists.indexWhere((p) => p.name == playlistName);
+      if (index == -1) {
         throw Exception('播放列表"$playlistName"不存在');
       }
 
-      final playlist = state.playlists[playlistIndex];
+      final playlist = state.playlists[index];
       final updatedSongs = [...playlist.songs];
 
-      // 添加歌曲（检查重复）
-      int addedCount = 0;
       for (final song in songs) {
+        final normalized = _normalizeSong(song);
         final exists = updatedSongs.any(
           (s) =>
-              s.title == song.title &&
-              s.artist == song.artist &&
-              s.platform == song.platform &&
-              s.songId == song.songId,
+              s.title == normalized.title &&
+              s.artist == normalized.artist &&
+              PlatformId.normalize(s.platform ?? '') ==
+                  PlatformId.normalize(normalized.platform ?? '') &&
+              s.songId == normalized.songId,
         );
-
         if (!exists) {
-          updatedSongs.add(song);
-          addedCount++;
-        } else {
-          debugPrint('⚠️ [LocalPlaylist] 歌曲已存在，跳过: ${song.displayName}');
+          updatedSongs.add(normalized);
         }
       }
 
@@ -176,73 +255,88 @@ class LocalPlaylistNotifier extends StateNotifier<LocalPlaylistState> {
         updatedAt: DateTime.now(),
       );
 
-      final updatedPlaylists = [...state.playlists];
-      updatedPlaylists[playlistIndex] = updatedPlaylist;
-
-      state = state.copyWith(playlists: updatedPlaylists, isLoading: false);
-      await _savePlaylists();
-
-      debugPrint('✅ [LocalPlaylist] 添加了 $addedCount 首歌曲到 $playlistName');
-    } catch (e) {
-      debugPrint('❌ [LocalPlaylist] 添加歌曲失败: $e');
-      state = state.copyWith(isLoading: false, error: e.toString());
-      rethrow;
-    }
+      final updated = [...state.playlists];
+      updated[index] = updatedPlaylist;
+      state = state.copyWith(playlists: updated, isLoading: false, error: null);
+      await _savePlaylists(updated);
+    });
   }
 
-  /// 从播放列表删除歌曲
-  /// [playlistName] 播放列表名称
-  /// [songIndices] 要删除的歌曲索引列表
+  Future<int> mergePlaylistSongs({
+    required String playlistName,
+    required List<LocalPlaylistSong> newSongs,
+  }) {
+    return _serialWrite(() async {
+      final index = state.playlists.indexWhere((p) => p.name == playlistName);
+      if (index == -1) {
+        throw Exception('播放列表"$playlistName"不存在');
+      }
+
+      final playlist = state.playlists[index];
+      final updatedSongs = [...playlist.songs];
+      int added = 0;
+
+      for (final song in newSongs.map(_normalizeSong)) {
+        final exists = updatedSongs.any(
+          (s) =>
+              PlatformId.normalize(s.platform ?? '') ==
+                  PlatformId.normalize(song.platform ?? '') &&
+              s.songId == song.songId,
+        );
+        if (!exists) {
+          updatedSongs.add(song);
+          added++;
+        }
+      }
+
+      final updatedPlaylist = playlist.copyWith(
+        songs: updatedSongs,
+        updatedAt: DateTime.now(),
+      );
+      final updated = [...state.playlists];
+      updated[index] = updatedPlaylist;
+      state = state.copyWith(playlists: updated);
+      await _savePlaylists(updated);
+
+      return added;
+    });
+  }
+
   Future<void> removeMusicFromPlaylist({
     required String playlistName,
     required List<int> songIndices,
-  }) async {
-    try {
-      state = state.copyWith(isLoading: true);
-
-      final playlistIndex =
-          state.playlists.indexWhere((p) => p.name == playlistName);
-
-      if (playlistIndex == -1) {
+  }) {
+    return _serialWrite(() async {
+      final index = state.playlists.indexWhere((p) => p.name == playlistName);
+      if (index == -1) {
         throw Exception('播放列表"$playlistName"不存在');
       }
 
-      final playlist = state.playlists[playlistIndex];
-      final updatedSongs = [...playlist.songs];
-
-      // 按索引倒序删除（避免索引错乱）
-      final sortedIndices = songIndices.toList()..sort((a, b) => b.compareTo(a));
-      for (final index in sortedIndices) {
-        if (index >= 0 && index < updatedSongs.length) {
-          updatedSongs.removeAt(index);
+      final playlist = state.playlists[index];
+      final songs = [...playlist.songs];
+      final sorted = songIndices.toList()..sort((a, b) => b.compareTo(a));
+      for (final songIndex in sorted) {
+        if (songIndex >= 0 && songIndex < songs.length) {
+          songs.removeAt(songIndex);
         }
       }
 
       final updatedPlaylist = playlist.copyWith(
-        songs: updatedSongs,
+        songs: songs,
         updatedAt: DateTime.now(),
       );
 
-      final updatedPlaylists = [...state.playlists];
-      updatedPlaylists[playlistIndex] = updatedPlaylist;
-
-      state = state.copyWith(playlists: updatedPlaylists, isLoading: false);
-      await _savePlaylists();
-
-      debugPrint('✅ [LocalPlaylist] 从 $playlistName 删除了 ${songIndices.length} 首歌曲');
-    } catch (e) {
-      debugPrint('❌ [LocalPlaylist] 删除歌曲失败: $e');
-      state = state.copyWith(isLoading: false, error: e.toString());
-      rethrow;
-    }
+      final updated = [...state.playlists];
+      updated[index] = updatedPlaylist;
+      state = state.copyWith(playlists: updated, isLoading: false, error: null);
+      await _savePlaylists(updated);
+    });
   }
 
-  /// 获取指定播放列表的歌曲列表
   List<LocalPlaylistSong> getPlaylistSongs(String playlistName) {
     try {
       final playlist = state.playlists.firstWhere(
         (p) => p.name == playlistName,
-        orElse: () => throw Exception('播放列表"$playlistName"不存在'),
       );
       return playlist.songs;
     } catch (e) {
@@ -251,19 +345,93 @@ class LocalPlaylistNotifier extends StateNotifier<LocalPlaylistState> {
     }
   }
 
-  /// 🎯 更新歌曲的缓存URL（6小时有效期）
-  /// [playlistName] 播放列表名称
-  /// [songIndex] 歌曲在列表中的索引
-  /// [cachedUrl] 缓存的播放链接
-  Future<void> updateSongCache({
+  List<LocalPlaylist> getVisiblePlaylists(PlaybackMode mode) {
+    final allowed =
+        mode == PlaybackMode.xiaomusic
+            ? const ['xiaomusic', 'shared']
+            : const ['direct', 'shared'];
+    return state.playlists
+        .where((p) => allowed.contains(_normalizeModeScope(p.modeScope)))
+        .toList();
+  }
+
+  String? isPlaylistImported(
+    String modeScope,
+    String sourcePlatform,
+    String sourcePlaylistId,
+  ) {
+    final scope = _normalizeModeScope(modeScope);
+    final platform = PlatformId.normalize(sourcePlatform);
+    try {
+      final playlist = state.playlists.firstWhere(
+        (p) =>
+            p.modeScope == scope &&
+            PlatformId.normalize(p.sourcePlatform ?? '') == platform &&
+            p.sourcePlaylistId == sourcePlaylistId,
+      );
+      return playlist.name;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _deduplicateName(String name, String modeScope) {
+    final names = state.playlists.map((p) => p.name).toSet();
+
+    if (!names.contains(name)) return name;
+    for (int i = 2; i <= 99; i++) {
+      final candidate = '$name ($i)';
+      if (!names.contains(candidate)) return candidate;
+    }
+    return '$name (${DateTime.now().millisecondsSinceEpoch})';
+  }
+
+  Future<void> importPlaylist({
+    required String name,
+    required String sourcePlatform,
+    required String sourcePlaylistId,
+    String? sourceUrl,
+    DateTime? importedAt,
+    required List<LocalPlaylistSong> songs,
+    String modeScope = 'xiaomusic',
+  }) {
+    return _serialWrite(() async {
+      final scope = _normalizeModeScope(modeScope);
+      final now = DateTime.now();
+      final deduped = _deduplicateName(name, scope);
+
+      final normalizedSongs = songs.map(_normalizeSong).toList();
+      final playlist = LocalPlaylist(
+        id: now.millisecondsSinceEpoch.toString(),
+        name: deduped,
+        songs: normalizedSongs,
+        sourcePlatform: PlatformId.normalize(sourcePlatform),
+        sourcePlaylistId: sourcePlaylistId,
+        sourceUrl: sourceUrl,
+        importedAt: importedAt ?? now,
+        modeScope: scope,
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final updated = [...state.playlists, playlist];
+      state = state.copyWith(playlists: updated, isLoading: false, error: null);
+      await _savePlaylists(updated);
+    });
+  }
+
+  Future<void> updateSongFields({
     required String playlistName,
     required int songIndex,
-    required String cachedUrl,
-  }) async {
-    try {
-      final playlistIndex =
-          state.playlists.indexWhere((p) => p.name == playlistName);
-
+    String? cachedUrl,
+    DateTime? urlExpireTime,
+    int? duration,
+    Map<String, String>? platformSongIds,
+  }) {
+    return _serialWrite(() async {
+      final playlistIndex = state.playlists.indexWhere(
+        (p) => p.name == playlistName,
+      );
       if (playlistIndex == -1) {
         throw Exception('播放列表"$playlistName"不存在');
       }
@@ -274,11 +442,25 @@ class LocalPlaylistNotifier extends StateNotifier<LocalPlaylistState> {
       }
 
       final song = playlist.songs[songIndex];
+      Map<String, String>? mergedIds = song.platformSongIds;
+      if (platformSongIds != null) {
+        mergedIds = {
+          ...?song.platformSongIds,
+          ...platformSongIds.map(
+            (key, value) => MapEntry(PlatformId.normalize(key), value),
+          ),
+        };
+      }
 
-      // 🎯 更新缓存URL和过期时间（6小时后过期）
       final updatedSong = song.copyWith(
-        cachedUrl: cachedUrl,
-        urlExpireTime: DateTime.now().add(const Duration(hours: 6)),
+        cachedUrl: cachedUrl ?? song.cachedUrl,
+        urlExpireTime:
+            urlExpireTime ??
+            (cachedUrl != null
+                ? DateTime.now().add(const Duration(hours: 6))
+                : song.urlExpireTime),
+        duration: duration ?? song.duration,
+        platformSongIds: mergedIds,
       );
 
       final updatedSongs = [...playlist.songs];
@@ -289,69 +471,188 @@ class LocalPlaylistNotifier extends StateNotifier<LocalPlaylistState> {
         updatedAt: DateTime.now(),
       );
 
-      final updatedPlaylists = [...state.playlists];
-      updatedPlaylists[playlistIndex] = updatedPlaylist;
-
-      state = state.copyWith(playlists: updatedPlaylists);
-      await _savePlaylists();
-
-      debugPrint(
-        '✅ [LocalPlaylist] 更新歌曲缓存: ${song.displayName}\n'
-        '   URL: ${cachedUrl.substring(0, cachedUrl.length > 50 ? 50 : cachedUrl.length)}...\n'
-        '   过期时间: ${updatedSong.urlExpireTime}',
-      );
-    } catch (e) {
-      debugPrint('❌ [LocalPlaylist] 更新歌曲缓存失败: $e');
-      rethrow;
-    }
+      final updated = [...state.playlists];
+      updated[playlistIndex] = updatedPlaylist;
+      state = state.copyWith(playlists: updated);
+      await _savePlaylists(updated);
+    });
   }
 
-  /// 🎯 更新歌曲的 duration（用于旧歌曲探测到时长后持久化）
+  Future<void> updateSongCache({
+    required String playlistName,
+    required int songIndex,
+    required String cachedUrl,
+  }) {
+    return updateSongFields(
+      playlistName: playlistName,
+      songIndex: songIndex,
+      cachedUrl: cachedUrl,
+    );
+  }
+
   Future<void> updateSongDuration({
     required String playlistName,
     required int songIndex,
     required int duration,
-  }) async {
-    try {
-      final playlistIndex =
-          state.playlists.indexWhere((p) => p.name == playlistName);
-
-      if (playlistIndex == -1) return;
-
-      final playlist = state.playlists[playlistIndex];
-      if (songIndex < 0 || songIndex >= playlist.songs.length) return;
-
-      final song = playlist.songs[songIndex];
-      final updatedSong = song.copyWith(duration: duration);
-
-      final updatedSongs = [...playlist.songs];
-      updatedSongs[songIndex] = updatedSong;
-
-      final updatedPlaylist = playlist.copyWith(
-        songs: updatedSongs,
-        updatedAt: DateTime.now(),
-      );
-
-      final updatedPlaylists = [...state.playlists];
-      updatedPlaylists[playlistIndex] = updatedPlaylist;
-
-      state = state.copyWith(playlists: updatedPlaylists);
-      await _savePlaylists();
-
-      debugPrint('✅ [LocalPlaylist] 更新歌曲时长: ${song.displayName} → ${duration}秒');
-    } catch (e) {
-      debugPrint('❌ [LocalPlaylist] 更新歌曲时长失败: $e');
-    }
+  }) {
+    return updateSongFields(
+      playlistName: playlistName,
+      songIndex: songIndex,
+      duration: duration,
+    );
   }
 
-  /// 清除错误信息
   void clearError() {
     state = state.copyWith(error: null);
   }
+
+  Future<void> _migrateLegacyIfNeeded(SharedPreferences prefs) async {
+    if (prefs.getBool(_migrationDoneKey) == true) {
+      return;
+    }
+
+    final migrated = <LocalPlaylist>[];
+
+    final legacyJson = prefs.getString(_legacyCacheKey);
+    if (legacyJson != null && legacyJson.isNotEmpty) {
+      try {
+        final List<dynamic> list = jsonDecode(legacyJson) as List<dynamic>;
+        for (final item in list) {
+          final playlist = LocalPlaylist.fromJson(
+            Map<String, dynamic>.from(item as Map),
+          );
+          migrated.add(
+            playlist.copyWith(
+              modeScope: _normalizeModeScope(playlist.modeScope),
+              sourcePlatform: _normalizeNullablePlatform(
+                playlist.sourcePlatform,
+              ),
+              sourceUrl: playlist.sourceUrl,
+              importedAt: playlist.importedAt,
+              songs: playlist.songs.map(_normalizeSong).toList(),
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('⚠️ [LocalPlaylist] 旧 local_playlists_cache 迁移失败: $e');
+      }
+    }
+
+    final legacyDirectJson = prefs.getString(_legacyDirectModeKey);
+    if (legacyDirectJson != null && legacyDirectJson.isNotEmpty) {
+      try {
+        final List<dynamic> list =
+            jsonDecode(legacyDirectJson) as List<dynamic>;
+        for (final item in list) {
+          final model = LocalPlaylistModel.fromJson(
+            Map<String, dynamic>.from(item as Map),
+          );
+          final songs =
+              model.songs.map((name) => _fromLegacySongName(name)).toList();
+          migrated.add(
+            LocalPlaylist(
+              id: model.id,
+              name: model.name,
+              songs: songs,
+              sourcePlatform: null,
+              sourcePlaylistId: null,
+              sourceUrl: null,
+              importedAt: null,
+              modeScope: 'direct',
+              createdAt: model.createdAt,
+              updatedAt: model.updatedAt,
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('⚠️ [LocalPlaylist] 旧 direct_mode_playlists 迁移失败: $e');
+      }
+    }
+
+    if (migrated.isNotEmpty) {
+      final merged = <String, LocalPlaylist>{};
+      for (final playlist in migrated) {
+        final key = '${playlist.modeScope}:${playlist.id}:${playlist.name}';
+        merged[key] = playlist;
+      }
+      final result = merged.values.toList();
+      await _savePlaylists(result);
+      state = state.copyWith(playlists: result);
+      debugPrint('✅ [LocalPlaylist] 旧数据迁移完成，共 ${result.length} 个歌单');
+    }
+
+    await prefs.setBool(_migrationDoneKey, true);
+    await prefs.remove(_legacyCacheKey);
+    await prefs.remove(_legacyDirectModeKey);
+  }
+
+  LocalPlaylistSong _normalizeSong(LocalPlaylistSong song) {
+    final normalizedPlatform = _normalizeNullablePlatform(song.platform);
+    Map<String, String>? normalizedIds;
+    if (song.platformSongIds != null) {
+      normalizedIds = {
+        for (final e in song.platformSongIds!.entries)
+          PlatformId.normalize(e.key): e.value,
+      };
+    }
+
+    if (normalizedPlatform != null &&
+        song.songId != null &&
+        song.songId!.isNotEmpty) {
+      normalizedIds ??= <String, String>{};
+      normalizedIds.putIfAbsent(normalizedPlatform, () => song.songId!);
+    }
+
+    return song.copyWith(
+      platform: normalizedPlatform,
+      platformSongIds: normalizedIds,
+    );
+  }
+
+  LocalPlaylistSong _fromLegacySongName(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      return const LocalPlaylistSong(title: '未知歌曲', artist: '未知歌手');
+    }
+
+    final parts = trimmed.split(' - ');
+    if (parts.length >= 2) {
+      return LocalPlaylistSong(
+        title: parts.first.trim(),
+        artist: parts.sublist(1).join(' - ').trim(),
+      );
+    }
+
+    return LocalPlaylistSong(title: trimmed, artist: '未知歌手');
+  }
+
+  String _normalizeModeScope(String? scope) {
+    switch ((scope ?? 'xiaomusic').toLowerCase()) {
+      case 'direct':
+      case 'shared':
+      case 'xiaomusic':
+        return (scope ?? 'xiaomusic').toLowerCase();
+      default:
+        return 'xiaomusic';
+    }
+  }
+
+  String? _normalizeNullablePlatform(String? platform) {
+    if (platform == null || platform.trim().isEmpty) return null;
+    return PlatformId.normalize(platform);
+  }
+
+  DateTime? _parseDate(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is DateTime) return raw;
+    if (raw is String && raw.isNotEmpty) {
+      return DateTime.tryParse(raw);
+    }
+    return null;
+  }
 }
 
-/// 本地播放列表 Provider
 final localPlaylistProvider =
     StateNotifierProvider<LocalPlaylistNotifier, LocalPlaylistState>((ref) {
-  return LocalPlaylistNotifier();
-});
+      return LocalPlaylistNotifier();
+    });

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../presentation/providers/source_settings_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/utils/platform_id.dart';
 
 /// A minimal transformer that always treats responses as plain text and
 /// never attempts to parse JSON based on Content-Type. This avoids
@@ -2595,32 +2596,7 @@ class WebViewJsSourceService {
     await _ready.future;
 
     // 平台映射 (LX Music格式)
-    String lxPlatform = platform;
-    switch (platform.toLowerCase()) {
-      case 'qq':
-      case 'tencent':
-        lxPlatform = 'tx';
-        break;
-      case 'netease':
-      case '163':
-        lxPlatform = 'wy';
-        break;
-      case 'kuwo':
-        lxPlatform = 'kw';
-        break;
-      case 'kugou':
-        lxPlatform = 'kg';
-        break;
-      case 'migu':
-        lxPlatform = 'mg';
-        break;
-      case 'auto':
-      default:
-        // auto或未知平台默认使用腾讯QQ音乐
-        lxPlatform = 'tx';
-        print('🔄 [WebViewJsSource] 平台 "$platform" 映射到默认平台 "tx"');
-        break;
-    }
+    final lxPlatform = PlatformId.normalize(platform);
 
     print('🔗 [WebViewJsSource] 开始解析播放链接');
     print('🔗 原始平台: $platform -> LX平台: $lxPlatform');

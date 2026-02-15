@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/playlist_provider.dart';
 import '../providers/local_playlist_provider.dart'; // 🆕 本地播放列表 Provider
 import '../providers/device_provider.dart';
+import '../providers/direct_mode_provider.dart';
 import 'playlist_detail_page.dart';
 import '../widgets/app_snackbar.dart';
 import '../widgets/app_layout.dart';
 import '../providers/auth_provider.dart';
+import '../../core/utils/platform_id.dart';
+import '../../data/services/playlist_import_service.dart';
 
 class PlaylistPage extends ConsumerStatefulWidget {
   final bool showCreateDialog; // 🎯 新增：是否自动弹出创建对话框
@@ -41,7 +45,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
         // 延迟一点确保页面已经渲染完成
         Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) {
-            _showCreatePlaylistDialog();
+            _showPlaylistActionSheet();
           }
         });
       }
@@ -52,12 +56,16 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
   Widget build(BuildContext context) {
     final localState = ref.watch(localPlaylistProvider);
     final serverState = ref.watch(playlistProvider);
+    final playbackMode = ref.watch(playbackModeProvider);
+    final visibleLocalPlaylists = ref
+        .read(localPlaylistProvider.notifier)
+        .getVisiblePlaylists(playbackMode);
 
     final isLoading =
         _showLocalPlaylists ? localState.isLoading : serverState.isLoading;
     final error = _showLocalPlaylists ? localState.error : serverState.error;
     final playlists =
-        _showLocalPlaylists ? localState.playlists : serverState.playlists;
+        _showLocalPlaylists ? visibleLocalPlaylists : serverState.playlists;
 
     return Scaffold(
       key: const ValueKey('playlist_scaffold'),
@@ -78,7 +86,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
         ),
         child: FloatingActionButton(
           key: const ValueKey('playlist_fab'),
-          onPressed: () => _showCreatePlaylistDialog(),
+          onPressed: () => _showPlaylistActionSheet(),
           tooltip: '新建歌单',
           backgroundColor: Theme.of(context).colorScheme.primary,
           foregroundColor: Colors.white,
@@ -105,6 +113,10 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     );
     final serverState = ref.watch(playlistProvider);
     final localState = ref.watch(localPlaylistProvider);
+    final playbackMode = ref.watch(playbackModeProvider);
+    final visibleLocalPlaylists = ref
+        .read(localPlaylistProvider.notifier)
+        .getVisiblePlaylists(playbackMode);
     final serverChild =
         showLocalPlaylists
             ? _buildBodyForSource(
@@ -120,7 +132,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
             : _buildBodyForSource(
               isLoading: localState.isLoading,
               error: localState.error,
-              playlists: localState.playlists,
+              playlists: visibleLocalPlaylists,
               showLocalPlaylists: true,
             );
 
@@ -327,7 +339,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
           const SizedBox(height: 16),
           if (showLocalPlaylists)
             FilledButton.icon(
-              onPressed: _showCreatePlaylistDialog,
+              onPressed: _showPlaylistActionSheet,
               icon: const Icon(Icons.add_rounded),
               label: const Text('创建歌单'),
             )
@@ -488,7 +500,11 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                       ),
                     ),
                     subtitle: Text(
-                      '$playlistCount首歌曲',
+                      _buildPlaylistSubtitle(
+                        playlist,
+                        playlistCount,
+                        showLocalPlaylists,
+                      ),
                       style: TextStyle(
                         fontSize: 12,
                         color: Theme.of(
@@ -635,11 +651,343 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     );
   }
 
+  String _buildPlaylistSubtitle(dynamic playlist, int count, bool isLocal) {
+    final countText = '$count首歌曲';
+    if (!isLocal) return countText;
+
+    final sourcePlatform = playlist.sourcePlatform?.toString();
+    if (sourcePlatform == null || sourcePlatform.isEmpty) return countText;
+    return '$countText · 来自 ${PlatformId.toDisplayName(sourcePlatform)}';
+  }
+
+  Future<void> _showPlaylistActionSheet() async {
+    final playbackMode = ref.read(playbackModeProvider);
+    final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
+
+    if (isDirectMode) {
+      _showCreatePlaylistDialog();
+      return;
+    }
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.note_add_rounded),
+                  title: const Text('新建空歌单'),
+                  subtitle: const Text('手动创建空歌单'),
+                  onTap: () => Navigator.pop(context, 'create'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.link_rounded),
+                  title: const Text('导入外部歌单'),
+                  subtitle: const Text('粘贴 QQ/酷我/网易云链接'),
+                  onTap: () => Navigator.pop(context, 'import'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (action == 'create') {
+      _showCreatePlaylistDialog();
+      return;
+    }
+    if (action == 'import') {
+      await _showImportBottomSheet();
+    }
+  }
+
+  Future<void> _showImportBottomSheet() async {
+    final controller = TextEditingController();
+    final playbackMode = ref.read(playbackModeProvider);
+    if (playbackMode == PlaybackMode.miIoTDirect) {
+      if (mounted) {
+        AppSnackBar.showWarning(context, '直连模式暂不支持外部歌单导入');
+      }
+      return;
+    }
+
+    final result = await showModalBottomSheet<ImportResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) {
+        final importService = ref.read(playlistImportServiceProvider);
+        ImportStage? stage;
+        bool importing = false;
+        CancelToken? cancelToken;
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            Future<void> startImport() async {
+              if (importing) return;
+              final text = controller.text.trim();
+              if (text.isEmpty) return;
+
+              setSheetState(() => importing = true);
+              cancelToken = CancelToken();
+
+              final importResult = await importService.importFromUrl(
+                text,
+                modeScope: 'xiaomusic',
+                cancelToken: cancelToken,
+                onInfo: (message) {
+                  if (context.mounted) {
+                    AppSnackBar.showInfo(context, message);
+                  }
+                },
+                onStageChanged: (s) {
+                  if (context.mounted) {
+                    setSheetState(() => stage = s);
+                  }
+                },
+                onNeedLargePlaylistConfirm: (summary) async {
+                  if (!context.mounted) return false;
+                  return await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) {
+                          return AlertDialog(
+                            title: const Text('歌单过大'),
+                            content: Text(
+                              '该歌单共 ${summary.totalCount} 首，仅支持导入前 500 首，是否继续？',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('取消'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('继续'),
+                              ),
+                            ],
+                          );
+                        },
+                      ) ??
+                      false;
+                },
+                onImportedConflict: (summary) async {
+                  if (!context.mounted) return ImportAction.cancel;
+                  return await showDialog<ImportAction>(
+                        context: context,
+                        builder: (ctx) {
+                          return AlertDialog(
+                            title: const Text('歌单已导入'),
+                            content: Text(
+                              '该歌单已导入为「${summary.existingPlaylistName ?? summary.name}」，请选择操作。',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed:
+                                    () =>
+                                        Navigator.pop(ctx, ImportAction.cancel),
+                                child: const Text('取消'),
+                              ),
+                              TextButton(
+                                onPressed:
+                                    () => Navigator.pop(
+                                      ctx,
+                                      ImportAction.mergeUpdate,
+                                    ),
+                                child: const Text('增量更新'),
+                              ),
+                              FilledButton(
+                                onPressed:
+                                    () => Navigator.pop(
+                                      ctx,
+                                      ImportAction.reimport,
+                                    ),
+                                child: const Text('重新导入'),
+                              ),
+                            ],
+                          );
+                        },
+                      ) ??
+                      ImportAction.cancel;
+                },
+              );
+
+              if (context.mounted) {
+                Navigator.pop(context, importResult);
+              }
+            }
+
+            String stageText() {
+              switch (stage) {
+                case ImportStage.identifying:
+                  return '正在识别平台...';
+                case ImportStage.resolving:
+                  return '正在解析链接...';
+                case ImportStage.fetching:
+                  return '正在获取歌曲列表...';
+                case ImportStage.cleaning:
+                  return '正在整理歌曲...';
+                case ImportStage.saving:
+                  return '正在写入本地...';
+                default:
+                  return '';
+              }
+            }
+
+            return AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '导入外部歌单',
+                      style: Theme.of(context).textTheme.titleMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    if (!importing)
+                      TextField(
+                        controller: controller,
+                        minLines: 1,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          hintText: '粘贴歌单链接或分享文案...',
+                          border: OutlineInputBorder(),
+                        ),
+                      )
+                    else ...[
+                      const SizedBox(height: 8),
+                      Text(stageText(), textAlign: TextAlign.center),
+                      const SizedBox(height: 10),
+                      const LinearProgressIndicator(),
+                    ],
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              if (importing) {
+                                cancelToken?.cancel('user_cancelled');
+                              }
+                              Navigator.pop(context);
+                            },
+                            child: const Text('取消'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: importing ? null : startImport,
+                            child:
+                                importing
+                                    ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                    : const Text('导入'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) return;
+
+    if (!result.success) {
+      if (result.error != ImportError.cancelled && mounted) {
+        AppSnackBar.showError(context, _importErrorText(result.error));
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _selectedSource = _PlaylistSourceTab.local;
+      });
+      await ref.read(localPlaylistProvider.notifier).refreshPlaylists();
+      AppSnackBar.showSuccess(context, _buildImportSuccessText(result));
+    }
+  }
+
+  String _importErrorText(ImportError? error) {
+    switch (error) {
+      case ImportError.invalidUrl:
+        return '不支持的链接格式，请粘贴 QQ音乐/酷我/网易云的歌单链接';
+      case ImportError.unsupportedPlatform:
+        return '暂不支持该平台';
+      case ImportError.playlistNotFound:
+        return '歌单不存在或已被删除';
+      case ImportError.alreadyImported:
+        return '该歌单已导入';
+      case ImportError.fetchFailed:
+        return '解析失败，请检查网络后重试';
+      case ImportError.cancelled:
+        return '已取消导入';
+      default:
+        return '导入失败，请重试';
+    }
+  }
+
+  String _buildImportSuccessText(ImportResult result) {
+    final name = result.playlistName ?? '歌单';
+    final sb = StringBuffer('已导入「$name」，共 ${result.importedCount} 首');
+
+    if (result.mergedCount > 0) {
+      sb
+        ..clear()
+        ..write('已更新「$name」，新增 ${result.mergedCount} 首');
+    }
+
+    if ((result.truncatedCount ?? 0) > 0) {
+      sb.write('（原歌单 ${result.totalCount} 首，截断 ${result.truncatedCount} 首）');
+    }
+
+    final duplicate = result.skippedReasons[SkipReason.duplicate] ?? 0;
+    final emptyTitle = result.skippedReasons[SkipReason.emptyTitle] ?? 0;
+    final skipped = duplicate + emptyTitle;
+    if (skipped > 0) {
+      sb.write('，跳过 $skipped 首');
+      final parts = <String>[];
+      if (duplicate > 0) parts.add('重复 $duplicate');
+      if (emptyTitle > 0) parts.add('无标题 $emptyTitle');
+      if (parts.isNotEmpty) sb.write('（${parts.join('，')}）');
+    }
+
+    return sb.toString();
+  }
+
   void _showCreatePlaylistDialog() {
     final controller = TextEditingController();
     bool _requestedFocus = false;
 
     final showLocalPlaylists = _showLocalPlaylists;
+    final playbackMode = ref.read(playbackModeProvider);
+    final modeScope =
+        playbackMode == PlaybackMode.miIoTDirect ? 'direct' : 'xiaomusic';
 
     showModalBottomSheet(
       context: context,
@@ -749,7 +1097,10 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                                               .read(
                                                 localPlaylistProvider.notifier,
                                               )
-                                              .createPlaylist(name);
+                                              .createPlaylist(
+                                                name,
+                                                modeScope: modeScope,
+                                              );
                                         } else {
                                           await ref
                                               .read(playlistProvider.notifier)

@@ -14,6 +14,14 @@ LocalPlaylist _$LocalPlaylistFromJson(Map<String, dynamic> json) =>
           (json['songs'] as List<dynamic>)
               .map((e) => LocalPlaylistSong.fromJson(e as Map<String, dynamic>))
               .toList(),
+      sourcePlatform: json['sourcePlatform'] as String?,
+      sourcePlaylistId: json['sourcePlaylistId'] as String?,
+      sourceUrl: json['sourceUrl'] as String?,
+      importedAt:
+          json['importedAt'] == null
+              ? null
+              : DateTime.parse(json['importedAt'] as String),
+      modeScope: json['modeScope'] as String? ?? 'xiaomusic',
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
@@ -23,6 +31,11 @@ Map<String, dynamic> _$LocalPlaylistToJson(LocalPlaylist instance) =>
       'id': instance.id,
       'name': instance.name,
       'songs': instance.songs.map((e) => e.toJson()).toList(),
+      'sourcePlatform': instance.sourcePlatform,
+      'sourcePlaylistId': instance.sourcePlaylistId,
+      'sourceUrl': instance.sourceUrl,
+      'importedAt': instance.importedAt?.toIso8601String(),
+      'modeScope': instance.modeScope,
       'createdAt': instance.createdAt.toIso8601String(),
       'updatedAt': instance.updatedAt.toIso8601String(),
     };
@@ -41,6 +54,9 @@ LocalPlaylistSong _$LocalPlaylistSongFromJson(Map<String, dynamic> json) =>
               ? null
               : DateTime.parse(json['urlExpireTime'] as String),
       duration: (json['duration'] as num?)?.toInt(),
+      platformSongIds: (json['platformSongIds'] as Map<String, dynamic>?)?.map(
+        (k, e) => MapEntry(k, e as String),
+      ),
     );
 
 Map<String, dynamic> _$LocalPlaylistSongToJson(LocalPlaylistSong instance) =>
@@ -54,4 +70,5 @@ Map<String, dynamic> _$LocalPlaylistSongToJson(LocalPlaylistSong instance) =>
       'cachedUrl': instance.cachedUrl,
       'urlExpireTime': instance.urlExpireTime?.toIso8601String(),
       'duration': instance.duration,
+      'platformSongIds': instance.platformSongIds,
     };

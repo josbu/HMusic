@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:just_audio/just_audio.dart';
@@ -20,6 +21,7 @@ import '../../data/models/local_playlist.dart'; // 🎯 本地播放列表模型
 import '../../data/models/playlist_item.dart'; // 🎯 统一播放列表项
 import '../../data/models/playlist_queue.dart'; // 🎯 PlaylistSource 枚举
 import '../../data/utils/lx_music_info_builder.dart';
+import '../../core/utils/platform_id.dart';
 
 class PlaylistDetailPage extends ConsumerStatefulWidget {
   final String playlistName;
@@ -36,6 +38,114 @@ class PlaylistDetailPage extends ConsumerStatefulWidget {
 }
 
 class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
+  LocalPlaylist? _findCurrentModeLocalPlaylist(List<LocalPlaylist> playlists) {
+    final playbackMode = ref.read(playbackModeProvider);
+    final preferredScope =
+        playbackMode == PlaybackMode.miIoTDirect ? 'direct' : 'xiaomusic';
+    try {
+      return playlists.firstWhere(
+        (p) =>
+            p.name == widget.playlistName &&
+            (p.modeScope == preferredScope || p.modeScope == 'shared'),
+      );
+    } catch (_) {
+      try {
+        return playlists.firstWhere((p) => p.name == widget.playlistName);
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  Future<void> _showImportedSourceInfo(LocalPlaylist playlist) async {
+    if (!mounted) return;
+    final sourcePlatform = playlist.sourcePlatform;
+    final sourcePlaylistId = playlist.sourcePlaylistId;
+    if (sourcePlatform == null ||
+        sourcePlatform.isEmpty ||
+        sourcePlaylistId == null ||
+        sourcePlaylistId.isEmpty) {
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  playlist.name,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('来源平台'),
+                  subtitle: Text(PlatformId.toDisplayName(sourcePlatform)),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('来源歌单 ID'),
+                  subtitle: Text(sourcePlaylistId),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.copy_rounded),
+                    tooltip: '复制',
+                    onPressed: () async {
+                      await Clipboard.setData(
+                        ClipboardData(text: sourcePlaylistId),
+                      );
+                      if (context.mounted) {
+                        AppSnackBar.showSuccess(context, '已复制来源歌单 ID');
+                      }
+                    },
+                  ),
+                ),
+                if (playlist.sourceUrl != null && playlist.sourceUrl!.isNotEmpty)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('来源链接'),
+                    subtitle: Text(
+                      playlist.sourceUrl!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.copy_rounded),
+                      tooltip: '复制',
+                      onPressed: () async {
+                        await Clipboard.setData(
+                          ClipboardData(text: playlist.sourceUrl!),
+                        );
+                        if (context.mounted) {
+                          AppSnackBar.showSuccess(context, '已复制来源链接');
+                        }
+                      },
+                    ),
+                  ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('导入时间'),
+                  subtitle: Text(
+                    (playlist.importedAt ?? playlist.createdAt)
+                        .toLocal()
+                        .toString(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Map<String, String> _buildLibraryCoverMap(List<Music> musics) {
     final map = <String, String>{};
 
@@ -81,9 +191,10 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       // 获取歌单歌曲列表
       final localState = ref.read(localPlaylistProvider);
       try {
-        final playlist = localState.playlists.firstWhere(
-          (p) => p.name == widget.playlistName,
-        );
+        final playlist = _findCurrentModeLocalPlaylist(localState.playlists);
+        if (playlist == null) {
+          throw Exception('歌单不存在: ${widget.playlistName}');
+        }
 
         if (playlist.songs.isEmpty) {
           if (mounted) {
@@ -129,7 +240,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
         // 🎯 设置播放队列（确保 _getCurrentQueueName() 能返回正确的歌单名）
         final queueItems = _localSongsToPlaylistItems(playlist.songs);
-        ref.read(playbackQueueProvider.notifier).setQueue(
+        ref
+            .read(playbackQueueProvider.notifier)
+            .setQueue(
               queueName: widget.playlistName,
               source: PlaylistSource.customPlaylist,
               items: queueItems,
@@ -296,9 +409,10 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       // 🎯 获取歌曲信息和索引
       final localState = ref.read(localPlaylistProvider);
       try {
-        final playlist = localState.playlists.firstWhere(
-          (p) => p.name == widget.playlistName,
-        );
+        final playlist = _findCurrentModeLocalPlaylist(localState.playlists);
+        if (playlist == null) {
+          throw Exception('歌单不存在: ${widget.playlistName}');
+        }
 
         // 找到对应歌曲的索引
         final songIndex = playlist.songs.indexWhere(
@@ -313,7 +427,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
         // 🎯 设置播放队列（确保 _getCurrentQueueName() 能返回正确的歌单名）
         final queueItems = _localSongsToPlaylistItems(playlist.songs);
-        ref.read(playbackQueueProvider.notifier).setQueue(
+        ref
+            .read(playbackQueueProvider.notifier)
+            .setQueue(
               queueName: widget.playlistName,
               source: PlaylistSource.customPlaylist,
               items: queueItems,
@@ -694,7 +810,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       final probedDuration = await _probeDurationFromUrl(song.cachedUrl!);
       if (probedDuration != null && probedDuration > 0) {
         // 保存 duration 到 LocalPlaylistSong
-        await ref.read(localPlaylistProvider.notifier).updateSongDuration(
+        await ref
+            .read(localPlaylistProvider.notifier)
+            .updateSongDuration(
               playlistName: widget.playlistName,
               songIndex: songIndex,
               duration: probedDuration,
@@ -710,7 +828,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
 
     // 2. 缓存无效或不存在，解析新URL
     debugPrint('🔍 [PlaylistDetail] 缓存无效，开始解析URL: ${song.displayName}');
-    final platform = song.platform ?? 'qq';
+    final platform = PlatformId.normalize(song.platform ?? PlatformId.tx);
     final songId = song.songId ?? '';
 
     if (songId.isEmpty) {
@@ -744,12 +862,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
         if (jsProxyState.isInitialized && jsProxyState.currentScript != null) {
           debugPrint('   ✅ QuickJS已就绪，开始调用 getMusicUrl()');
 
-          final mapped =
-              (platform == 'qq')
-                  ? 'tx'
-                  : (platform == 'netease' || platform == '163')
-                  ? 'wy'
-                  : platform;
+          final mapped = PlatformId.normalize(platform);
 
           debugPrint(
             '   调用参数: source=$mapped, songId=$songId, quality=$quality',
@@ -833,9 +946,8 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
                     console.log('[PlaylistDetail] 内置JS: lx 环境不存在');
                     return '';
                   }
-                  function mapPlat(p){ p=(p||'').toLowerCase(); if(p==='qq'||p==='tencent') return 'tx'; if(p==='netease'||p==='163') return 'wy'; if(p==='kuwo') return 'kw'; if(p==='kugou') return 'kg'; if(p==='migu') return 'mg'; return p; }
                   var musicInfo = ${jsonEncode(musicInfo)};
-                  var payload = { action: 'musicUrl', source: mapPlat('$platform'), info: { type: '$quality', musicInfo: musicInfo } };
+                  var payload = { action: 'musicUrl', source: '$platform', info: { type: '$quality', musicInfo: musicInfo } };
                   console.log('[PlaylistDetail] 内置JS: 调用 lx.emit，参数:', payload);
                   var res = lx.emit(lx.EVENT_NAMES.request, payload);
                   console.log('[PlaylistDetail] 内置JS: lx.emit 返回:', typeof res, res);
@@ -899,7 +1011,9 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
         if (duration == null || duration <= 0) {
           duration = await _probeDurationFromUrl(resolvedUrl);
           if (duration != null && duration > 0) {
-            await ref.read(localPlaylistProvider.notifier).updateSongDuration(
+            await ref
+                .read(localPlaylistProvider.notifier)
+                .updateSongDuration(
                   playlistName: widget.playlistName,
                   songIndex: songIndex,
                   duration: duration,
@@ -920,12 +1034,14 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
   /// 🎯 使用 just_audio 从 URL 探测音频时长
   Future<int?> _probeDurationFromUrl(String url) async {
     try {
-      debugPrint('🎯 [PlaylistDetail] 探测音频时长: ${url.substring(0, url.length > 60 ? 60 : url.length)}...');
+      debugPrint(
+        '🎯 [PlaylistDetail] 探测音频时长: ${url.substring(0, url.length > 60 ? 60 : url.length)}...',
+      );
       final tempPlayer = AudioPlayer();
       try {
-        final duration = await tempPlayer.setUrl(url).timeout(
-          const Duration(seconds: 8),
-        );
+        final duration = await tempPlayer
+            .setUrl(url)
+            .timeout(const Duration(seconds: 8));
         if (duration != null && duration.inSeconds > 0) {
           debugPrint('✅ [PlaylistDetail] 探测到时长: ${duration.inSeconds}秒');
           return duration.inSeconds;
@@ -951,6 +1067,7 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     // 🎯 根据模式获取歌曲列表
     List<String> musics;
     List<LocalPlaylistSong>? songs; // 🎯 直连模式的完整歌曲对象（包含封面图）
+    LocalPlaylist? localPlaylist;
     bool isLoading;
 
     if (widget.isLocalPlaylist) {
@@ -958,13 +1075,11 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       final localState = ref.watch(localPlaylistProvider);
       isLoading = localState.isLoading;
 
-      try {
-        final playlist = localState.playlists.firstWhere(
-          (p) => p.name == widget.playlistName,
-        );
-        songs = playlist.songs; // 🎯 保存完整的歌曲对象
+      localPlaylist = _findCurrentModeLocalPlaylist(localState.playlists);
+      if (localPlaylist != null) {
+        songs = localPlaylist.songs; // 🎯 保存完整的歌曲对象
         musics = songs.map((s) => s.displayName).toList(); // 同时保存歌曲名（用于显示）
-      } catch (e) {
+      } else {
         // 播放列表不存在
         songs = [];
         musics = [];
@@ -998,6 +1113,14 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
           ),
         ),
         actions: [
+          if (widget.isLocalPlaylist &&
+              localPlaylist?.sourcePlatform != null &&
+              localPlaylist?.sourcePlaylistId != null)
+            IconButton(
+              icon: const Icon(Icons.info_outline_rounded),
+              tooltip: '导入来源',
+              onPressed: () => _showImportedSourceInfo(localPlaylist!),
+            ),
           IconButton(
             icon: const Icon(Icons.play_circle_fill_rounded),
             onPressed: _playWholePlaylist,

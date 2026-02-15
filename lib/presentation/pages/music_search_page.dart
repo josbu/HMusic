@@ -29,6 +29,7 @@ import '../providers/playlist_provider.dart'; // 🎯 播放列表Provider
 import '../providers/local_playlist_provider.dart'; // 🎯 本地播放列表Provider
 import '../../data/models/local_playlist.dart'; // 🎯 本地播放列表模型
 import '../../data/utils/lx_music_info_builder.dart';
+import '../../core/utils/platform_id.dart';
 
 class MusicSearchPage extends ConsumerStatefulWidget {
   const MusicSearchPage({super.key});
@@ -574,8 +575,10 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
           return;
         } catch (e) {
           final errorText = e.toString().toLowerCase();
-          final dirnameUnsupported =
-              _isDownloadOneMusicParamUnsupported(errorText, 'dirname');
+          final dirnameUnsupported = _isDownloadOneMusicParamUnsupported(
+            errorText,
+            'dirname',
+          );
 
           if (!dirnameUnsupported) {
             rethrow;
@@ -899,7 +902,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
     String quality = '320k',
   }) async {
     try {
-      final platform = (item.platform ?? 'qq');
+      final platform = PlatformId.normalize(item.platform ?? PlatformId.tx);
       final id = item.songId ?? '';
       if (id.isEmpty) return null;
       final musicInfo = buildLxMusicInfoFromOnlineResult(item);
@@ -909,12 +912,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
         final jsProxy = ref.read(jsProxyProvider.notifier);
         final jsProxyState = ref.read(jsProxyProvider);
         if (jsProxyState.isInitialized && jsProxyState.currentScript != null) {
-          final mapped =
-              (platform == 'qq')
-                  ? 'tx'
-                  : (platform == 'netease' || platform == '163')
-                  ? 'wy'
-                  : platform;
+          final mapped = PlatformId.normalize(platform);
           final url = await jsProxy.getMusicUrl(
             source: mapped,
             songId: id,
@@ -946,9 +944,8 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
             (function(){
               try{
                 if (!lx || !lx.EVENT_NAMES) return '';
-                function mapPlat(p){ p=(p||'').toLowerCase(); if(p==='qq'||p==='tencent') return 'tx'; if(p==='netease'||p==='163') return 'wy'; if(p==='kuwo') return 'kw'; if(p==='kugou') return 'kg'; if(p==='migu') return 'mg'; return p; }
                 var musicInfo = ${jsonEncode(musicInfo)};
-                var payload = { action: 'musicUrl', source: mapPlat('$platform'), info: { type: '$quality', musicInfo: musicInfo } };
+                var payload = { action: 'musicUrl', source: '$platform', info: { type: '$quality', musicInfo: musicInfo } };
                 var res = lx.emit(lx.EVENT_NAMES.request, payload);
                 if (res && typeof res.then === 'function') return '';
                 if (typeof res === 'string') return res;
@@ -1231,29 +1228,9 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
       final List<Map<String, dynamic>> songList =
           searchState.onlineResults.map<Map<String, dynamic>>((result) {
             // 平台映射
-            String mappedPlatform;
-            switch ((result.platform ?? 'qq').toLowerCase()) {
-              case 'qq':
-              case 'tencent':
-                mappedPlatform = 'tx';
-                break;
-              case 'netease':
-              case 'wangyi':
-              case '163':
-                mappedPlatform = 'wy';
-                break;
-              case 'kugou':
-                mappedPlatform = 'kg';
-                break;
-              case 'kuwo':
-                mappedPlatform = 'kw';
-                break;
-              case 'migu':
-                mappedPlatform = 'mg';
-                break;
-              default:
-                mappedPlatform = 'tx';
-            }
+            final mappedPlatform = PlatformId.normalize(
+              result.platform ?? PlatformId.tx,
+            );
 
             return {
               'name': '${result.title} - ${result.author}',

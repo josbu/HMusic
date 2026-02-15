@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/online_music_result.dart';
+import '../../core/utils/platform_id.dart';
 
 /// Transformer for QQ Music to safely parse JSON returned with text/plain
 class QQMusicTransformer extends Transformer {
@@ -183,7 +184,7 @@ class NativeMusicSearchService {
           author: author,
           album: album,
           duration: duration,
-          platform: 'qq',
+          platform: PlatformId.tx,
           url: '',
           picture: albumPicUrl, // ✨ 添加封面图
           extra: const {},
@@ -279,7 +280,7 @@ class NativeMusicSearchService {
           author: author,
           album: album,
           duration: duration,
-          platform: 'kuwo',
+          platform: PlatformId.kw,
           url: '',
           extra: const {},
         );
@@ -410,7 +411,7 @@ class NativeMusicSearchService {
           author: author,
           album: album,
           duration: duration,
-          platform: 'wangyi',
+          platform: PlatformId.wy,
           url: '',
           picture: albumPicUrl, // ✨ 添加封面图
           extra: const {},

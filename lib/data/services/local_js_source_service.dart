@@ -78,9 +78,8 @@ class LocalJsSourceService {
         ),
       );
       final bytes = resp.data ?? <int>[];
-      final script = bytes.isNotEmpty
-          ? utf8.decode(bytes, allowMalformed: true)
-          : '';
+      final script =
+          bytes.isNotEmpty ? utf8.decode(bytes, allowMalformed: true) : '';
       if (script.isEmpty) {
         print('[XMC] ⚠️ [LocalJsSource] 脚本内容为空: $url');
         return null;
@@ -599,10 +598,7 @@ class LocalJsSourceService {
 
       // 3️⃣ 只要有任意一种功能，就认为脚本可用
       if (availableFeatures.isNotEmpty) {
-        return {
-          'success': true,
-          'functions': availableFeatures,
-        };
+        return {'success': true, 'functions': availableFeatures};
       }
 
       return {'success': false, 'error': '未找到可用的搜索或URL解析功能'};
@@ -667,7 +663,7 @@ class LocalJsSourceService {
           function mapPlat(p) { 
             p = (p || '').toLowerCase(); 
             if (p === 'qq' || p === 'tencent') return 'tx'; 
-            if (p === 'netease' || p === '163') return 'wy'; 
+            if (p === 'netease' || p === '163' || p === 'wangyi') return 'wy'; 
             if (p === 'kuwo') return 'kw'; 
             if (p === 'kugou') return 'kg'; 
             if (p === 'migu') return 'mg'; 
