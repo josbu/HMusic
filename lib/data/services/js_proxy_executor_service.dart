@@ -593,7 +593,14 @@ class JSProxyExecutorService {
         'action': 'musicUrl',
         'source': source,
         'info': {
-          'musicInfo': {'songmid': songId, 'hash': songId, ...?musicInfo},
+          'musicInfo': {
+            ...?musicInfo,
+            // 关键：强制覆盖为当前解析 songId，避免旧字段覆盖正确ID
+            'songmid': songId,
+            'hash': songId,
+            'strMediaMid': songId,
+            'id': songId,
+          },
           'type': quality,
         },
       };

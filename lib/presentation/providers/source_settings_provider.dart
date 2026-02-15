@@ -22,6 +22,8 @@ class SourceSettings {
   final String localScriptPath; // 本地脚本文件路径
   final String
   jsSearchStrategy; // JS流程下搜索优先级: qqOnly|kuwoOnly|neteaseOnly|qqFirst|kuwoFirst|neteaseFirst
+  final String
+  playlistResolveStrategy; // 歌单播放解析优先级: originalFirst|qqFirst|kuwoFirst|neteaseFirst
   final String defaultDownloadQuality; // 默认下载音质: 'hires24' | 'lossless' | 'high' | 'standard'
   final String audioProxyUrl; // 音频代理服务器URL（需用户自行部署）
   final bool useAudioProxy; // 是否启用音频代理（直连模式）
@@ -45,6 +47,7 @@ class SourceSettings {
     this.scriptPreset = 'custom', // 默认选择自定义
     this.localScriptPath = '', // 默认无本地脚本路径
     this.jsSearchStrategy = 'qqFirst',
+    this.playlistResolveStrategy = 'originalFirst',
     this.defaultDownloadQuality = 'high', // 默认高品质 (320k)
     this.audioProxyUrl = '', // 音频代理服务器URL（需用户自行部署）
     this.useAudioProxy = false, // 默认关闭，用户需自行部署代理后启用
@@ -68,6 +71,7 @@ class SourceSettings {
     String? scriptPreset,
     String? localScriptPath,
     String? jsSearchStrategy,
+    String? playlistResolveStrategy,
     String? defaultDownloadQuality,
     String? audioProxyUrl,
     bool? useAudioProxy,
@@ -91,6 +95,8 @@ class SourceSettings {
       scriptPreset: scriptPreset ?? this.scriptPreset,
       localScriptPath: localScriptPath ?? this.localScriptPath,
       jsSearchStrategy: jsSearchStrategy ?? this.jsSearchStrategy,
+      playlistResolveStrategy:
+          playlistResolveStrategy ?? this.playlistResolveStrategy,
       defaultDownloadQuality: defaultDownloadQuality ?? this.defaultDownloadQuality,
       audioProxyUrl: audioProxyUrl ?? this.audioProxyUrl,
       useAudioProxy: useAudioProxy ?? this.useAudioProxy,
@@ -116,6 +122,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
   static const _kScriptPreset = 'source_script_preset';
   static const _kLocalScriptPath = 'source_local_script_path';
   static const _kJsSearchStrategy = 'source_js_search_strategy';
+  static const _kPlaylistResolveStrategy = 'source_playlist_resolve_strategy';
   static const _kDefaultDownloadQuality = 'source_default_download_quality';
   static const _kAudioProxyUrl = 'source_audio_proxy_url';
   static const _kUseAudioProxy = 'source_use_audio_proxy';
@@ -147,6 +154,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       final scriptPreset = prefs.getString(_kScriptPreset);
       final localScriptPath = prefs.getString(_kLocalScriptPath);
       final jsSearchStrategy = prefs.getString(_kJsSearchStrategy);
+      final playlistResolveStrategy = prefs.getString(_kPlaylistResolveStrategy);
       final defaultDownloadQuality = prefs.getString(_kDefaultDownloadQuality);
       final audioProxyUrl = prefs.getString(_kAudioProxyUrl);
       final useAudioProxy = prefs.getBool(_kUseAudioProxy);
@@ -165,6 +173,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       print('  - primarySource: $primarySource (从SharedPreferences读取)');
       print('  - scriptPreset: $scriptPreset');
       print('  - localScriptPath: $localScriptPath');
+      print('  - playlistResolveStrategy: $playlistResolveStrategy');
       print('  - state.primarySource: ${state.primarySource} (当前状态默认值)');
       print('  - audioProxyUrl: $audioProxyUrl');
       print('  - useAudioProxy: $useAudioProxy');
@@ -228,6 +237,10 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
         scriptPreset: scriptPreset ?? state.scriptPreset,
         localScriptPath: localScriptPath ?? state.localScriptPath,
         jsSearchStrategy: jsSearchStrategy ?? state.jsSearchStrategy,
+        playlistResolveStrategy:
+            _normalizePlaylistResolveStrategy(
+              playlistResolveStrategy ?? state.playlistResolveStrategy,
+            ),
         defaultDownloadQuality: defaultDownloadQuality ?? state.defaultDownloadQuality,
         audioProxyUrl: audioProxyUrl ?? state.audioProxyUrl,
         useAudioProxy: useAudioProxy ?? state.useAudioProxy,
@@ -276,6 +289,10 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       await prefs.setString(_kScriptPreset, s.scriptPreset);
       await prefs.setString(_kLocalScriptPath, s.localScriptPath);
       await prefs.setString(_kJsSearchStrategy, s.jsSearchStrategy);
+      await prefs.setString(
+        _kPlaylistResolveStrategy,
+        _normalizePlaylistResolveStrategy(s.playlistResolveStrategy),
+      );
       await prefs.setString(_kDefaultDownloadQuality, s.defaultDownloadQuality);
       await prefs.setString(_kAudioProxyUrl, s.audioProxyUrl);
       await prefs.setBool(_kUseAudioProxy, s.useAudioProxy);
@@ -304,6 +321,9 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       final savedPrimarySource = prefs.getString(_kPrimarySource);
       final savedLocalScriptPath = prefs.getString(_kLocalScriptPath);
       final savedJsSearchStrategy = prefs.getString(_kJsSearchStrategy);
+      final savedPlaylistResolveStrategy = prefs.getString(
+        _kPlaylistResolveStrategy,
+      );
       final savedScriptPreset = prefs.getString(_kScriptPreset);
       final savedAudioProxyUrl = prefs.getString(_kAudioProxyUrl);
       final savedUseAudioProxy = prefs.getBool(_kUseAudioProxy);
@@ -322,6 +342,7 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
       print('  - scriptPreset: $savedScriptPreset');
       print('  - localScriptPath: $savedLocalScriptPath');
       print('  - jsSearchStrategy: $savedJsSearchStrategy');
+      print('  - playlistResolveStrategy: $savedPlaylistResolveStrategy');
       print('  - audioProxyUrl: $savedAudioProxyUrl');
       print('  - useAudioProxy: $savedUseAudioProxy');
     } catch (e) {
@@ -388,6 +409,18 @@ class SourceSettingsNotifier extends StateNotifier<SourceSettings> {
     };
 
     return strategyNames[state.jsSearchStrategy] ?? state.jsSearchStrategy;
+  }
+
+  String _normalizePlaylistResolveStrategy(String raw) {
+    switch (raw) {
+      case 'qqFirst':
+      case 'kuwoFirst':
+      case 'neteaseFirst':
+      case 'originalFirst':
+        return raw;
+      default:
+        return 'originalFirst';
+    }
   }
 }
 

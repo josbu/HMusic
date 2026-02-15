@@ -58,6 +58,25 @@ class NativeMusicSearchService {
 
   final Dio _dio;
 
+  String _pickQqSongId(Map<String, dynamic> song) {
+    final candidates = <String>[
+      (song['songmid'] ?? '').toString(),
+      (song['mid'] ?? '').toString(),
+      (song['strMediaMid'] ?? '').toString(),
+      ((song['file'] is Map) ? song['file']['media_mid'] : null)?.toString() ??
+          '',
+      ((song['file'] is Map) ? song['file']['mediaMid'] : null)?.toString() ??
+          '',
+      (song['id'] ?? '').toString(),
+    ].map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+
+    if (candidates.isEmpty) return '';
+    for (final id in candidates) {
+      if (!RegExp(r'^\d+$').hasMatch(id)) return id;
+    }
+    return candidates.first;
+  }
+
   Future<List<OnlineMusicResult>> searchQQ({
     required String query,
     required int page,
@@ -129,8 +148,9 @@ class NativeMusicSearchService {
       print('============================================');
 
       return songs.whereType<Map<String, dynamic>>().map((song) {
-        final String id =
-            (song['mid'] ?? song['songmid'] ?? song['id'] ?? '').toString();
+        // QQ解析必须优先使用 songmid/mid，纯数字 id 往往无法用于 URL 解析
+        final String id = _pickQqSongId(song);
+        if (id.isEmpty) return null;
         final String title = (song['title'] ?? song['name'] ?? '').toString();
 
         String author = '';
@@ -189,7 +209,7 @@ class NativeMusicSearchService {
           picture: albumPicUrl, // ✨ 添加封面图
           extra: const {},
         );
-      }).toList();
+      }).whereType<OnlineMusicResult>().toList();
     } catch (e) {
       print('❌ [NativeSearch] QQ音乐搜索异常: $e');
       print('❌ [NativeSearch] 错误类型: ${e.runtimeType}');

@@ -11,6 +11,7 @@ import '../providers/direct_mode_provider.dart'; // 🎯 播放模式
 import '../providers/playback_provider.dart';
 import '../providers/device_provider.dart';
 import '../providers/music_library_provider.dart';
+import '../providers/source_settings_provider.dart';
 import '../providers/js_proxy_provider.dart'; // 🎯 JS代理（QuickJS）
 import '../providers/js_source_provider.dart'; // 🎯 JS音源服务
 import '../providers/playback_queue_provider.dart'; // 🎯 播放队列管理
@@ -20,6 +21,7 @@ import '../../data/models/music.dart';
 import '../../data/models/local_playlist.dart'; // 🎯 本地播放列表模型
 import '../../data/models/playlist_item.dart'; // 🎯 统一播放列表项
 import '../../data/models/playlist_queue.dart'; // 🎯 PlaylistSource 枚举
+import '../../data/services/native_music_search_service.dart';
 import '../../data/utils/lx_music_info_builder.dart';
 import '../../core/utils/platform_id.dart';
 
@@ -837,198 +839,264 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     }
 
     try {
-      // 歌单播放解析使用固定高品质，不跟随“服务器下载音质”设置
       const quality = '320k';
+      final settings = ref.read(sourceSettingsProvider);
+      final nativeSearch = ref.read(nativeMusicSearchServiceProvider);
 
-      debugPrint('🔧 [PlaylistDetail] 开始URL解析');
-      debugPrint('   平台: $platform, 歌曲ID: $songId, 解析音质: $quality');
-      final musicInfo = buildLxMusicInfoFromLocalPlaylistSong(song);
+      final plan = _buildResolvePlatformPlan(
+        settings.playlistResolveStrategy,
+        originalPlatform: platform,
+      );
+      final knownIds = <String, String>{...(song.platformSongIds ?? const {})};
+      knownIds[platform] = songId;
 
-      String? resolvedUrl;
+      debugPrint(
+        '🔧 [PlaylistDetail] 解析计划: strategy=${settings.playlistResolveStrategy}, plan=$plan',
+      );
 
-      // 3. 尝试使用 QuickJS 解析
-      try {
-        debugPrint('🔍 [PlaylistDetail] 方法1: 尝试QuickJS解析');
-        final jsProxy = ref.read(jsProxyProvider.notifier);
-        final jsProxyState = ref.read(jsProxyProvider);
-
-        debugPrint('   QuickJS状态:');
-        debugPrint('     - isInitialized: ${jsProxyState.isInitialized}');
-        debugPrint('     - currentScript: ${jsProxyState.currentScript}');
-        debugPrint(
-          '     - hasRequestHandler: ${jsProxyState.hasRequestHandler}',
-        );
-
-        if (jsProxyState.isInitialized && jsProxyState.currentScript != null) {
-          debugPrint('   ✅ QuickJS已就绪，开始调用 getMusicUrl()');
-
-          final mapped = PlatformId.normalize(platform);
-
-          debugPrint(
-            '   调用参数: source=$mapped, songId=$songId, quality=$quality',
-          );
-
-          resolvedUrl = await jsProxy.getMusicUrl(
-            source: mapped,
-            songId: songId,
-            quality: quality,
-            musicInfo: musicInfo,
-          );
-
-          if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
-            debugPrint(
-              '✅ [PlaylistDetail] QuickJS解析成功: ${resolvedUrl.substring(0, resolvedUrl.length > 100 ? 100 : resolvedUrl.length)}...',
-            );
-          } else {
-            debugPrint('❌ [PlaylistDetail] QuickJS解析失败：返回空结果');
-          }
-        } else {
-          debugPrint('⚠️ [PlaylistDetail] QuickJS未就绪，跳过此方法');
-          if (!jsProxyState.isInitialized) {
-            debugPrint('     原因: 未初始化');
-          }
-          if (jsProxyState.currentScript == null) {
-            debugPrint('     原因: 未加载脚本');
-          }
+      for (final targetPlatform in plan) {
+        String? targetSongId = knownIds[targetPlatform];
+        if (_isLikelyInvalidSongIdForPlatform(targetPlatform, targetSongId)) {
+          targetSongId = null;
         }
-      } catch (e, stackTrace) {
-        debugPrint('❌ [PlaylistDetail] QuickJS解析异常: $e');
-        debugPrint(
-          '   堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}',
-        );
-      }
-
-      // 4. 回退到 WebView JS解析
-      if (resolvedUrl == null || resolvedUrl.isEmpty) {
-        try {
-          debugPrint('🔍 [PlaylistDetail] 方法2: 尝试WebView JS解析');
-          final webSvc = await ref.read(webviewJsSourceServiceProvider.future);
-
-          if (webSvc != null) {
-            debugPrint('   ✅ WebView服务可用，开始解析');
-            resolvedUrl = await webSvc.resolveMusicUrl(
-              platform: platform,
-              songId: songId,
-              quality: quality,
-            );
-
-            if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
-              debugPrint(
-                '✅ [PlaylistDetail] WebView JS解析成功: ${resolvedUrl.substring(0, resolvedUrl.length > 100 ? 100 : resolvedUrl.length)}...',
-              );
-            } else {
-              debugPrint('❌ [PlaylistDetail] WebView JS解析失败：返回空结果');
-            }
-          } else {
-            debugPrint('⚠️ [PlaylistDetail] WebView服务不可用');
-          }
-        } catch (e, stackTrace) {
-          debugPrint('❌ [PlaylistDetail] WebView JS解析异常: $e');
-          debugPrint(
-            '   堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}',
+        if (targetSongId == null || targetSongId.isEmpty) {
+          targetSongId = await _searchSongIdForPlatform(
+            nativeSearch: nativeSearch,
+            platform: targetPlatform,
+            title: song.title,
+            artist: song.artist,
           );
-        }
-      }
-
-      // 5. 回退到内置 JS解析
-      if (resolvedUrl == null || resolvedUrl.isEmpty) {
-        try {
-          debugPrint('🔍 [PlaylistDetail] 方法3: 尝试内置JS解析');
-          final jsSvc = await ref.read(jsSourceServiceProvider.future);
-
-          if (jsSvc != null && jsSvc.isReady) {
-            debugPrint('   ✅ 内置JS服务可用，开始解析');
-            final js = """
-              (function(){
-                try{
-                  console.log('[PlaylistDetail] 内置JS: 开始解析');
-                  if (!lx || !lx.EVENT_NAMES) {
-                    console.log('[PlaylistDetail] 内置JS: lx 环境不存在');
-                    return '';
-                  }
-                  var musicInfo = ${jsonEncode(musicInfo)};
-                  var payload = { action: 'musicUrl', source: '$platform', info: { type: '$quality', musicInfo: musicInfo } };
-                  console.log('[PlaylistDetail] 内置JS: 调用 lx.emit，参数:', payload);
-                  var res = lx.emit(lx.EVENT_NAMES.request, payload);
-                  console.log('[PlaylistDetail] 内置JS: lx.emit 返回:', typeof res, res);
-                  if (res && typeof res.then === 'function') {
-                    console.log('[PlaylistDetail] 内置JS: 返回了Promise，不支持');
-                    return '';
-                  }
-                  if (typeof res === 'string') {
-                    console.log('[PlaylistDetail] 内置JS: 返回字符串:', res);
-                    return res;
-                  }
-                  if (res && res.url) {
-                    console.log('[PlaylistDetail] 内置JS: 返回对象url字段:', res.url);
-                    return res.url;
-                  }
-                  console.log('[PlaylistDetail] 内置JS: 未返回有效结果');
-                  return '';
-                }catch(e){
-                  console.log('[PlaylistDetail] 内置JS: 异常:', e);
-                  return '';
-                }
-              })()
-            """;
-            resolvedUrl = jsSvc.evaluateToString(js);
-
-            if (resolvedUrl.isNotEmpty) {
-              debugPrint(
-                '✅ [PlaylistDetail] 内置JS解析成功: ${resolvedUrl.substring(0, resolvedUrl.length > 100 ? 100 : resolvedUrl.length)}...',
-              );
-            } else {
-              debugPrint('❌ [PlaylistDetail] 内置JS解析失败：返回空结果');
-            }
-          } else {
-            debugPrint('⚠️ [PlaylistDetail] 内置JS服务不可用');
-            if (jsSvc == null) {
-              debugPrint('     原因: 服务为null');
-            } else if (!jsSvc.isReady) {
-              debugPrint('     原因: 服务未就绪');
-            }
-          }
-        } catch (e, stackTrace) {
-          debugPrint('❌ [PlaylistDetail] 内置JS解析异常: $e');
-          debugPrint(
-            '   堆栈: ${stackTrace.toString().split('\n').take(3).join('\n')}',
-          );
-        }
-      }
-
-      // 6. 解析成功，更新缓存
-      if (resolvedUrl != null && resolvedUrl.isNotEmpty) {
-        await ref
-            .read(localPlaylistProvider.notifier)
-            .updateSongCache(
-              playlistName: widget.playlistName,
-              songIndex: songIndex,
-              cachedUrl: resolvedUrl,
-            );
-
-        // 🎯 如果没有 duration，用 just_audio 从新 URL 探测
-        int? duration = song.duration;
-        if (duration == null || duration <= 0) {
-          duration = await _probeDurationFromUrl(resolvedUrl);
-          if (duration != null && duration > 0) {
+          if (targetSongId != null && targetSongId.isNotEmpty) {
+            knownIds[targetPlatform] = targetSongId;
             await ref
                 .read(localPlaylistProvider.notifier)
-                .updateSongDuration(
+                .updateSongFields(
                   playlistName: widget.playlistName,
                   songIndex: songIndex,
-                  duration: duration,
+                  platformSongIds: {targetPlatform: targetSongId},
                 );
           }
         }
+        if (_isLikelyInvalidSongIdForPlatform(targetPlatform, targetSongId)) {
+          debugPrint(
+            '⚠️ [PlaylistDetail] 平台=$targetPlatform 搜索结果 songId 无效: $targetSongId，跳过',
+          );
+          continue;
+        }
+        if (targetSongId == null || targetSongId.isEmpty) {
+          debugPrint('⚠️ [PlaylistDetail] 平台=$targetPlatform 无可用songId，跳过');
+          continue;
+        }
+
+        final resolvedUrl = await _resolveUrlByJsStack(
+          platform: targetPlatform,
+          songId: targetSongId,
+          quality: quality,
+          musicInfo: _buildMusicInfoForPlatform(
+            song: song,
+            platform: targetPlatform,
+            songId: targetSongId,
+          ),
+        );
+        if (resolvedUrl == null || resolvedUrl.isEmpty) {
+          continue;
+        }
+        if (_isLikelyInvalidResolvedUrl(resolvedUrl)) {
+          debugPrint('⚠️ [PlaylistDetail] 平台=$targetPlatform 返回疑似无效音频，继续回退');
+          continue;
+        }
+
+        int? duration = song.duration;
+        if (duration == null || duration <= 0) {
+          duration = await _probeDurationFromUrl(resolvedUrl);
+        }
+        await ref
+            .read(localPlaylistProvider.notifier)
+            .updateSongFields(
+              playlistName: widget.playlistName,
+              songIndex: songIndex,
+              cachedUrl: resolvedUrl,
+              duration: duration,
+              platformSongIds: {targetPlatform: targetSongId},
+            );
         return (url: resolvedUrl, duration: duration);
       }
 
-      debugPrint('❌ [PlaylistDetail] 所有解析方法均失败');
+      debugPrint('❌ [PlaylistDetail] 所有平台解析失败');
       return (url: null, duration: null);
     } catch (e) {
       debugPrint('❌ [PlaylistDetail] URL解析失败: $e');
       return (url: null, duration: null);
     }
+  }
+
+  List<String> _buildResolvePlatformPlan(
+    String strategy, {
+    required String originalPlatform,
+  }) {
+    final original = PlatformId.normalize(originalPlatform);
+    switch (strategy) {
+      case 'qqFirst':
+        return const [PlatformId.tx, PlatformId.kw, PlatformId.wy];
+      case 'kuwoFirst':
+        return const [PlatformId.kw, PlatformId.tx, PlatformId.wy];
+      case 'neteaseFirst':
+        return const [PlatformId.wy, PlatformId.tx, PlatformId.kw];
+      case 'originalFirst':
+      default:
+        return PlatformId.degradeOrder(original);
+    }
+  }
+
+  Future<String?> _searchSongIdForPlatform({
+    required NativeMusicSearchService nativeSearch,
+    required String platform,
+    required String title,
+    required String artist,
+  }) async {
+    final query = artist.trim().isEmpty ? title.trim() : '${title.trim()} ${artist.trim()}';
+    try {
+      final key = PlatformId.toSearchKey(platform);
+      dynamic results;
+      if (key == 'qq') {
+        results = await nativeSearch.searchQQ(query: query, page: 1);
+      } else if (key == 'kuwo') {
+        results = await nativeSearch.searchKuwo(query: query, page: 1);
+      } else if (key == 'netease') {
+        results = await nativeSearch.searchNetease(query: query, page: 1);
+      } else {
+        return null;
+      }
+      if (results is List && results.isNotEmpty) {
+        final first = results.first;
+        final songId = (first.songId ?? '').toString();
+        return songId.isEmpty ? null : songId;
+      }
+    } catch (e) {
+      debugPrint('⚠️ [PlaylistDetail] 搜索songId失败: platform=$platform, error=$e');
+    }
+    return null;
+  }
+
+  Future<String?> _resolveUrlByJsStack({
+    required String platform,
+    required String songId,
+    required String quality,
+    required Map<String, dynamic> musicInfo,
+  }) async {
+    String? resolvedUrl;
+
+    try {
+      final jsProxy = ref.read(jsProxyProvider.notifier);
+      final jsProxyState = ref.read(jsProxyProvider);
+      if (jsProxyState.isInitialized && jsProxyState.currentScript != null) {
+        resolvedUrl = await jsProxy.getMusicUrl(
+          source: PlatformId.normalize(platform),
+          songId: songId,
+          quality: quality,
+          musicInfo: musicInfo,
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ [PlaylistDetail] QuickJS解析失败: $e');
+    }
+
+    if (resolvedUrl == null || resolvedUrl.isEmpty) {
+      try {
+        final webSvc = await ref.read(webviewJsSourceServiceProvider.future);
+        if (webSvc != null) {
+          resolvedUrl = await webSvc.resolveMusicUrl(
+            platform: platform,
+            songId: songId,
+            quality: quality,
+          );
+        }
+      } catch (e) {
+        debugPrint('⚠️ [PlaylistDetail] WebView解析失败: $e');
+      }
+    }
+
+    if (resolvedUrl == null || resolvedUrl.isEmpty) {
+      try {
+        final jsSvc = await ref.read(jsSourceServiceProvider.future);
+        if (jsSvc != null && jsSvc.isReady) {
+          final js = """
+            (function(){
+              try{
+                if (!lx || !lx.EVENT_NAMES) return '';
+                var musicInfo = ${jsonEncode(musicInfo)};
+                var payload = { action: 'musicUrl', source: '${PlatformId.normalize(platform)}', info: { type: '$quality', musicInfo: musicInfo } };
+                var res = lx.emit(lx.EVENT_NAMES.request, payload);
+                if (res && typeof res.then === 'function') return '';
+                if (typeof res === 'string') return res;
+                if (res && res.url) return res.url;
+                return '';
+              }catch(e){
+                return '';
+              }
+            })()
+          """;
+          final localResolved = jsSvc.evaluateToString(js);
+          if (localResolved.isNotEmpty) {
+            resolvedUrl = localResolved;
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ [PlaylistDetail] 内置JS解析失败: $e');
+      }
+    }
+
+    return resolvedUrl;
+  }
+
+  Map<String, dynamic> _buildMusicInfoForPlatform({
+    required LocalPlaylistSong song,
+    required String platform,
+    required String songId,
+  }) {
+    final base = Map<String, dynamic>.from(
+      buildLxMusicInfoFromLocalPlaylistSong(song),
+    );
+    final normalizedPlatform = PlatformId.normalize(platform);
+
+    // 关键：按当前解析平台覆写 ID 字段，避免脚本误用原平台旧ID
+    if (normalizedPlatform == PlatformId.tx) {
+      base['songmid'] = songId;
+      base['strMediaMid'] = songId;
+      base['id'] = songId;
+      base['hash'] = songId;
+    } else {
+      base['id'] = songId;
+      base['songmid'] = songId;
+      base['hash'] = songId;
+      base['strMediaMid'] = songId;
+    }
+    return base;
+  }
+
+  bool _isLikelyInvalidResolvedUrl(String url) {
+    final lower = url.toLowerCase();
+    const badKeywords = [
+      'trial',
+      'vip',
+      'member',
+      'listen_tip',
+      'pay',
+      'open',
+      'rights',
+      'permission',
+    ];
+    return badKeywords.any((k) => lower.contains(k));
+  }
+
+  bool _isLikelyInvalidSongIdForPlatform(String platform, String? songId) {
+    if (songId == null || songId.isEmpty) return true;
+    final canonical = PlatformId.normalize(platform);
+    if (canonical == PlatformId.tx) {
+      // QQ解析通常需要 songmid，纯数字 songId 大概率不可用
+      return RegExp(r'^\d+$').hasMatch(songId);
+    }
+    return false;
   }
 
   /// 🎯 使用 just_audio 从 URL 探测音频时长

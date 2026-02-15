@@ -3526,11 +3526,12 @@ class EnhancedJSProxyExecutorService {
             'info': {
               'type': quality,
               'musicInfo': {
+                ...?musicInfo,
+                // 关键：强制覆盖为当前解析 songId，避免旧字段反向污染
                 'songmid': songId,
                 'hash': songId,
                 'strMediaMid': songId,
                 'id': songId,
-                ...?musicInfo,
               },
             },
           };
@@ -3557,19 +3558,21 @@ class EnhancedJSProxyExecutorService {
       }
 
       // 🔥 构建完整的 musicInfo（洛雪脚本需要更多字段）
+      final durationValue = musicInfo?['duration'] ?? musicInfo?['interval'] ?? 0;
       final fullMusicInfo = {
-        'songmid': songId,
-        'hash': songId,
-        'strMediaMid': songId,  // QQ 音乐需要
-        'id': songId,           // 通用 ID
         'name': musicInfo?['title'] ?? musicInfo?['name'] ?? '',
         'singer': musicInfo?['artist'] ?? musicInfo?['singer'] ?? '',
         'album': musicInfo?['album'] ?? '',
         'albumMid': musicInfo?['albumMid'] ?? '',
         'albumId': musicInfo?['albumId'] ?? '',
-        'duration': musicInfo?['duration'] ?? 0,
-        'interval': musicInfo?['duration'] ?? 0,  // 某些脚本使用 interval
-        ...?musicInfo,  // 合并用户传入的额外字段
+        'duration': durationValue,
+        'interval': durationValue,
+        ...?musicInfo,
+        // 关键：最终再覆盖 ID 字段，保证与当前 source/songId 一致
+        'songmid': songId,
+        'hash': songId,
+        'strMediaMid': songId,
+        'id': songId,
       };
 
       // 构建请求参数

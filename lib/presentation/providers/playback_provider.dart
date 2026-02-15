@@ -3428,11 +3428,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   ) async {
     final settings = ref.read(sourceSettingsProvider);
     final nativeSearch = ref.read(nativeMusicSearchServiceProvider);
-    final platforms = _buildPerSongResolvePlan(settings.jsSearchStrategy);
+    final platforms = _buildPerSongResolvePlan(
+      settings.playlistResolveStrategy,
+      originalPlatform: item.platform,
+    );
     final query = _buildSongSearchQuery(item.title, item.artist);
 
     debugPrint(
-      '🎵 [单曲回退] 开始: ${item.displayName}, 队列平台=${item.platform}, 策略=${settings.jsSearchStrategy}, 计划=$platforms',
+      '🎵 [单曲回退] 开始: ${item.displayName}, 队列平台=${item.platform}, 解析策略=${settings.playlistResolveStrategy}, 计划=$platforms',
     );
 
     for (int i = 0; i < platforms.length; i++) {
@@ -3442,6 +3445,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             item.platform != null &&
             item.songId != null &&
             _isSamePlatform(platform, item.platform!)) {
+          if (_isLikelyInvalidSongIdForPlatform(item.platform!, item.songId!)) {
+            debugPrint(
+              '⚠️ [单曲回退] 跳过直解析，疑似无效songId: platform=${item.platform}, songId=${item.songId}',
+            );
+            continue;
+          }
           final directUrl = await _resolveUrlByJS(
             platform: item.platform!,
             songId: item.songId!,
@@ -3471,6 +3480,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             candidates: candidates,
             title: item.title,
             artist: item.artist,
+            platform: platform,
           );
           if (best == null || best.songId == null || best.songId!.isEmpty) {
             debugPrint('⚠️ [单曲回退] 平台=$platform 无可解析候选');
@@ -3504,18 +3514,23 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     return (url: null, duration: null);
   }
 
-  List<String> _buildPerSongResolvePlan(String strategy) {
+  List<String> _buildPerSongResolvePlan(
+    String strategy, {
+    String? originalPlatform,
+  }) {
+    final original = PlatformId.normalize(originalPlatform ?? '');
     switch (strategy) {
-      case 'qqOnly':
-        return const ['qq'];
-      case 'kuwoOnly':
-        return const ['kuwo'];
-      case 'neteaseOnly':
-        return const ['netease'];
       case 'kuwoFirst':
         return const ['kuwo', 'qq', 'netease'];
       case 'neteaseFirst':
         return const ['netease', 'qq', 'kuwo'];
+      case 'originalFirst':
+        const base = ['qq', 'kuwo', 'netease'];
+        final originalSearch = PlatformId.toSearchKey(original);
+        if (base.contains(originalSearch)) {
+          return [originalSearch, ...base.where((e) => e != originalSearch)];
+        }
+        return base;
       case 'qqFirst':
       default:
         return const ['qq', 'kuwo', 'netease'];
@@ -3553,13 +3568,24 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     required List<OnlineMusicResult> candidates,
     required String title,
     required String artist,
+    required String platform,
   }) {
     if (candidates.isEmpty) return null;
+    final validCandidates =
+        candidates
+            .where(
+              (c) =>
+                  c.songId != null &&
+                  c.songId!.isNotEmpty &&
+                  !_isLikelyInvalidSongIdForPlatform(platform, c.songId!),
+            )
+            .toList();
+    if (validCandidates.isEmpty) return null;
 
     final targetTitle = _normalizeSongText(title);
     final targetArtist = _normalizeSongText(artist);
 
-    for (final c in candidates) {
+    for (final c in validCandidates) {
       final cTitle = _normalizeSongText(c.title);
       final cArtist = _normalizeSongText(c.author);
       if (cTitle == targetTitle && cArtist == targetArtist) {
@@ -3567,7 +3593,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       }
     }
 
-    for (final c in candidates) {
+    for (final c in validCandidates) {
       final cTitle = _normalizeSongText(c.title);
       final cArtist = _normalizeSongText(c.author);
       final titleMatch =
@@ -3581,7 +3607,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       }
     }
 
-    return candidates.first;
+    return validCandidates.first;
+  }
+
+  bool _isLikelyInvalidSongIdForPlatform(String platform, String songId) {
+    final canonical = PlatformId.normalize(platform);
+    if (canonical == PlatformId.tx) {
+      return RegExp(r'^\d+$').hasMatch(songId);
+    }
+    return false;
   }
 
   String _normalizeSongText(String text) {

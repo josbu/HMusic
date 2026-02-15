@@ -67,15 +67,27 @@ Map<String, dynamic> buildLxMusicInfo({
   final flattened = _flattenExtra(extra);
   final albumIdFromCover = _extractAlbumIdFromCoverUrl(coverUrl);
 
+  // songId 是当前目标平台的解析ID，必须优先覆盖，避免被 extra 中旧平台字段污染。
   final pickedSongMid =
-      _pickString(flattened, ['songmid', 'songMid', 'mid']) ?? songId;
+      songId.isNotEmpty
+          ? songId
+          : (_pickString(flattened, ['songmid', 'songMid', 'mid']) ?? '');
   final pickedHash =
-      _pickString(flattened, ['hash', 'songId', 'songid']) ?? songId;
+      songId.isNotEmpty
+          ? songId
+          : (_pickString(flattened, ['hash', 'songId', 'songid']) ?? '');
   final pickedId =
-      _pickString(flattened, ['id', 'songId', 'songid']) ?? songId;
+      songId.isNotEmpty
+          ? songId
+          : (_pickString(flattened, ['id', 'songId', 'songid']) ?? '');
   final pickedStrMediaMid =
-      _pickString(flattened, ['strMediaMid', 'mediaMid', 'songmid', 'songMid']) ??
-      songId;
+      songId.isNotEmpty
+          ? songId
+          : (_pickString(
+                flattened,
+                ['strMediaMid', 'mediaMid', 'songmid', 'songMid'],
+              ) ??
+              '');
 
   final pickedTitle =
       title ?? _pickString(flattened, ['name', 'title']) ?? '';

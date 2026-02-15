@@ -23,6 +23,8 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
   ProviderSubscription<SourceSettings>? _settingsSub;
   String _jsSearchStrategy =
       'qqFirst'; // qqFirst|kuwoFirst|neteaseFirst|qqOnly|kuwoOnly|neteaseOnly
+  String _playlistResolveStrategy =
+      'originalFirst'; // originalFirst|qqFirst|kuwoFirst|neteaseFirst
 
   @override
   void initState() {
@@ -38,6 +40,7 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
       if (!_initialized || _userModified) return;
       setState(() {
         _jsSearchStrategy = next.jsSearchStrategy;
+        _playlistResolveStrategy = next.playlistResolveStrategy;
         _useAudioProxy = next.useAudioProxy; // 🎯 同步代理开关状态
         _proxyUrlCtrl.text = next.audioProxyUrl; // 🎯 同步代理URL
       });
@@ -70,6 +73,7 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
     // 🔧 简化的初始化逻辑：只在首次或设置真正变化时同步
     if (!_initialized) {
       _jsSearchStrategy = settings.jsSearchStrategy;
+      _playlistResolveStrategy = settings.playlistResolveStrategy;
       _useAudioProxy = settings.useAudioProxy; // 🎯 初始化代理开关
       _proxyUrlCtrl.text = settings.audioProxyUrl; // 🎯 初始化代理URL
       _initialized = true;
@@ -197,6 +201,24 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
               const SizedBox(height: 6),
               Text(
                 '说明：仅在“JS 脚本”流程下用于搜索源选择；播放解析仍走JS解析。',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withOpacity(0.6),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '播放解析优先平台',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 8),
+              _buildPlaylistResolveStrategyDropdown(context),
+              const SizedBox(height: 6),
+              Text(
+                '说明：用于元歌单播放链接解析，首选失败或结果无效时会自动回退。',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(
                     context,
@@ -453,6 +475,7 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                 ? selectedScript?.content ?? ''
                 : '',
         jsSearchStrategy: _jsSearchStrategy,
+        playlistResolveStrategy: _playlistResolveStrategy,
         // 🎯 保存代理配置
         useAudioProxy: _useAudioProxy,
         audioProxyUrl: _proxyUrlCtrl.text.trim(),
@@ -510,6 +533,35 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
         SnackBar(content: Text('保存失败: $e'), backgroundColor: Colors.red),
       );
     }
+  }
+
+  Widget _buildPlaylistResolveStrategyDropdown(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _playlistResolveStrategy,
+          isExpanded: true,
+          items: const [
+            DropdownMenuItem(value: 'originalFirst', child: Text('按导入原平台优先')),
+            DropdownMenuItem(value: 'qqFirst', child: Text('QQ 优先')),
+            DropdownMenuItem(value: 'kuwoFirst', child: Text('酷我 优先')),
+            DropdownMenuItem(value: 'neteaseFirst', child: Text('网易 优先')),
+          ],
+          onChanged:
+              (v) => setState(
+                () => _playlistResolveStrategy = v ?? 'originalFirst',
+              ),
+        ),
+      ),
+    );
   }
 
   /// 🎯 音频代理配置卡片（直连模式专用）
