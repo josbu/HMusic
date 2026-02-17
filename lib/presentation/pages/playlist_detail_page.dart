@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -11,9 +10,6 @@ import '../providers/direct_mode_provider.dart'; // 🎯 播放模式
 import '../providers/playback_provider.dart';
 import '../providers/device_provider.dart';
 import '../providers/music_library_provider.dart';
-import '../providers/source_settings_provider.dart';
-import '../providers/js_proxy_provider.dart'; // 🎯 JS代理（QuickJS）
-import '../providers/js_source_provider.dart'; // 🎯 JS音源服务
 import '../providers/playback_queue_provider.dart'; // 🎯 播放队列管理
 import '../widgets/app_snackbar.dart';
 import '../widgets/app_layout.dart';
@@ -21,8 +17,7 @@ import '../../data/models/music.dart';
 import '../../data/models/local_playlist.dart'; // 🎯 本地播放列表模型
 import '../../data/models/playlist_item.dart'; // 🎯 统一播放列表项
 import '../../data/models/playlist_queue.dart'; // 🎯 PlaylistSource 枚举
-import '../../data/services/native_music_search_service.dart';
-import '../../data/utils/lx_music_info_builder.dart';
+import '../../data/services/song_resolver_service.dart';
 import '../../core/utils/platform_id.dart';
 
 class PlaylistDetailPage extends ConsumerStatefulWidget {
@@ -839,264 +834,43 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
     }
 
     try {
-      const quality = '320k';
-      final settings = ref.read(sourceSettingsProvider);
-      final nativeSearch = ref.read(nativeMusicSearchServiceProvider);
-
-      final plan = _buildResolvePlatformPlan(
-        settings.playlistResolveStrategy,
-        originalPlatform: platform,
+      final resolver = ref.read(songResolverServiceProvider);
+      final resolved = await resolver.resolveSong(
+        SongResolveRequest(
+          title: song.title,
+          artist: song.artist,
+          coverUrl: song.coverUrl,
+          duration: song.duration,
+          originalPlatform: platform,
+          originalSongId: songId,
+          knownPlatformSongIds: song.platformSongIds ?? const {},
+          quality: '320k',
+        ),
       );
-      final knownIds = <String, String>{...(song.platformSongIds ?? const {})};
-      knownIds[platform] = songId;
-
-      debugPrint(
-        '🔧 [PlaylistDetail] 解析计划: strategy=${settings.playlistResolveStrategy}, plan=$plan',
-      );
-
-      for (final targetPlatform in plan) {
-        String? targetSongId = knownIds[targetPlatform];
-        if (_isLikelyInvalidSongIdForPlatform(targetPlatform, targetSongId)) {
-          targetSongId = null;
-        }
-        if (targetSongId == null || targetSongId.isEmpty) {
-          targetSongId = await _searchSongIdForPlatform(
-            nativeSearch: nativeSearch,
-            platform: targetPlatform,
-            title: song.title,
-            artist: song.artist,
-          );
-          if (targetSongId != null && targetSongId.isNotEmpty) {
-            knownIds[targetPlatform] = targetSongId;
-            await ref
-                .read(localPlaylistProvider.notifier)
-                .updateSongFields(
-                  playlistName: widget.playlistName,
-                  songIndex: songIndex,
-                  platformSongIds: {targetPlatform: targetSongId},
-                );
-          }
-        }
-        if (_isLikelyInvalidSongIdForPlatform(targetPlatform, targetSongId)) {
-          debugPrint(
-            '⚠️ [PlaylistDetail] 平台=$targetPlatform 搜索结果 songId 无效: $targetSongId，跳过',
-          );
-          continue;
-        }
-        if (targetSongId == null || targetSongId.isEmpty) {
-          debugPrint('⚠️ [PlaylistDetail] 平台=$targetPlatform 无可用songId，跳过');
-          continue;
-        }
-
-        final resolvedUrl = await _resolveUrlByJsStack(
-          platform: targetPlatform,
-          songId: targetSongId,
-          quality: quality,
-          musicInfo: _buildMusicInfoForPlatform(
-            song: song,
-            platform: targetPlatform,
-            songId: targetSongId,
-          ),
-        );
-        if (resolvedUrl == null || resolvedUrl.isEmpty) {
-          continue;
-        }
-        if (_isLikelyInvalidResolvedUrl(resolvedUrl)) {
-          debugPrint('⚠️ [PlaylistDetail] 平台=$targetPlatform 返回疑似无效音频，继续回退');
-          continue;
-        }
-
-        int? duration = song.duration;
-        if (duration == null || duration <= 0) {
-          duration = await _probeDurationFromUrl(resolvedUrl);
-        }
-        await ref
-            .read(localPlaylistProvider.notifier)
-            .updateSongFields(
-              playlistName: widget.playlistName,
-              songIndex: songIndex,
-              cachedUrl: resolvedUrl,
-              duration: duration,
-              platformSongIds: {targetPlatform: targetSongId},
-            );
-        return (url: resolvedUrl, duration: duration);
+      if (resolved == null) {
+        debugPrint('❌ [PlaylistDetail] 所有平台解析失败');
+        return (url: null, duration: null);
       }
 
-      debugPrint('❌ [PlaylistDetail] 所有平台解析失败');
-      return (url: null, duration: null);
+      var duration = resolved.duration ?? song.duration;
+      if (duration == null || duration <= 0) {
+        duration = await _probeDurationFromUrl(resolved.url);
+      }
+
+      await ref
+          .read(localPlaylistProvider.notifier)
+          .updateSongFields(
+            playlistName: widget.playlistName,
+            songIndex: songIndex,
+            cachedUrl: resolved.url,
+            duration: duration,
+            platformSongIds: resolved.platformSongIds,
+          );
+      return (url: resolved.url, duration: duration);
     } catch (e) {
       debugPrint('❌ [PlaylistDetail] URL解析失败: $e');
       return (url: null, duration: null);
     }
-  }
-
-  List<String> _buildResolvePlatformPlan(
-    String strategy, {
-    required String originalPlatform,
-  }) {
-    final original = PlatformId.normalize(originalPlatform);
-    switch (strategy) {
-      case 'qqFirst':
-        return const [PlatformId.tx, PlatformId.kw, PlatformId.wy];
-      case 'kuwoFirst':
-        return const [PlatformId.kw, PlatformId.tx, PlatformId.wy];
-      case 'neteaseFirst':
-        return const [PlatformId.wy, PlatformId.tx, PlatformId.kw];
-      case 'originalFirst':
-      default:
-        return PlatformId.degradeOrder(original);
-    }
-  }
-
-  Future<String?> _searchSongIdForPlatform({
-    required NativeMusicSearchService nativeSearch,
-    required String platform,
-    required String title,
-    required String artist,
-  }) async {
-    final query = artist.trim().isEmpty ? title.trim() : '${title.trim()} ${artist.trim()}';
-    try {
-      final key = PlatformId.toSearchKey(platform);
-      dynamic results;
-      if (key == 'qq') {
-        results = await nativeSearch.searchQQ(query: query, page: 1);
-      } else if (key == 'kuwo') {
-        results = await nativeSearch.searchKuwo(query: query, page: 1);
-      } else if (key == 'netease') {
-        results = await nativeSearch.searchNetease(query: query, page: 1);
-      } else {
-        return null;
-      }
-      if (results is List && results.isNotEmpty) {
-        final first = results.first;
-        final songId = (first.songId ?? '').toString();
-        return songId.isEmpty ? null : songId;
-      }
-    } catch (e) {
-      debugPrint('⚠️ [PlaylistDetail] 搜索songId失败: platform=$platform, error=$e');
-    }
-    return null;
-  }
-
-  Future<String?> _resolveUrlByJsStack({
-    required String platform,
-    required String songId,
-    required String quality,
-    required Map<String, dynamic> musicInfo,
-  }) async {
-    String? resolvedUrl;
-
-    try {
-      final jsProxy = ref.read(jsProxyProvider.notifier);
-      final jsProxyState = ref.read(jsProxyProvider);
-      if (jsProxyState.isInitialized && jsProxyState.currentScript != null) {
-        resolvedUrl = await jsProxy.getMusicUrl(
-          source: PlatformId.normalize(platform),
-          songId: songId,
-          quality: quality,
-          musicInfo: musicInfo,
-        );
-      }
-    } catch (e) {
-      debugPrint('⚠️ [PlaylistDetail] QuickJS解析失败: $e');
-    }
-
-    if (resolvedUrl == null || resolvedUrl.isEmpty) {
-      try {
-        final webSvc = await ref.read(webviewJsSourceServiceProvider.future);
-        if (webSvc != null) {
-          resolvedUrl = await webSvc.resolveMusicUrl(
-            platform: platform,
-            songId: songId,
-            quality: quality,
-          );
-        }
-      } catch (e) {
-        debugPrint('⚠️ [PlaylistDetail] WebView解析失败: $e');
-      }
-    }
-
-    if (resolvedUrl == null || resolvedUrl.isEmpty) {
-      try {
-        final jsSvc = await ref.read(jsSourceServiceProvider.future);
-        if (jsSvc != null && jsSvc.isReady) {
-          final js = """
-            (function(){
-              try{
-                if (!lx || !lx.EVENT_NAMES) return '';
-                var musicInfo = ${jsonEncode(musicInfo)};
-                var payload = { action: 'musicUrl', source: '${PlatformId.normalize(platform)}', info: { type: '$quality', musicInfo: musicInfo } };
-                var res = lx.emit(lx.EVENT_NAMES.request, payload);
-                if (res && typeof res.then === 'function') return '';
-                if (typeof res === 'string') return res;
-                if (res && res.url) return res.url;
-                return '';
-              }catch(e){
-                return '';
-              }
-            })()
-          """;
-          final localResolved = jsSvc.evaluateToString(js);
-          if (localResolved.isNotEmpty) {
-            resolvedUrl = localResolved;
-          }
-        }
-      } catch (e) {
-        debugPrint('⚠️ [PlaylistDetail] 内置JS解析失败: $e');
-      }
-    }
-
-    return resolvedUrl;
-  }
-
-  Map<String, dynamic> _buildMusicInfoForPlatform({
-    required LocalPlaylistSong song,
-    required String platform,
-    required String songId,
-  }) {
-    final base = Map<String, dynamic>.from(
-      buildLxMusicInfoFromLocalPlaylistSong(song),
-    );
-    final normalizedPlatform = PlatformId.normalize(platform);
-
-    // 关键：按当前解析平台覆写 ID 字段，避免脚本误用原平台旧ID
-    if (normalizedPlatform == PlatformId.tx) {
-      base['songmid'] = songId;
-      base['strMediaMid'] = songId;
-      base['id'] = songId;
-      base['hash'] = songId;
-    } else {
-      base['id'] = songId;
-      base['songmid'] = songId;
-      base['hash'] = songId;
-      base['strMediaMid'] = songId;
-    }
-    return base;
-  }
-
-  bool _isLikelyInvalidResolvedUrl(String url) {
-    final lower = url.toLowerCase();
-    const badKeywords = [
-      'trial',
-      'vip',
-      'member',
-      'listen_tip',
-      'pay',
-      'open',
-      'rights',
-      'permission',
-    ];
-    return badKeywords.any((k) => lower.contains(k));
-  }
-
-  bool _isLikelyInvalidSongIdForPlatform(String platform, String? songId) {
-    if (songId == null || songId.isEmpty) return true;
-    final canonical = PlatformId.normalize(platform);
-    if (canonical == PlatformId.tx) {
-      // QQ解析通常需要 songmid，纯数字 songId 大概率不可用
-      return RegExp(r'^\d+$').hasMatch(songId);
-    }
-    return false;
   }
 
   /// 🎯 使用 just_audio 从 URL 探测音频时长

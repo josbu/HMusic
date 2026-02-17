@@ -3,7 +3,45 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/online_music_result.dart';
+import '../models/search_outcome.dart';
 import '../../core/utils/platform_id.dart';
+
+SearchErrorType classifySearchError(Object error) {
+  if (error is DioException) {
+    if (error.type == DioExceptionType.cancel) {
+      return SearchErrorType.cancelled;
+    }
+    if (error.type == DioExceptionType.connectionError ||
+        error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.sendTimeout ||
+        error.type == DioExceptionType.receiveTimeout) {
+      return SearchErrorType.network;
+    }
+    final code = error.response?.statusCode;
+    if (code == 404) return SearchErrorType.notFound;
+    if (code == 401 || code == 403 || code == 429 || code == 451) {
+      return SearchErrorType.rateLimited;
+    }
+    if (code != null && code >= 500) return SearchErrorType.network;
+  }
+
+  final text = error.toString().toLowerCase();
+  if (text.contains('illegal') ||
+      text.contains('forbidden') ||
+      text.contains('rate limit') ||
+      text.contains('too many')) {
+    return SearchErrorType.rateLimited;
+  }
+  if (text.contains('socketexception') ||
+      text.contains('handshakeexception') ||
+      text.contains('timeout')) {
+    return SearchErrorType.network;
+  }
+  if (error is FormatException || error is TypeError) {
+    return SearchErrorType.parse;
+  }
+  return SearchErrorType.unknown;
+}
 
 /// Transformer for QQ Music to safely parse JSON returned with text/plain
 class QQMusicTransformer extends Transformer {
@@ -80,6 +118,7 @@ class NativeMusicSearchService {
   Future<List<OnlineMusicResult>> searchQQ({
     required String query,
     required int page,
+    bool throwOnError = false,
   }) async {
     try {
       final apiUrl = 'https://u.y.qq.com/cgi-bin/musicu.fcg';
@@ -216,6 +255,7 @@ class NativeMusicSearchService {
       if (e.toString().contains('HandshakeException')) {
         print('❌ [NativeSearch] SSL握手失败，可能是网络问题');
       }
+      if (throwOnError) rethrow;
       return <OnlineMusicResult>[];
     }
   }
@@ -223,6 +263,7 @@ class NativeMusicSearchService {
   Future<List<OnlineMusicResult>> searchKuwo({
     required String query,
     required int page,
+    bool throwOnError = false,
   }) async {
     try {
       final apiUrl = 'http://search.kuwo.cn/r.s';
@@ -312,6 +353,7 @@ class NativeMusicSearchService {
           e.toString().contains('SocketException')) {
         print('❌ [NativeSearch] 网络连接失败');
       }
+      if (throwOnError) rethrow;
       return <OnlineMusicResult>[];
     }
   }
@@ -319,6 +361,7 @@ class NativeMusicSearchService {
   Future<List<OnlineMusicResult>> searchNetease({
     required String query,
     required int page,
+    bool throwOnError = false,
   }) async {
     try {
       final List<String> apiUrls = [
@@ -444,8 +487,55 @@ class NativeMusicSearchService {
           e.toString().contains('SocketException')) {
         print('❌ [NativeSearch] 网络连接失败');
       }
+      if (throwOnError) rethrow;
       return <OnlineMusicResult>[];
     }
+  }
+
+  Future<SearchOutcome<OnlineMusicResult>> searchQQWithOutcome({
+    required String query,
+    required int page,
+  }) async {
+    return _searchWithOutcome(
+      action: () => searchQQ(query: query, page: page, throwOnError: true),
+    );
+  }
+
+  Future<SearchOutcome<OnlineMusicResult>> searchKuwoWithOutcome({
+    required String query,
+    required int page,
+  }) async {
+    return _searchWithOutcome(
+      action: () => searchKuwo(query: query, page: page, throwOnError: true),
+    );
+  }
+
+  Future<SearchOutcome<OnlineMusicResult>> searchNeteaseWithOutcome({
+    required String query,
+    required int page,
+  }) async {
+    return _searchWithOutcome(
+      action: () => searchNetease(query: query, page: page, throwOnError: true),
+    );
+  }
+
+  Future<SearchOutcome<OnlineMusicResult>> _searchWithOutcome({
+    required Future<List<OnlineMusicResult>> Function() action,
+  }) async {
+    try {
+      final results = await action();
+      if (results.isEmpty) {
+        return SearchOutcome.failure(SearchErrorType.noResults);
+      }
+      return SearchOutcome.success(results);
+    } catch (e) {
+      final type = _classifySearchError(e);
+      return SearchOutcome.failure(type, message: e.toString());
+    }
+  }
+
+  SearchErrorType _classifySearchError(Object error) {
+    return classifySearchError(error);
   }
 
   String _stripHtmlTags(String input) {
