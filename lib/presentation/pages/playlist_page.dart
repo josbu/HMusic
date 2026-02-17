@@ -57,15 +57,17 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     final localState = ref.watch(localPlaylistProvider);
     final serverState = ref.watch(playlistProvider);
     final playbackMode = ref.watch(playbackModeProvider);
+    final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
     final visibleLocalPlaylists = ref
         .read(localPlaylistProvider.notifier)
         .getVisiblePlaylists(playbackMode);
+    final showLocalPlaylists = isDirectMode || _showLocalPlaylists;
 
     final isLoading =
-        _showLocalPlaylists ? localState.isLoading : serverState.isLoading;
-    final error = _showLocalPlaylists ? localState.error : serverState.error;
+        showLocalPlaylists ? localState.isLoading : serverState.isLoading;
+    final error = showLocalPlaylists ? localState.error : serverState.error;
     final playlists =
-        _showLocalPlaylists ? visibleLocalPlaylists : serverState.playlists;
+        showLocalPlaylists ? visibleLocalPlaylists : serverState.playlists;
 
     return Scaffold(
       key: const ValueKey('playlist_scaffold'),
@@ -77,7 +79,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
           isLoading: isLoading,
           error: error,
           playlists: playlists,
-          showLocalPlaylists: _showLocalPlaylists,
+          showLocalPlaylists: showLocalPlaylists,
+          isDirectMode: isDirectMode,
         ),
       ),
       floatingActionButton: Padding(
@@ -102,7 +105,17 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     required String? error,
     required List<dynamic> playlists,
     required bool showLocalPlaylists,
+    required bool isDirectMode,
   }) {
+    if (isDirectMode) {
+      return _buildBodyForSource(
+        isLoading: isLoading,
+        error: error,
+        playlists: playlists,
+        showLocalPlaylists: true,
+      );
+    }
+
     final colorScheme = Theme.of(context).colorScheme;
 
     final currentChild = _buildBodyForSource(
@@ -661,14 +674,6 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
   }
 
   Future<void> _showPlaylistActionSheet() async {
-    final playbackMode = ref.read(playbackModeProvider);
-    final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
-
-    if (isDirectMode) {
-      _showCreatePlaylistDialog();
-      return;
-    }
-
     final action = await showModalBottomSheet<String>(
       context: context,
       useSafeArea: true,
@@ -711,12 +716,8 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
   Future<void> _showImportBottomSheet() async {
     final controller = TextEditingController();
     final playbackMode = ref.read(playbackModeProvider);
-    if (playbackMode == PlaybackMode.miIoTDirect) {
-      if (mounted) {
-        AppSnackBar.showWarning(context, '直连模式暂不支持外部歌单导入');
-      }
-      return;
-    }
+    final modeScope =
+        playbackMode == PlaybackMode.miIoTDirect ? 'direct' : 'xiaomusic';
 
     final result = await showModalBottomSheet<ImportResult>(
       context: context,
@@ -741,7 +742,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
 
               final importResult = await importService.importFromUrl(
                 text,
-                modeScope: 'xiaomusic',
+                modeScope: modeScope,
                 cancelToken: cancelToken,
                 onInfo: (message) {
                   if (context.mounted) {
@@ -984,8 +985,9 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     final controller = TextEditingController();
     bool _requestedFocus = false;
 
-    final showLocalPlaylists = _showLocalPlaylists;
     final playbackMode = ref.read(playbackModeProvider);
+    final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
+    final showLocalPlaylists = isDirectMode || _showLocalPlaylists;
     final modeScope =
         playbackMode == PlaybackMode.miIoTDirect ? 'direct' : 'xiaomusic';
 
@@ -1026,19 +1028,9 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: onSurface.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                    const SizedBox(height: 4),
                     Text(
                       '新建歌单',
                       style: TextStyle(

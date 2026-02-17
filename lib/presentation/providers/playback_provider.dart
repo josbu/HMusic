@@ -1278,6 +1278,21 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             );
           }
 
+          // 🛡️ 直连模式保护期：乐观切歌后，忽略旧歌曲轮询回写
+          final inProtection =
+              _optimisticUpdateProtectionUntil != null &&
+              DateTime.now().isBefore(_optimisticUpdateProtectionUntil!);
+          if (inProtection &&
+              state.currentMusic != null &&
+              status.curMusic.trim().isNotEmpty &&
+              state.currentMusic!.curMusic.trim().isNotEmpty &&
+              status.curMusic != state.currentMusic!.curMusic) {
+            debugPrint(
+              '🛡️ [直连模式] 保护期内忽略旧歌曲状态: remote=${status.curMusic}, local=${state.currentMusic!.curMusic}',
+            );
+            return;
+          }
+
           // 🎯 检测歌曲切换
           bool isSongChanged = false;
           if (state.currentMusic != null && status.curMusic.isNotEmpty) {

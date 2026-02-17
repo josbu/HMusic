@@ -43,14 +43,10 @@ class _PlaylistDetailPageState extends ConsumerState<PlaylistDetailPage> {
       return playlists.firstWhere(
         (p) =>
             p.name == widget.playlistName &&
-            (p.modeScope == preferredScope || p.modeScope == 'shared'),
+            p.modeScope == preferredScope,
       );
     } catch (_) {
-      try {
-        return playlists.firstWhere((p) => p.name == widget.playlistName);
-      } catch (_) {
-        return null;
-      }
+      return null;
     }
   }
 

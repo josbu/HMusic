@@ -185,7 +185,9 @@ class LocalPlaylistNotifier extends StateNotifier<LocalPlaylistState> {
   Future<void> createPlaylist(String name, {String modeScope = 'xiaomusic'}) {
     return _serialWrite(() async {
       final scope = _normalizeModeScope(modeScope);
-      final exists = state.playlists.any((p) => p.name == name);
+      final exists = state.playlists.any(
+        (p) => p.name == name && _normalizeModeScope(p.modeScope) == scope,
+      );
       if (exists) {
         throw Exception('播放列表"$name"已存在');
       }
@@ -348,8 +350,8 @@ class LocalPlaylistNotifier extends StateNotifier<LocalPlaylistState> {
   List<LocalPlaylist> getVisiblePlaylists(PlaybackMode mode) {
     final allowed =
         mode == PlaybackMode.xiaomusic
-            ? const ['xiaomusic', 'shared']
-            : const ['direct', 'shared'];
+            ? const ['xiaomusic']
+            : const ['direct'];
     return state.playlists
         .where((p) => allowed.contains(_normalizeModeScope(p.modeScope)))
         .toList();
@@ -376,7 +378,12 @@ class LocalPlaylistNotifier extends StateNotifier<LocalPlaylistState> {
   }
 
   String _deduplicateName(String name, String modeScope) {
-    final names = state.playlists.map((p) => p.name).toSet();
+    final scope = _normalizeModeScope(modeScope);
+    final names =
+        state.playlists
+            .where((p) => _normalizeModeScope(p.modeScope) == scope)
+            .map((p) => p.name)
+            .toSet();
 
     if (!names.contains(name)) return name;
     for (int i = 2; i <= 99; i++) {
