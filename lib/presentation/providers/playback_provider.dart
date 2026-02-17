@@ -1205,6 +1205,34 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       try {
         var status = await _currentStrategy!.getCurrentStatus();
         if (status != null) {
+          // 🎯 直连模式下策略偶发返回 duration=0，避免把进度条打回空白样式
+          int effectiveDuration = status.duration;
+          if (effectiveDuration <= 0) {
+            final localMusic = state.currentMusic;
+            if (localMusic != null &&
+                localMusic.curMusic == status.curMusic &&
+                localMusic.duration > 0) {
+              effectiveDuration = localMusic.duration;
+            } else {
+              final queueDuration =
+                  ref.read(playbackQueueProvider).queue?.currentItem?.duration ??
+                  0;
+              if (queueDuration > 0) {
+                effectiveDuration = queueDuration;
+              }
+            }
+          }
+          if (effectiveDuration != status.duration) {
+            status = PlayingMusic(
+              ret: status.ret,
+              curMusic: status.curMusic,
+              curPlaylist: status.curPlaylist,
+              isPlaying: status.isPlaying,
+              offset: status.offset,
+              duration: effectiveDuration,
+            );
+          }
+
           // 🎯 用真实队列名替换策略返回的模式描述
           final realQueueName = _getCurrentQueueName(
             fallback: status.curPlaylist,
