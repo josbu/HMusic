@@ -321,6 +321,7 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
     String? platform,
     String? songId,
     int? duration,
+    int? switchSessionId,
   }) async {
     try {
       debugPrint('🎵 [LocalPlayback] 播放音乐: $musicName');

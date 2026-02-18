@@ -157,7 +157,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   bool _isInitialized = false;
   Timer? _statusRefreshTimer;
   Timer? _localProgressTimer;
-  Timer? _optimisticProgressKickoffTimer;
   DateTime? _lastUpdateTime;
   DateTime? _lastProgressUpdate; // 上次UI进度更新时间
   DateTime? _lastRefreshTime; // 上次状态刷新时间
@@ -170,6 +169,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
   // 🎯 乐观更新保护期：在播放/暂停操作后的短时间内忽略远程状态的 isPlaying 更新
   DateTime? _optimisticUpdateProtectionUntil;
+  int _directSwitchSessionId = 0;
+  DateTime? _directWarmupUntil;
+  String? _directWarmupSong;
 
   // 🖼️ 封面图自动搜索相关
   final _searchService = NativeMusicSearchService();
@@ -239,7 +241,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   void dispose() {
     _statusRefreshTimer?.cancel();
     _localProgressTimer?.cancel();
-    _optimisticProgressKickoffTimer?.cancel();
     _timerCountdown?.cancel(); // ⏰ 清理定时器
     _currentStrategy?.dispose();
     _albumCoverService?.dispose();
@@ -655,9 +656,19 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           audioHandler: LocalPlaybackStrategy.sharedAudioHandler,
           // 🎯 不设置 skipRestore，使用默认值 false，恢复之前保存的状态
           // 🔧 直接在构造时设置状态变化回调，确保轮询启动前回调已就绪
-          onStatusChanged: () async {
+          onStatusChanged: (switchSessionId) async {
+            if (switchSessionId != null &&
+                switchSessionId != _directSwitchSessionId) {
+              debugPrint(
+                '⏭️ [PlaybackProvider] 忽略过期直连状态回调: session=$switchSessionId, current=$_directSwitchSessionId',
+              );
+              return;
+            }
             debugPrint('🔔 [PlaybackProvider] 直连模式状态变化');
-            await refreshStatus(silent: true);
+            await refreshStatus(
+              silent: true,
+              directSwitchSessionId: switchSessionId,
+            );
 
             // 💾 保存直连模式播放状态（每次状态变化都保存）
             if (state.currentMusic != null &&
@@ -1198,7 +1209,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
   // 设备加载由 deviceProvider 负责
 
-  Future<void> refreshStatus({bool silent = false}) async {
+  Future<void> refreshStatus({
+    bool silent = false,
+    int? directSwitchSessionId,
+  }) async {
     // 🎵 本地播放模式不需要从服务器刷新状态
     if (_currentStrategy != null && _currentStrategy!.isLocalMode) {
       debugPrint('🎵 [PlaybackProvider] 本地播放模式，跳过状态刷新');
@@ -1308,6 +1322,14 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             );
           }
 
+          if (directSwitchSessionId != null &&
+              directSwitchSessionId != _directSwitchSessionId) {
+            debugPrint(
+              '⏭️ [PlaybackProvider] 忽略过期直连状态: session=$directSwitchSessionId, current=$_directSwitchSessionId',
+            );
+            return;
+          }
+
           // 🛡️ 直连模式保护期：乐观切歌后，忽略旧歌曲轮询回写
           final inProtection =
               _optimisticUpdateProtectionUntil != null &&
@@ -1323,14 +1345,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             return;
           }
 
-          // 仅当回传的是当前歌曲且已有真实进度时，取消乐观提前计时器
-          if (state.currentMusic != null &&
-              status.curMusic == state.currentMusic!.curMusic &&
-              status.offset > 0) {
-            _optimisticProgressKickoffTimer?.cancel();
-            _optimisticProgressKickoffTimer = null;
-          }
-
           // 🎯 检测歌曲切换
           bool isSongChanged = false;
           if (state.currentMusic != null && status.curMusic.isNotEmpty) {
@@ -1342,53 +1356,34 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
           // 🔧 更新进度预测基准值（用于本地平滑预测）
           final serverOffset = status.offset;
+          final isWarmup =
+              _directWarmupUntil != null &&
+              DateTime.now().isBefore(_directWarmupUntil!) &&
+              _directWarmupSong != null &&
+              status.curMusic == _directWarmupSong;
 
-          // 🎯 Offset 安全网（与 Duration 安全网对称）：
-          // 保护期内，如果策略返回 offset=0 但本地预测定时器已在运行，
-          // 说明这是 playMusic 成功后的首次回调（_currentPlayingMusic.offset 硬编码为 0），
-          // 此时不应重置预测基准，否则进度条会从 ~5→0 跳跃。
-          // 保留已有基准，等后续真实轮询（offset>0）来自然校正。
-          // (复用上方已声明的 inProtection 变量)
-          final localPredictedOffset =
-              (_lastServerOffset != null && _lastUpdateTime != null)
-                  ? _lastServerOffset! +
-                      DateTime.now()
-                              .difference(_lastUpdateTime!)
-                              .inMilliseconds /
-                          1000.0
-                  : 0.0;
-
-          if (inProtection &&
-              serverOffset == 0 &&
-              localPredictedOffset > 1.0 &&
-              _localProgressTimer != null &&
-              status.curMusic == state.currentMusic?.curMusic) {
-            // 保护期内 offset=0 且本地预测已 >1s → 保留本地预测基准
-            debugPrint(
-              '🛡️ [Offset安全网] 保护期内忽略 offset=0，保留本地预测基准'
-              '（预测值: ${localPredictedOffset.toStringAsFixed(1)}s）',
-            );
-            // 同时把 status.offset 也修补为当前预测值，避免 state 短暂显示 0
+          if (isWarmup &&
+              state.currentMusic != null &&
+              status.curMusic == state.currentMusic!.curMusic &&
+              serverOffset < state.currentMusic!.offset) {
             status = PlayingMusic(
               ret: status.ret,
               curMusic: status.curMusic,
               curPlaylist: status.curPlaylist,
               isPlaying: status.isPlaying,
-              offset: localPredictedOffset.floor(),
+              offset: state.currentMusic!.offset,
               duration: status.duration,
             );
-          } else {
-            // 正常路径：更新预测基准
-            if (_lastServerOffset != null) {
-              final diff = (serverOffset - _lastServerOffset!).abs();
-              if (diff > 3) {
-                debugPrint(
-                    '🔄 [直连模式] 检测到进度跳跃，差异: ${diff}秒，重新校准');
-              }
-            }
-            _lastServerOffset = serverOffset;
-            _lastUpdateTime = DateTime.now();
           }
+
+          if (_lastServerOffset != null) {
+            final diff = (serverOffset - _lastServerOffset!).abs();
+            if (diff > 3) {
+              debugPrint('🔄 [直连模式] 检测到进度跳跃，差异: ${diff}秒，重新校准');
+            }
+          }
+          _lastServerOffset = status.offset;
+          _lastUpdateTime = DateTime.now();
 
           // 🎯 保留已有的有效 duration，避免策略返回的 0 覆盖乐观更新的值
           final existingDuration = state.currentMusic?.duration ?? 0;
@@ -1423,8 +1418,24 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             });
           }
 
-          // 🔧 直连模式下避免重复重启定时器（会导致进度基准被频繁打断）
-          if (status.isPlaying) {
+          final inWarmupNow =
+              _directWarmupUntil != null &&
+              DateTime.now().isBefore(_directWarmupUntil!) &&
+              _directWarmupSong != null &&
+              status.curMusic == _directWarmupSong;
+          final warmupReady =
+              inWarmupNow &&
+              status.offset >= 1 &&
+              status.duration > 0 &&
+              status.curMusic == _directWarmupSong;
+          if (warmupReady) {
+            _directWarmupUntil = null;
+            _directWarmupSong = null;
+            debugPrint('✅ [PlaybackProvider] 直连 warmup 结束，切换到常规进度预测');
+          }
+
+          final allowLocalPredict = !inWarmupNow || warmupReady;
+          if (status.isPlaying && allowLocalPredict) {
             if (_localProgressTimer == null) {
               _startProgressTimer(true);
               debugPrint('✅ [PlaybackProvider] 直连模式已启动进度预测定时器');
@@ -2289,9 +2300,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       print('🎵 上一首失败: $e');
       state = state.copyWith(error: '上一首失败: ${e.toString()}');
       // 🎯 失败恢复：清除保护期 + 刷新真实状态 + 重启定时器
-      _optimisticProgressKickoffTimer?.cancel();
-      _optimisticProgressKickoffTimer = null;
       _optimisticUpdateProtectionUntil = null;
+      _directWarmupUntil = null;
+      _directWarmupSong = null;
       await refreshStatus(silent: true);
     }
   }
@@ -2302,6 +2313,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     _optimisticUpdateProtectionUntil = DateTime.now().add(
       const Duration(seconds: 10),
     );
+    _directSwitchSessionId += 1;
+    _directWarmupUntil = DateTime.now().add(const Duration(seconds: 8));
+    _directWarmupSong = item.displayName;
     debugPrint('🛡️ [_applyOptimisticUpdate] 设置乐观更新保护期: 10秒');
 
     final optimisticMusic = PlayingMusic(
@@ -2326,36 +2340,12 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     _localProgressTimer = null;
     _statusRefreshTimer?.cancel();
     _statusRefreshTimer = null;
-    _optimisticProgressKickoffTimer?.cancel();
-    _optimisticProgressKickoffTimer = null;
     _lastServerOffset = 0;
     _lastUpdateTime = DateTime.now();
     _lastProgressUpdate = null;
 
-    // 🎯 直连模式体验优化：
-    // URL 解析/推送期间（通常约3秒）先用本地预测缓慢递增，避免进度条完全静止。
-    // 设备真实状态回来后会通过 onStatusChanged 校准，不影响最终准确性。
-    if (_currentStrategy is MiIoTDirectPlaybackStrategy) {
-      final optimisticSong = item.displayName;
-      _optimisticProgressKickoffTimer = Timer(
-        const Duration(milliseconds: 800),
-        () {
-          final inProtection =
-              _optimisticUpdateProtectionUntil != null &&
-              DateTime.now().isBefore(_optimisticUpdateProtectionUntil!);
-          final stillSameSong =
-              state.currentMusic?.curMusic == optimisticSong &&
-              state.currentMusic?.isPlaying == true;
-          if (inProtection && stillSameSong) {
-            _startProgressTimer(true);
-            debugPrint('⏱️ [_applyOptimisticUpdate] 直连模式提前启动本地进度预测');
-          }
-        },
-      );
-    }
-
     debugPrint('✨ [_applyOptimisticUpdate] 乐观更新UI（无转圈）: ${item.displayName}');
-    debugPrint('⏸️ [_applyOptimisticUpdate] 进度定时器已停止，等待推送成功后启动');
+    debugPrint('⏸️ [_applyOptimisticUpdate] 进度定时器已停止，warmup期间使用1s真实轮询');
   }
 
   Future<void> next() async {
@@ -2477,9 +2467,9 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       state = state.copyWith(error: '下一首失败: ${e.toString()}');
       // 🎯 失败恢复：清除保护期 + 刷新真实状态 + 重启定时器
       // 避免 _applyOptimisticUpdate 停掉定时器后，失败导致 UI 卡在"新歌 0 秒"
-      _optimisticProgressKickoffTimer?.cancel();
-      _optimisticProgressKickoffTimer = null;
       _optimisticUpdateProtectionUntil = null;
+      _directWarmupUntil = null;
+      _directWarmupSong = null;
       await refreshStatus(silent: true);
     }
   }
@@ -2698,11 +2688,22 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         debugPrint('🎵 [PlaybackProvider] 播放列表已设置，开始索引: $playIndex');
       }
 
+      int? directSessionId;
+      if (_currentStrategy is MiIoTDirectPlaybackStrategy &&
+          musicName != null &&
+          musicName.isNotEmpty) {
+        _directSwitchSessionId += 1;
+        _directWarmupUntil = DateTime.now().add(const Duration(seconds: 8));
+        _directWarmupSong = musicName;
+        directSessionId = _directSwitchSessionId;
+      }
+
       // 使用策略播放
       await _currentStrategy!.playMusic(
         musicName: musicName ?? '',
         url: url,
         duration: optimisticDuration > 0 ? optimisticDuration : duration, // 🎯 传递 duration 到策略层
+        switchSessionId: directSessionId,
       );
 
       debugPrint('✅ [PlaybackProvider] 播放请求成功');
@@ -4798,6 +4799,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         musicName: item.displayName,
         url: url,
         duration: item.duration, // 🎯 传递 duration，避免策略层拿到 null
+        switchSessionId:
+            _currentStrategy is MiIoTDirectPlaybackStrategy
+                ? _directSwitchSessionId
+                : null,
       );
 
       debugPrint('✅ [队列播放] 播放命令已发送');

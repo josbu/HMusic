@@ -23,6 +23,7 @@ abstract class PlaybackStrategy {
     String? platform,
     String? songId,
     int? duration,
+    int? switchSessionId,
   });
 
   /// 播放音乐列表

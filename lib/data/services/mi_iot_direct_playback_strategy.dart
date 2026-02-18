@@ -21,7 +21,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
   AudioHandlerService? _audioHandler;
 
   // 状态变化回调
-  Function()? onStatusChanged;
+  Function(int? switchSessionId)? onStatusChanged;
 
   @override
   String? get lastAudioId => null;
@@ -42,6 +42,11 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
   // 🔄 状态轮询定时器
   Timer? _statusTimer;
+  int _statusPollIntervalSeconds = 3;
+  bool _isWarmupPolling = false;
+  DateTime? _warmupDeadline;
+  String? _warmupSongName;
+  int? _activeSwitchSessionId;
 
   // 🎯 设备硬件信息
   String? _hardware;
@@ -85,7 +90,8 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     required String deviceId,
     String? deviceName,
     AudioHandlerService? audioHandler,
-    Function()? onStatusChanged, // 🔧 在构造函数中接收回调，确保轮询启动前已设置
+    Function(int? switchSessionId)?
+    onStatusChanged, // 🔧 在构造函数中接收回调，确保轮询启动前已设置
     Future<String?> Function(String musicName)? onGetMusicUrl, // 🔧 在构造函数中接收回调
     Function()? onSongComplete, // 🎯 歌曲播放完成回调（自动下一首）
     bool skipRestore = false, // 🎯 模式切换时跳过状态恢复，避免显示错误的歌曲
@@ -226,7 +232,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         }
 
         // 通知状态变化（让UI立即显示恢复的歌曲）
-        onStatusChanged?.call();
+        onStatusChanged?.call(_activeSwitchSessionId);
       } else {
         debugPrint('ℹ️ [MiIoTDirect] 没有保存的播放状态，跳过恢复');
       }
@@ -258,13 +264,31 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     }
   }
 
-  /// 🔄 启动状态轮询（每3秒获取一次播放状态）
-  void _startStatusPolling() {
+  /// 🔄 启动状态轮询
+  void _startStatusPolling({int intervalSeconds = 3}) {
+    _statusPollIntervalSeconds = intervalSeconds;
     _statusTimer?.cancel();
-    _statusTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+    _statusTimer = Timer.periodic(Duration(seconds: intervalSeconds), (_) {
       _pollPlayStatus();
     });
-    debugPrint('⏰ [MiIoTDirect] 启动状态轮询');
+    debugPrint('⏰ [MiIoTDirect] 启动状态轮询（${intervalSeconds}s）');
+  }
+
+  void _enterWarmupPolling(String songName) {
+    _isWarmupPolling = true;
+    _warmupDeadline = DateTime.now().add(const Duration(seconds: 8));
+    _warmupSongName = songName;
+    _startStatusPolling(intervalSeconds: 1);
+    debugPrint('🔥 [MiIoTDirect] 进入切歌 warmup（1s轮询，最长8s）: $songName');
+  }
+
+  void _exitWarmupPolling(String reason) {
+    if (!_isWarmupPolling) return;
+    _isWarmupPolling = false;
+    _warmupDeadline = null;
+    _warmupSongName = null;
+    _startStatusPolling(intervalSeconds: 3);
+    debugPrint('✅ [MiIoTDirect] 退出切歌 warmup: $reason');
   }
 
   /// 🔄 轮询播放状态
@@ -438,8 +462,26 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
           debugPrint('🔄 [MiIoTDirect] 仅更新播放状态: $isPlaying');
         }
 
+        if (_isWarmupPolling) {
+          final expired =
+              _warmupDeadline != null &&
+              DateTime.now().isAfter(_warmupDeadline!);
+          final sameSong =
+              _warmupSongName != null &&
+              _currentPlayingMusic?.curMusic == _warmupSongName;
+          final hasReadyProgress =
+              sameSong &&
+              (_currentPlayingMusic?.offset ?? 0) >= 1 &&
+              (_currentPlayingMusic?.duration ?? 0) > 0;
+          if (hasReadyProgress) {
+            _exitWarmupPolling('拿到首个有效进度');
+          } else if (expired) {
+            _exitWarmupPolling('warmup超时');
+          }
+        }
+
         // 通知状态变化
-        onStatusChanged?.call();
+        onStatusChanged?.call(_activeSwitchSessionId);
 
         // 🎯 自动下一首检测：当歌曲播放完成时自动播放下一首
         //
@@ -647,7 +689,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         debugPrint('✅ [MiIoTDirect] 播放成功');
 
         // 通知状态变化
-        onStatusChanged?.call();
+        onStatusChanged?.call(_activeSwitchSessionId);
       } else {
         debugPrint('❌ [MiIoTDirect] 播放失败');
       }
@@ -667,7 +709,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         debugPrint('✅ [MiIoTDirect] 暂停成功');
 
         // 通知状态变化
-        onStatusChanged?.call();
+        onStatusChanged?.call(_activeSwitchSessionId);
       } else {
         debugPrint('❌ [MiIoTDirect] 暂停失败');
       }
@@ -769,6 +811,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     String? platform,
     String? songId,
     int? duration, // 🎯 方案C：歌曲时长（秒），用于设置备用倒计时定时器
+    int? switchSessionId,
   }) async {
     debugPrint('🎵 [MiIoTDirect] 播放音乐: $musicName');
     debugPrint('🔗 [MiIoTDirect] URL: $url');
@@ -778,6 +821,8 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
       debugPrint('❌ [MiIoTDirect] 播放URL为空');
       return;
     }
+
+    _activeSwitchSessionId = switchSessionId;
 
     // 🎯 关键修复：播放新歌时暂停状态轮询，避免竞态条件
     // 问题：状态轮询定时器可能在播放流程中间触发，获取到旧歌状态并覆盖新歌信息
@@ -802,7 +847,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
           curMusic: musicName,
           curPlaylist: '直连播放',
           isPlaying: true,
-          duration: 0, // 直连模式无法获取时长
+          duration: duration ?? 0, // 使用传入的歌曲时长，无则回退 0
           offset: 0,
         );
         debugPrint('✅ [MiIoTDirect] 已设置播放状态: 歌曲=$musicName, 播放=true');
@@ -869,20 +914,29 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         _isAutoNextTriggered = false;
         _lastCompletedAudioId = null;
 
-        // 通知状态变化
-        debugPrint('🔔 [MiIoTDirect] 准备调用 onStatusChanged (${onStatusChanged != null ? "已设置" : "NULL"})');
-        onStatusChanged?.call();
-        debugPrint('🔔 [MiIoTDirect] onStatusChanged 调用完成');
+        // 🎯 播放命令推送成功，立即通知 Provider 开始进度计时
+        // offset=0 就是正确的起始点（歌曲此刻刚开始播放）
+        // Provider 收到后会启动本地进度预测定时器：0→1→2→3...
+        // 3 秒后周期轮询拿到设备真实位置（~3s），与预测值吻合，无跳动
+        _enterWarmupPolling(musicName);
+        onStatusChanged?.call(_activeSwitchSessionId);
       } else {
         debugPrint('❌ [MiIoTDirect] 播放失败');
       }
     } catch (e) {
       debugPrint('❌ [MiIoTDirect] 播放异常: $e');
     } finally {
-      // 🎯 关键修复：恢复状态轮询（无论成功还是失败）
-      // 确保轮询机制能继续工作，更新播放进度和状态
-      debugPrint('▶️ [MiIoTDirect] 恢复状态轮询');
-      _startStatusPolling();
+      // 🎯 即时轮询获取设备真实位置（带超时保护，避免网络慢时阻塞轮询恢复）
+      try {
+        debugPrint('▶️ [MiIoTDirect] 即时轮询获取真实进度...');
+        await _pollPlayStatus().timeout(const Duration(seconds: 2));
+      } catch (e) {
+        debugPrint('⚠️ [MiIoTDirect] 即时轮询超时或失败，跳过: $e');
+      }
+      // 无论即时轮询成功与否，都恢复周期性轮询
+      _startStatusPolling(
+        intervalSeconds: _isWarmupPolling ? 1 : _statusPollIntervalSeconds,
+      );
     }
   }
 
@@ -938,6 +992,10 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
     _statusTimer?.cancel();
     _statusTimer = null;
+    _isWarmupPolling = false;
+    _warmupDeadline = null;
+    _warmupSongName = null;
+    _activeSwitchSessionId = null;
     _currentPlayingMusic = null;
     _albumCoverUrl = null;
     _playlist.clear();

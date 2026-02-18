@@ -174,6 +174,7 @@ class RemotePlaybackStrategy implements PlaybackStrategy {
     String? platform,
     String? songId,
     int? duration,
+    int? switchSessionId,
   }) async {
     debugPrint('🎵 [RemotePlayback] 播放音乐: $musicName (设备: $_deviceId)');
     if (musicName.isNotEmpty) {
