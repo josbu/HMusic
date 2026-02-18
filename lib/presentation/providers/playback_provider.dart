@@ -1418,13 +1418,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             });
           }
 
-          final inWarmupNow =
-              _directWarmupUntil != null &&
-              DateTime.now().isBefore(_directWarmupUntil!) &&
-              _directWarmupSong != null &&
-              status.curMusic == _directWarmupSong;
           final warmupReady =
-              inWarmupNow &&
+              isWarmup &&
               status.offset >= 1 &&
               status.duration > 0 &&
               status.curMusic == _directWarmupSong;
@@ -1434,7 +1429,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
             debugPrint('✅ [PlaybackProvider] 直连 warmup 结束，切换到常规进度预测');
           }
 
-          final allowLocalPredict = !inWarmupNow || warmupReady;
+          final allowLocalPredict = !isWarmup || warmupReady;
           if (status.isPlaying && allowLocalPredict) {
             if (_localProgressTimer == null) {
               _startProgressTimer(true);

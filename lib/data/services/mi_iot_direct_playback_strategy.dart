@@ -278,8 +278,8 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     _isWarmupPolling = true;
     _warmupDeadline = DateTime.now().add(const Duration(seconds: 8));
     _warmupSongName = songName;
-    _startStatusPolling(intervalSeconds: 1);
-    debugPrint('🔥 [MiIoTDirect] 进入切歌 warmup（1s轮询，最长8s）: $songName');
+    // 只标记 warmup 状态，轮询启动统一放在 playMusic finally 阶段
+    debugPrint('🔥 [MiIoTDirect] 进入切歌 warmup（由 finally 统一启动轮询）: $songName');
   }
 
   void _exitWarmupPolling(String reason) {
