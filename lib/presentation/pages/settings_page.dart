@@ -816,8 +816,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               // 🎯 清除模式选择
               await ref.read(playbackModeProvider.notifier).clearMode();
 
-              // 跳转到模式选择页
-              if (context.mounted) context.go('/mode_selection');
+              // 跳转到根路由，AuthWrapper 会自动展示模式选择页
+              if (context.mounted) context.go('/');
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,

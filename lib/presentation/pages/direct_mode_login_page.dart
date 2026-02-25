@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:go_router/go_router.dart';
 import '../providers/direct_mode_provider.dart';
 import '../widgets/app_snackbar.dart';
 import 'captcha_webview_page.dart';
@@ -113,14 +112,13 @@ class _DirectModeLoginPageState extends ConsumerState<DirectModeLoginPage> {
     // 监听登录状态
     final directModeState = ref.watch(directModeProvider);
 
-    // 登录成功后跳转
+    // 登录状态监听（AuthWrapper 自动处理页面跳转）
     ref.listen<DirectModeState>(directModeProvider, (previous, next) {
       if (next is DirectModeAuthenticated) {
         AppSnackBar.showSuccess(
           context,
           '登录成功！找到 ${next.devices.length} 个设备',
         );
-        context.go('/');
       } else if (next is DirectModeNeedsCaptcha) {
         _showCaptchaWebView(context, next);
       } else if (next is DirectModeError) {

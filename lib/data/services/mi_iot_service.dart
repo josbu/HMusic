@@ -1034,20 +1034,12 @@ class MiIoTService {
       'music': jsonEncode(music), // 注意：music 需要二次 JSON 编码
     });
 
-    // 🎯 关键修复：播放前先完整停止当前播放！
-    // 参考 xiaomusic 的 force_stop_xiaoai 完整实现：
-    // 1. 先 pause 暂停
-    // 2. 再 stop 停止（清除播放状态）
-    // 3. 等待一小段时间让设备处理
-    // 这样可以清除旧的 position 等状态，确保新音乐能正常播放
+    // 🎯 播放前先完整停止当前播放
+    // 对齐 xiaomusic force_stop_xiaoai: pause → stop
     print('⏸️ [MiIoT] 播放前先暂停当前播放...');
     await pause(deviceId);
     print('⏹️ [MiIoT] 停止当前播放...');
     await stop(deviceId);
-
-    // 🎯 等待设备处理停止命令（500ms）
-    // 🔧 增加延迟时间，让设备有足够时间清空缓冲区
-    await Future.delayed(const Duration(milliseconds: 500));
 
     // 🎯 智能选择播放方案
     List<Map<String, dynamic>> attempts = [];
@@ -1103,114 +1095,10 @@ class MiIoTService {
         if (response.statusCode == 200) {
           final data = response.data;
           if (data is Map && data['code'] == 0) {
-            print('✅ [MiIoT] 设置音乐成功! 使用方案: ${attempt['name']}');
-
-            // 🎯 关键修复：player_play_music 只是设置播放列表，不会自动播放
-            // 需要发送 play 操作命令来开始播放
-            print('▶️ [MiIoT] 发送播放命令...');
-            final playSuccess = await resume(deviceId);
-            if (playSuccess) {
-              print('✅ [MiIoT] 播放命令发送成功!');
-
-              // 🔧 等待音箱缓冲和开始播放（3秒）
-              print('⏳ [MiIoT] 等待音箱缓冲（3秒）...');
-              await Future.delayed(const Duration(seconds: 3));
-
-              // 🎯 验证播放状态
-              print('🔍 [MiIoT] 检查播放状态...');
-              final status = await getPlayStatus(deviceId);
-              if (status != null) {
-                final playStatus = status['status'];
-                final position = status['play_song_detail']?['position'] ?? 0;
-                print('📊 [MiIoT] 当前状态: status=$playStatus, position=$position');
-
-                // status=1 表示播放中，status=2 表示暂停
-                if (playStatus == 2) {
-                  print('⚠️ [MiIoT] 音箱仍处于暂停状态，可能还在缓冲...');
-                  print('🔄 [MiIoT] 尝试重新播放并增加等待时间...');
-                  await resume(deviceId);
-
-                  // 🎯 增加等待时间到3秒（给公共代理更多缓冲时间）
-                  await Future.delayed(const Duration(seconds: 3));
-
-                  // 再次检查
-                  final retryStatus = await getPlayStatus(deviceId);
-                  if (retryStatus != null) {
-                    final retryPlayStatus = retryStatus['status'];
-                    final retryPosition = retryStatus['play_song_detail']?['position'] ?? 0;
-                    print('📊 [MiIoT] 重试后状态: status=$retryPlayStatus, position=$retryPosition');
-
-                    // 🎯 关键优化：检查 position 是否在增加
-                    // 即使 status=2，如果 position 在增加说明音箱正在播放！
-                    final isPositionIncreasing = retryPosition > position;
-
-                    if (retryPlayStatus == 1) {
-                      print('✅ [MiIoT] 重试成功，音箱已开始播放');
-                      return true;
-                    } else if (isPositionIncreasing) {
-                      print('✅ [MiIoT] 检测到播放进度在增加，音箱正在播放中（即使状态显示暂停）');
-                      print('💡 [MiIoT] position从 $position 增加到 $retryPosition，判定为播放成功');
-                      return true;
-                    } else if (useProxy) {
-                      // 🔄 如果使用了代理但仍然失败，尝试使用直接URL
-                      print('⚠️ [MiIoT] 代理播放失败，尝试直接播放原始URL...');
-                      if (_publicProxyUrl != null) {
-                        print('💡 [MiIoT] 可能原因：公共代理服务异常或URL解析失败');
-                      } else {
-                        print('💡 [MiIoT] 可能原因：音箱无法访问手机的代理服务器（网络隔离/防火墙）');
-                      }
-
-                      // 递归调用，但不使用代理
-                      print('🔄 [MiIoT] Fallback: 使用原始URL重试...');
-                      final originalProxyServer = _proxyServer;
-                      final originalPublicProxyUrl = _publicProxyUrl;
-                      _proxyServer = null; // 临时禁用本地代理
-                      _publicProxyUrl = null; // 临时禁用公共代理
-
-                      final directPlaySuccess = await playMusic(
-                        deviceId: deviceId,
-                        musicUrl: musicUrl,
-                        compatMode: compatMode,
-                        musicName: musicName,
-                      );
-
-                      _proxyServer = originalProxyServer; // 恢复本地代理设置
-                      _publicProxyUrl = originalPublicProxyUrl; // 恢复公共代理设置
-
-                      if (directPlaySuccess) {
-                        print('✅ [MiIoT] 直接播放成功！');
-                      } else {
-                        print('❌ [MiIoT] 直接播放也失败了');
-                      }
-                      return directPlaySuccess;
-                    } else {
-                      print('⚠️ [MiIoT] 播放失败，音箱可能无法访问播放URL');
-                      print('💡 [MiIoT] 建议检查: 1) 音箱和手机是否在同一网络 2) URL是否有效');
-                    }
-                  }
-                } else {
-                  print('✅ [MiIoT] 音箱正在播放');
-                }
-              }
-
-              return true;
-            } else {
-              print('⚠️ [MiIoT] 播放命令发送失败，尝试重试...');
-
-              // 重试3次
-              for (int retry = 0; retry < 3; retry++) {
-                await Future.delayed(const Duration(seconds: 1));
-                print('🔄 [MiIoT] 重试播放命令 (${retry + 1}/3)...');
-                final retrySuccess = await resume(deviceId);
-                if (retrySuccess) {
-                  print('✅ [MiIoT] 重试成功！');
-                  return true;
-                }
-              }
-
-              print('⚠️ [MiIoT] 播放命令失败，但音乐已设置，音箱可能会自动播放');
-              return true; // 音乐已设置，返回成功
-            }
+            print('✅ [MiIoT] 播放成功! 使用方案: ${attempt['name']}');
+            // 对齐 xiaomusic: player_play_music 配合 REPLACE_ALL 会自动开始播放
+            // 不需要额外的 resume() 或状态检查
+            return true;
           } else {
             print('⚠️ [MiIoT] 方案${i + 1}返回非成功状态: ${data}');
           }

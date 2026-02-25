@@ -1,18 +1,29 @@
 /// 小米设备硬件检测工具类
-/// 基于xiaomusic项目的设备兼容性数据
+/// 基于 xiaomusic NEED_USE_PLAY_MUSIC_API + miservice _USE_PLAY_MUSIC_API 合并
 class MiHardwareDetector {
   /// 必须使用 player_play_music API 的设备硬件列表
-  /// 这些设备使用 player_play_url 会无效
+  /// 合并来源：
+  ///   xiaomusic const.py NEED_USE_PLAY_MUSIC_API
+  ///   miservice minaservice.py _USE_PLAY_MUSIC_API
+  /// 这些设备使用 player_play_url 会无效或不稳定
   static const List<String> NEED_USE_PLAY_MUSIC_API = [
-    'X08C',   // 小爱音箱 Play 增强版
-    'X08E',   // 小爱音箱 Play
-    'X8F',    // 小爱音箱 Pro
+    // --- 来自 xiaomusic NEED_USE_PLAY_MUSIC_API ---
+    'X08C',   // 小爱音箱 Play 增强版 (触屏)
+    'X08E',   // 小爱音箱 Play (触屏)
+    'X8F',    // 小爱音箱 Pro (触屏)
     'X4B',    // 小爱音箱
-    'LX05',   // 小爱音箱 Play (LX05)
-    'L05B',   // 小爱音箱 Play (L05B) - 新增
-    'OH2',    // 小爱音箱 HD
-    'OH2P',   // 小爱音箱 HD Plus
+    'LX05',   // 小爱音箱 Play (2019款)
+    'OH2',    // XIAOMI 智能音箱
+    'OH2P',   // XIAOMI 智能音箱 Pro
     'X6A',    // 小爱音箱 Art 电池版
+    // --- 来自 miservice _USE_PLAY_MUSIC_API (补充) ---
+    'LX04',   // 小爱音箱 (触屏)
+    'L05B',   // 小爱音箱 Play
+    'L05C',   // 小米小爱音箱 Play 增强版
+    'L06',    // 小爱音箱
+    'L06A',   // 小爱音箱
+    'X08A',   // 小爱音箱 (触屏)
+    'X10A',   // 小爱音箱 (触屏)
   ];
 
   /// 检查设备硬件是否需要使用 player_play_music API
