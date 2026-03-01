@@ -71,6 +71,11 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
   DateTime? _playingStateProtectedUntil;  // 保护"播放中"状态
   DateTime? _pauseStateProtectedUntil;    // 保护"已暂停"状态
 
+  // 🎯 Seek 保护窗口：seek 后短期内忽略比 seek 目标小的进度值
+  // 原因：设备 seek 后第一次轮询可能返回旧的 position（设备尚未完成 seek）
+  DateTime? _seekProtectedUntil;
+  int? _seekTargetPosition; // seek 目标位置（秒）
+
   // 🎯 本地时间预测进度（用于 detail=null 的设备，如OH2P）
   // 原理与 xiaomusic 的 time.time() - _start_time 相同：
   // 播放开始时记录时间戳，根据已播放时间计算 offset
@@ -501,13 +506,36 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
                 ? duration
                 : _currentPlayingMusic!.duration;
 
+            // 🎯 Seek 保护：如果在 seek 保护窗口内且轮询返回的进度明显低于 seek 目标，
+            // 说明设备尚未完成 seek，使用 seek 目标值代替
+            int finalPosition = position;
+            if (_seekProtectedUntil != null &&
+                _seekTargetPosition != null &&
+                DateTime.now().isBefore(_seekProtectedUntil!)) {
+              final diff = _seekTargetPosition! - position;
+              if (diff > 5) {
+                // 轮询返回的进度比 seek 目标低 5 秒以上 → 设备尚未完成 seek
+                debugPrint('🛡️ [MiIoTDirect] Seek保护: 轮询=${position}s < 目标=${_seekTargetPosition}s，使用目标值');
+                finalPosition = _seekTargetPosition!;
+              } else {
+                // 进度已接近 seek 目标，清除保护
+                _seekProtectedUntil = null;
+                _seekTargetPosition = null;
+              }
+            } else if (_seekProtectedUntil != null &&
+                       DateTime.now().isAfter(_seekProtectedUntil!)) {
+              // 保护窗口已过期，清除
+              _seekProtectedUntil = null;
+              _seekTargetPosition = null;
+            }
+
             _currentPlayingMusic = PlayingMusic(
               ret: 'OK',
               curMusic: finalTitle,
               curPlaylist: '直连播放',
               isPlaying: isPlaying,
               duration: finalDuration,
-              offset: position,
+              offset: finalPosition,
             );
 
             debugPrint('🔄 [MiIoTDirect] 轮询更新: 播放=$isPlaying, 进度=$position/$finalDuration秒, 歌曲=${finalTitle.isEmpty ? "(空)" : finalTitle}');
@@ -1004,6 +1032,19 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
       final success = await _miService.seekTo(_deviceId, positionMs);
       if (success) {
         debugPrint('✅ [MiIoTDirect] 跳转进度成功');
+
+        // 🎯 设置 seek 保护窗口（3秒内忽略比 seek 目标值回退的进度）
+        _seekProtectedUntil = DateTime.now().add(const Duration(seconds: 3));
+        _seekTargetPosition = seconds;
+        debugPrint('🛡️ [MiIoTDirect] 设置 seek 保护窗口: 3秒，目标: ${seconds}秒');
+
+        // 🎯 Seek 期间也保护播放状态：设备 seek 时可能短暂汇报 status=2（缓冲）
+        // 不应让 APP 误认为用户暂停了
+        if (_currentPlayingMusic?.isPlaying == true) {
+          _playingStateProtectedUntil = DateTime.now().add(const Duration(seconds: 3));
+          debugPrint('🛡️ [MiIoTDirect] Seek期间保护播放状态: 3秒');
+        }
+
         // 🎯 同步本地计时器：重置起始时间 = now - seekPosition
         _localPlayStartTime = DateTime.now().subtract(Duration(seconds: seconds));
         _localAccumulatedPause = Duration.zero;
@@ -1082,6 +1123,18 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
       if (success) {
         debugPrint('✅ [MiIoTDirect] 播放成功');
 
+        // 🎯 异步设置设备为单曲循环，防止设备自行播放未知内容
+        // APP 端自己管理播放队列和下一首逻辑
+        _miService.setLoopType(_deviceId, 0).then((ok) {
+          if (ok) {
+            debugPrint('🔁 [MiIoTDirect] 已设置设备为单曲循环（APP管理队列）');
+          } else {
+            debugPrint('⚠️ [MiIoTDirect] 设置单曲循环失败，设备可能自行切歌');
+          }
+        }).catchError((e) {
+          debugPrint('⚠️ [MiIoTDirect] 设置单曲循环异常: $e');
+        });
+
         // 更新当前播放信息
         _currentPlayingMusic = PlayingMusic(
           ret: 'OK',
@@ -1133,6 +1186,8 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         // 🛡️ 设置播放状态保护窗口（5秒内忽略轮询返回的"暂停"状态）
         _playingStateProtectedUntil = DateTime.now().add(const Duration(seconds: 5));
         _pauseStateProtectedUntil = null; // 互斥：清除暂停保护
+        _seekProtectedUntil = null; // 🎯 新歌开始，清除旧的 seek 保护
+        _seekTargetPosition = null;
         debugPrint('🛡️ [MiIoTDirect] 设置播放状态保护窗口: 5秒');
 
         // 🎯 初始化本地时间预测计时器（新歌从 0 开始计时）

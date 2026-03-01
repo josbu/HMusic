@@ -2195,7 +2195,54 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       // 🎯 不再一开始就设置 isLoading: true，让 UI 立即响应
       debugPrint('🎵 执行上一首命令');
 
-      // 🎯 根据播放模式执行不同逻辑
+      // 🎯 优先级0：有 APP 端播放队列 → 统一走队列逻辑（不区分 single/random）
+      {
+        final queueState = ref.read(playbackQueueProvider);
+        if (queueState.queue != null && queueState.queue!.items.isNotEmpty) {
+          debugPrint('🎵 [previous] 检测到 APP 端队列，统一走队列逻辑');
+          final playbackMode = ref.read(playbackModeProvider);
+
+          // 🎯 保存当前状态用于失败回滚
+          final oldMusic = state.currentMusic;
+          final oldCoverUrl = state.albumCoverUrl;
+          final oldQueueIndex = queueState.queue!.currentIndex;
+
+          final prevItem = ref.read(playbackQueueProvider.notifier).previous();
+          if (prevItem != null) {
+            debugPrint('🎵 [previous] 队列上一首: ${prevItem.title}');
+
+            if (playbackMode == PlaybackMode.miIoTDirect) {
+              _applyOptimisticUpdate(prevItem);
+              try {
+                await _playFromQueueItem(prevItem);
+              } catch (e) {
+                // 🔄 播放失败，回滚 UI 和队列索引
+                debugPrint('🔄 [previous] 播放失败，回滚到原来的歌');
+                ref.read(playbackQueueProvider.notifier).jumpToIndex(oldQueueIndex);
+                _optimisticUpdateProtectionUntil = null;
+                state = state.copyWith(
+                  currentMusic: oldMusic,
+                  albumCoverUrl: oldCoverUrl,
+                  error: '切歌失败: ${prevItem.title}',
+                );
+                return;
+              }
+            } else {
+              await _playNextItem(prevItem);
+            }
+
+            await Future.delayed(const Duration(milliseconds: 500));
+            await refreshStatus(silent: true);
+            return;
+          } else {
+            debugPrint('⚠️ [previous] 队列已到开头（顺序播放模式）');
+            state = state.copyWith(error: '已是第一首');
+            return;
+          }
+        }
+      }
+
+      // 🎯 根据播放模式执行不同逻辑（无 APP 队列时走旧逻辑）
       switch (state.playMode) {
         case PlayMode.single:
           // 单曲循环：重新播放当前歌曲
@@ -2210,75 +2257,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           break;
 
         default:
-          // 其他模式：使用策略的正常逻辑
-          debugPrint('🎵 [播放模式] ${state.playMode.displayName} - 使用策略逻辑');
+          // 其他模式：无 APP 队列时使用策略的正常逻辑
+          debugPrint('🎵 [播放模式] ${state.playMode.displayName} - 无队列，使用策略逻辑');
 
-          // 🎯 优先级1：直连模式 + 有播放队列 → 使用新队列逻辑
-          final playbackMode = ref.read(playbackModeProvider);
-          if (playbackMode == PlaybackMode.miIoTDirect) {
-            final queueState = ref.read(playbackQueueProvider);
-            if (queueState.queue != null &&
-                queueState.queue!.items.isNotEmpty) {
-              debugPrint('🎵 [PlaybackProvider] 直连模式检测到播放队列');
-              final prevItem =
-                  ref.read(playbackQueueProvider.notifier).previous();
-              if (prevItem != null) {
-                debugPrint(
-                  '🎵 [PlaybackProvider] 使用队列播放上一首: ${prevItem.title}',
-                );
-
-                // 🎯 立即乐观更新 UI（无转圈）
-                _applyOptimisticUpdate(prevItem);
-
-                await _playFromQueueItem(prevItem);
-
-                // 🎯 静默刷新，避免二次 loading
-                await Future.delayed(const Duration(milliseconds: 500));
-                await refreshStatus(silent: true);
-
-                return; // ✅ 使用新逻辑成功，直接返回
-              } else {
-                debugPrint('⚠️ [PlaybackProvider] 队列已到开头（顺序播放模式）');
-                state = state.copyWith(error: '已是第一首');
-                return;
-              }
-            } else {
-              debugPrint('🎵 [PlaybackProvider] 直连模式无队列，使用旧逻辑');
-            }
-          }
-
-          // 🎯 优先级2：xiaomusic模式 + 有播放队列 → 使用懒加载队列逻辑
-          if (playbackMode == PlaybackMode.xiaomusic) {
-            final queueState = ref.read(playbackQueueProvider);
-            if (queueState.queue != null &&
-                queueState.queue!.items.isNotEmpty) {
-              debugPrint('🎵 [PlaybackProvider] xiaomusic模式检测到播放队列');
-              final prevItem =
-                  ref.read(playbackQueueProvider.notifier).previous();
-              if (prevItem != null) {
-                debugPrint(
-                  '🎵 [PlaybackProvider] xiaomusic队列播放上一首: ${prevItem.title}',
-                );
-
-                // 🎯 根据歌曲类型分发播放
-                await _playNextItem(prevItem);
-
-                // 🎯 静默刷新
-                await Future.delayed(const Duration(milliseconds: 500));
-                await refreshStatus(silent: true);
-
-                return; // ✅ 使用队列逻辑成功，直接返回
-              } else {
-                debugPrint('⚠️ [PlaybackProvider] 队列已到开头（顺序播放模式）');
-                state = state.copyWith(error: '已是第一首');
-                return;
-              }
-            } else {
-              debugPrint('🎵 [PlaybackProvider] xiaomusic模式无队列，使用旧逻辑');
-            }
-          }
-
-          // 🎯 优先级3：使用旧的策略逻辑（xiaomusic/本地播放/旧逻辑）
+          // 🎯 使用旧的策略逻辑（xiaomusic/本地播放/旧逻辑）
           debugPrint('🎵 [PlaybackProvider] 使用策略模式播放（xiaomusic/本地/旧逻辑）');
           await _currentStrategy!.previous(); // ✅ xiaomusic 和本地播放完全不受影响
 
@@ -2372,7 +2354,54 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       // 🎯 不再一开始就设置 isLoading: true，让 UI 立即响应
       debugPrint('🎵 执行下一首命令');
 
-      // 🎯 根据播放模式执行不同逻辑
+      // 🎯 优先级0：有 APP 端播放队列 → 统一走队列逻辑（不区分 single/random）
+      {
+        final queueState = ref.read(playbackQueueProvider);
+        if (queueState.queue != null && queueState.queue!.items.isNotEmpty) {
+          debugPrint('🎵 [next] 检测到 APP 端队列，统一走队列逻辑');
+          final playbackMode = ref.read(playbackModeProvider);
+
+          // 🎯 保存当前状态用于失败回滚
+          final oldMusic = state.currentMusic;
+          final oldCoverUrl = state.albumCoverUrl;
+          final oldQueueIndex = queueState.queue!.currentIndex;
+
+          final nextItem = ref.read(playbackQueueProvider.notifier).next();
+          if (nextItem != null) {
+            debugPrint('🎵 [next] 队列下一首: ${nextItem.title}');
+
+            if (playbackMode == PlaybackMode.miIoTDirect) {
+              _applyOptimisticUpdate(nextItem);
+              try {
+                await _playFromQueueItem(nextItem);
+              } catch (e) {
+                // 🔄 播放失败，回滚 UI 和队列索引
+                debugPrint('🔄 [next] 播放失败，回滚到上一首');
+                ref.read(playbackQueueProvider.notifier).jumpToIndex(oldQueueIndex);
+                _optimisticUpdateProtectionUntil = null;
+                state = state.copyWith(
+                  currentMusic: oldMusic,
+                  albumCoverUrl: oldCoverUrl,
+                  error: '切歌失败: ${nextItem.title}',
+                );
+                return;
+              }
+            } else {
+              await _playNextItem(nextItem);
+            }
+
+            await Future.delayed(const Duration(milliseconds: 500));
+            await refreshStatus(silent: true);
+            return;
+          } else {
+            debugPrint('⚠️ [next] 队列已到末尾（顺序播放模式）');
+            state = state.copyWith(error: '已是最后一首');
+            return;
+          }
+        }
+      }
+
+      // 🎯 根据播放模式执行不同逻辑（无 APP 队列时走旧逻辑）
       switch (state.playMode) {
         case PlayMode.single:
           // 单曲循环：重新播放当前歌曲
@@ -2387,73 +2416,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           break;
 
         default:
-          // 其他模式：使用策略的正常逻辑
-          debugPrint('🎵 [播放模式] ${state.playMode.displayName} - 使用策略逻辑');
+          // 其他模式：无 APP 队列时使用策略的正常逻辑
+          debugPrint('🎵 [播放模式] ${state.playMode.displayName} - 无队列，使用策略逻辑');
 
-          // 🎯 优先级1：直连模式 + 有播放队列 → 使用新队列逻辑
-          final playbackMode = ref.read(playbackModeProvider);
-          if (playbackMode == PlaybackMode.miIoTDirect) {
-            final queueState = ref.read(playbackQueueProvider);
-            if (queueState.queue != null &&
-                queueState.queue!.items.isNotEmpty) {
-              debugPrint('🎵 [PlaybackProvider] 直连模式检测到播放队列');
-              final nextItem = ref.read(playbackQueueProvider.notifier).next();
-              if (nextItem != null) {
-                debugPrint(
-                  '🎵 [PlaybackProvider] 使用队列播放下一首: ${nextItem.title}',
-                );
-
-                // 🎯 立即乐观更新 UI（无转圈）
-                _applyOptimisticUpdate(nextItem);
-
-                await _playFromQueueItem(nextItem);
-
-                // 🎯 静默刷新，避免二次 loading
-                await Future.delayed(const Duration(milliseconds: 500));
-                await refreshStatus(silent: true);
-
-                return; // ✅ 使用新逻辑成功，直接返回
-              } else {
-                debugPrint('⚠️ [PlaybackProvider] 队列已到末尾（顺序播放模式）');
-                state = state.copyWith(error: '已是最后一首');
-                return;
-              }
-            } else {
-              debugPrint('🎵 [PlaybackProvider] 直连模式无队列，使用旧逻辑');
-            }
-          }
-
-          // 🎯 优先级2：xiaomusic模式 + 有播放队列 → 使用懒加载队列逻辑
-          if (playbackMode == PlaybackMode.xiaomusic) {
-            final queueState = ref.read(playbackQueueProvider);
-            if (queueState.queue != null &&
-                queueState.queue!.items.isNotEmpty) {
-              debugPrint('🎵 [PlaybackProvider] xiaomusic模式检测到播放队列');
-              final nextItem = ref.read(playbackQueueProvider.notifier).next();
-              if (nextItem != null) {
-                debugPrint(
-                  '🎵 [PlaybackProvider] xiaomusic队列播放下一首: ${nextItem.title}',
-                );
-
-                // 🎯 根据歌曲类型分发播放
-                await _playNextItem(nextItem);
-
-                // 🎯 静默刷新
-                await Future.delayed(const Duration(milliseconds: 500));
-                await refreshStatus(silent: true);
-
-                return; // ✅ 使用队列逻辑成功，直接返回
-              } else {
-                debugPrint('⚠️ [PlaybackProvider] 队列已到末尾（顺序播放模式）');
-                state = state.copyWith(error: '已是最后一首');
-                return;
-              }
-            } else {
-              debugPrint('🎵 [PlaybackProvider] xiaomusic模式无队列，使用旧逻辑');
-            }
-          }
-
-          // 🎯 优先级3：使用旧的策略逻辑（xiaomusic/本地播放/旧逻辑）
+          // 🎯 使用旧的策略逻辑（xiaomusic/本地播放/旧逻辑）
           debugPrint('🎵 [PlaybackProvider] 使用策略模式播放（xiaomusic/本地/旧逻辑）');
           await _currentStrategy!.next(); // ✅ xiaomusic 和本地播放完全不受影响
 
@@ -3123,12 +3089,22 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     debugPrint('🎵 [PlaybackProvider] 开始处理直连模式自动下一首');
 
     try {
-      // 检查播放队列
+      // 🎯 单曲循环短路：设备已在循环播放，APP 端无需干预
       final queueState = ref.read(playbackQueueProvider);
+      if (queueState.queue != null &&
+          queueState.queue!.playMode == QueuePlayMode.singleLoop) {
+        debugPrint('🔂 [PlaybackProvider] 单曲循环模式，设备自行循环，跳过自动下一首');
+        return;
+      }
+
+      // 检查播放队列
       if (queueState.queue == null || queueState.queue!.items.isEmpty) {
         debugPrint('⚠️ [PlaybackProvider] 播放队列为空，无法自动播放下一首');
         return;
       }
+
+      // 🎯 保存当前队列索引用于失败回滚
+      final oldQueueIndex = queueState.queue!.currentIndex;
 
       // 获取下一首歌曲
       final nextItem = ref.read(playbackQueueProvider.notifier).next();
@@ -3141,6 +3117,7 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       debugPrint('🎵 [PlaybackProvider] 来源类型: ${nextItem.sourceType}');
 
       // 🎯 根据歌曲来源类型决定播放方式
+      try {
       if (nextItem.isOnline) {
         // 🎵 在线歌曲：使用统一的 playOnlineItem 方法
         debugPrint('🎵 [PlaybackProvider] 在线歌曲，使用 playOnlineItem 播放');
@@ -3167,6 +3144,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         }
       } else {
         debugPrint('⚠️ [PlaybackProvider] 歌曲没有有效的播放源');
+      }
+      } catch (e) {
+        // 🔄 自动下一首播放失败，回滚队列索引
+        debugPrint('🔄 [PlaybackProvider] 自动下一首播放失败，回滚队列索引');
+        ref.read(playbackQueueProvider.notifier).jumpToIndex(oldQueueIndex);
+        _optimisticUpdateProtectionUntil = null;
+        state = state.copyWith(error: '自动播放下一首失败: ${nextItem.displayName}');
       }
     } catch (e) {
       debugPrint('❌ [PlaybackProvider] 自动下一首失败: $e');
@@ -3505,9 +3489,23 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       }
 
       // 获取设备 ID
-      final deviceState = ref.read(deviceProvider);
-      final deviceId = deviceState.selectedDeviceId;
-      if (deviceId == null) {
+      final playbackMode = ref.read(playbackModeProvider);
+      String? deviceId;
+
+      if (playbackMode == PlaybackMode.miIoTDirect) {
+        // 🎯 直连模式：从 directModeProvider 获取设备 ID
+        final directState = ref.read(directModeProvider);
+        if (directState is DirectModeAuthenticated) {
+          deviceId = directState.playbackDeviceType;
+          debugPrint('🎵 [playOnlineItem] 直连模式设备ID: $deviceId');
+        }
+      } else {
+        // xiaomusic 模式：从 deviceProvider 获取设备 ID
+        final deviceState = ref.read(deviceProvider);
+        deviceId = deviceState.selectedDeviceId;
+      }
+
+      if (deviceId == null || deviceId.isEmpty) {
         throw Exception('未选择播放设备');
       }
 
@@ -4049,6 +4047,36 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
 
   /// 🎵 切换播放模式
   Future<void> switchPlayMode(PlayMode newMode) async {
+    // 🎯 优先级1：如果有 APP 端播放队列 → 同步到 QueuePlayMode，不走服务端
+    final queueState = ref.read(playbackQueueProvider);
+    if (queueState.queue != null && queueState.queue!.items.isNotEmpty) {
+      debugPrint('🎵 [switchPlayMode] 检测到 APP 端队列，映射 PlayMode → QueuePlayMode');
+
+      // PlayMode → QueuePlayMode 映射
+      final QueuePlayMode queueMode;
+      switch (newMode) {
+        case PlayMode.loop:
+          queueMode = QueuePlayMode.listLoop;
+          break;
+        case PlayMode.single:
+        case PlayMode.singlePlay:
+          queueMode = QueuePlayMode.singleLoop;
+          break;
+        case PlayMode.random:
+          queueMode = QueuePlayMode.random;
+          break;
+        case PlayMode.sequence:
+          queueMode = QueuePlayMode.sequence;
+          break;
+      }
+
+      ref.read(playbackQueueProvider.notifier).setPlayMode(queueMode);
+      state = state.copyWith(playMode: newMode);
+      debugPrint('✅ [switchPlayMode] 队列播放模式已同步: ${newMode.displayName} → ${queueMode.displayName}');
+      return;
+    }
+
+    // 🎯 优先级2：无 APP 队列 → 走 xiaomusic 服务端命令
     final selectedDid = ref.read(deviceProvider).selectedDeviceId;
     if (selectedDid == null) {
       debugPrint('⚠️  未选择设备');
@@ -4102,6 +4130,13 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     }
 
     // 🎯 xiaomusic 模式：通过服务器命令播放歌单
+    // 🎯 服务端接管播放时，清除 APP 端的旧队列
+    final oldQueueState = ref.read(playbackQueueProvider);
+    if (oldQueueState.queue != null) {
+      debugPrint('🗑️ [播放歌单] 服务端接管，清除 APP 端旧队列');
+      ref.read(playbackQueueProvider.notifier).clearQueue();
+    }
+
     final selectedDid = ref.read(deviceProvider).selectedDeviceId;
     if (selectedDid == null) {
       debugPrint('⚠️ [播放歌单] 未选择设备');

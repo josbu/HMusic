@@ -1206,6 +1206,13 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
     try {
       debugPrint('[XiaomusicPlugin] 🔌 开始插件模式播放: ${item.title}');
 
+      // 🎯 服务端接管播放时，清除 APP 端的旧队列
+      final oldQueueState = ref.read(playbackQueueProvider);
+      if (oldQueueState.queue != null) {
+        debugPrint('[XiaomusicPlugin] 🗑️ 服务端接管，清除 APP 端旧队列');
+        ref.read(playbackQueueProvider.notifier).clearQueue();
+      }
+
       // 1. 获取设备ID
       final deviceState = ref.read(deviceProvider);
       final selectedDeviceId = deviceState.selectedDeviceId;
@@ -1406,6 +1413,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
             url: playUrl,
             albumCoverUrl: item.picture, // 🎨 传入封面图URL（搜索结果自带）
             playlistName: '搜索结果',
+            duration: item.duration, // 🎯 传入歌曲时长，用于备用定时器检测歌曲结束
           );
 
       debugPrint('[DirectMode] ✅ 播放请求已通过 PlaybackProvider 发送');

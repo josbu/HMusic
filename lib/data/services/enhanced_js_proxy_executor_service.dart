@@ -2400,18 +2400,35 @@ class EnhancedJSProxyExecutorService {
         requestId = errorData['id'] as String? ?? 'unknown';
       } catch (_) {}
 
+      // 🎯 安全转义错误信息（防止换行符/特殊字符破坏 JS 字符串字面量）
+      final safeError = e.toString()
+          .replaceAll('\\', '\\\\')
+          .replaceAll("'", "\\'")
+          .replaceAll('\n', '\\n')
+          .replaceAll('\r', '\\r');
+
       final errorScript = '''
         (function() {
           try {
             if (globalThis._pendingRequests['$requestId']) {
               const callback = globalThis._pendingRequests['$requestId'];
               delete globalThis._pendingRequests['$requestId'];
-              callback(new Error('${e.toString().replaceAll("'", "\\'")}'), null);
-              return true;
+              callback(new Error('$safeError'), null);
             }
-            return false;
+
+            // 🎯 快速失败路径：立即标记 Promise 完成，避免 3 秒超时等待
+            if (!globalThis._promiseComplete) {
+              globalThis._promiseComplete = true;
+              globalThis._promiseError = '$safeError';
+              console.log('[EnhancedJSProxy] 🚀 快速失败: 网络错误已立即标记');
+            }
+
+            return true;
           } catch (callbackError) {
             console.error('[EnhancedJSProxy] 错误回调执行失败:', callbackError);
+            // 即使回调失败，也要标记 Promise 完成
+            globalThis._promiseComplete = true;
+            globalThis._promiseError = 'callback_error';
             return false;
           }
         })()
