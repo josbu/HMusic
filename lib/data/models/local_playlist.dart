@@ -198,11 +198,45 @@ class LocalPlaylistSong {
   /// 是否为本地音乐
   bool get isLocal => localPath != null;
 
-  /// 🎯 检查缓存的播放链接是否有效（6小时内）
+  /// 🎯 检查缓存的播放链接是否有效
+  ///
+  /// 双重验证：
+  /// 1. 通用：检查 urlExpireTime 是否在当前时间之后
+  /// 2. 网易云专项：从 CDN URL 内嵌的 yyyyMMddHHmmss 时间戳提取生成时间，
+  ///    确保距生成时间不超过 25 分钟（CDN TTL ~30 分钟，保留 5 分钟余量）。
+  ///    这可以修复旧缓存条目使用 6 小时 TTL 导致 URL 实际已过期但仍被判定有效的问题。
   bool get isCacheValid {
     if (cachedUrl == null || cachedUrl!.isEmpty) return false;
     if (urlExpireTime == null) return false;
-    return DateTime.now().isBefore(urlExpireTime!);
+    if (!DateTime.now().isBefore(urlExpireTime!)) return false;
+
+    // 🎯 网易云 CDN 专项检查：提取内嵌时间戳，超过 25 分钟即视为过期
+    // 格式: http(s)://mXXX.music.126.net/yyyyMMddHHmmss/...
+    final url = cachedUrl!.toLowerCase();
+    if (url.contains('music.126.net') || url.contains('ntes.com')) {
+      final match = RegExp(r'/(\d{14})/').firstMatch(cachedUrl!);
+      if (match != null) {
+        try {
+          final ts = match.group(1)!;
+          final generationTime = DateTime(
+            int.parse(ts.substring(0, 4)),
+            int.parse(ts.substring(4, 6)),
+            int.parse(ts.substring(6, 8)),
+            int.parse(ts.substring(8, 10)),
+            int.parse(ts.substring(10, 12)),
+            int.parse(ts.substring(12, 14)),
+          );
+          // 距生成时间超过 25 分钟视为过期
+          if (DateTime.now().difference(generationTime).inMinutes >= 25) {
+            return false;
+          }
+        } catch (_) {
+          // 解析失败，回退到通用 TTL 判断（已在上方通过）
+        }
+      }
+    }
+
+    return true;
   }
 
   /// 🎯 复制并更新缓存信息

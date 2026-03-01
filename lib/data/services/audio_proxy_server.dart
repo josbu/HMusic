@@ -63,11 +63,7 @@ class AudioProxyServer {
           .addMiddleware(shelf.logRequests())
           .addHandler(_router);
 
-      _server = await shelf_io.serve(
-        handler,
-        InternetAddress.anyIPv4,
-        _port,
-      );
+      _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, _port);
 
       debugPrint('✅ [ProxyServer] 代理服务器已启动: $serverUrl');
 
@@ -99,7 +95,9 @@ class AudioProxyServer {
       return;
     }
 
-    debugPrint('💚 [ProxyServer] 健康检查通过 - 统计: ${_totalRequests}次请求, ${_successRequests}次成功, ${_failedRequests}次失败');
+    debugPrint(
+      '💚 [ProxyServer] 健康检查通过 - 统计: ${_totalRequests}次请求, ${_successRequests}次成功, ${_failedRequests}次失败',
+    );
   }
 
   /// 停止代理服务器
@@ -113,7 +111,9 @@ class AudioProxyServer {
       _server = null;
 
       debugPrint('👋 [ProxyServer] 代理服务器已停止');
-      debugPrint('📊 [ProxyServer] 最终统计: ${_totalRequests}次请求, ${_successRequests}次成功, ${_failedRequests}次失败');
+      debugPrint(
+        '📊 [ProxyServer] 最终统计: ${_totalRequests}次请求, ${_successRequests}次成功, ${_failedRequests}次失败',
+      );
     }
   }
 
@@ -147,6 +147,16 @@ class AudioProxyServer {
       final originalUrl = utf8.decode(urlBytes);
       debugPrint('🔗 [ProxyServer] 代理请求 #$_totalRequests: $originalUrl');
 
+      // 🎯 根据上游 URL 域名动态构建请求头（防盗链需要正确的 UA 和 Referer）
+      final upstreamHeaders = _getUpstreamHeaders(originalUrl);
+
+      // 🎯 透传客户端的 Range 请求头（音箱通常会发 Range: bytes=0- 进行分段请求）
+      final rangeHeader = request.headers['range'] ?? request.headers['Range'];
+      if (rangeHeader != null) {
+        upstreamHeaders['Range'] = rangeHeader;
+        debugPrint('📦 [ProxyServer] 透传 Range 头: $rangeHeader');
+      }
+
       // 🎯 发起HTTP请求获取音频流
       final response = await _dio.get(
         originalUrl,
@@ -154,29 +164,28 @@ class AudioProxyServer {
           responseType: ResponseType.stream,
           followRedirects: true,
           maxRedirects: 5,
-          headers: {
-            'User-Agent': 'Wget/1.21.3',
-            'Accept': '*/*',
-            'Accept-Encoding': 'identity',
-            'Connection': 'Keep-Alive',
-          },
+          headers: upstreamHeaders,
           validateStatus: (status) => status! < 500,
         ),
       );
 
-      if (response.statusCode != 200) {
+      // 接受 200 (完整响应) 和 206 (分段响应，Range 请求的正常返回)
+      final statusCode = response.statusCode ?? 500;
+      if (statusCode != 200 && statusCode != 206) {
         _failedRequests++; // 🎯 统计失败请求
-        debugPrint('❌ [ProxyServer] 上游响应错误: ${response.statusCode}');
-        return shelf.Response(response.statusCode ?? 500);
+        debugPrint('❌ [ProxyServer] 上游响应错误: $statusCode');
+        return shelf.Response(statusCode);
       }
 
-      // 🎵 获取响应头
+      // 🎵 获取响应头（包含 206 相关的 Content-Range）
       final headers = <String, String>{};
       response.headers.forEach((name, values) {
-        // 只转发必要的响应头
-        if (name.toLowerCase() == 'content-type' ||
-            name.toLowerCase() == 'content-length' ||
-            name.toLowerCase() == 'accept-ranges') {
+        // 转发必要的响应头
+        final lower = name.toLowerCase();
+        if (lower == 'content-type' ||
+            lower == 'content-length' ||
+            lower == 'accept-ranges' ||
+            lower == 'content-range') {
           headers[name] = values.join(', ');
         }
       });
@@ -184,12 +193,12 @@ class AudioProxyServer {
       // 📡 流式转发音频数据
       final stream = response.data.stream;
       _successRequests++; // 🎯 统计成功请求
-      debugPrint('✅ [ProxyServer] 开始流式转发音频数据 (成功率: ${(_successRequests / _totalRequests * 100).toStringAsFixed(1)}%)');
-
-      return shelf.Response.ok(
-        stream,
-        headers: headers,
+      debugPrint(
+        '✅ [ProxyServer] 开始流式转发音频数据 [HTTP $statusCode] (成功率: ${(_successRequests / _totalRequests * 100).toStringAsFixed(1)}%)',
       );
+
+      // 206 Partial Content 需要原样返回给客户端（小爱音箱），否则音箱会认为请求失败
+      return shelf.Response(statusCode, body: stream, headers: headers);
     } catch (e) {
       _failedRequests++; // 🎯 统计失败请求
       debugPrint('❌ [ProxyServer] 代理请求失败: $e');
@@ -202,11 +211,13 @@ class AudioProxyServer {
     return (innerHandler) {
       return (request) async {
         final response = await innerHandler(request);
-        return response.change(headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': '*',
-        });
+        return response.change(
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': '*',
+          },
+        );
       };
     };
   }
@@ -220,8 +231,12 @@ class AudioProxyServer {
         type: InternetAddressType.IPv4,
       );
 
-      final sortedInterfaces = interfaces.toList()
-        ..sort((a, b) => _interfacePriority(a.name).compareTo(_interfacePriority(b.name)));
+      final sortedInterfaces =
+          interfaces.toList()..sort(
+            (a, b) => _interfacePriority(
+              a.name,
+            ).compareTo(_interfacePriority(b.name)),
+          );
 
       // 优先选择 WiFi/以太网接口
       for (var interface in sortedInterfaces) {
@@ -266,7 +281,9 @@ class AudioProxyServer {
     if (lower.contains('eth') || lower.startsWith('en')) {
       return 1;
     }
-    if (lower.contains('pdp') || lower.contains('rmnet') || lower.contains('wwan')) {
+    if (lower.contains('pdp') ||
+        lower.contains('rmnet') ||
+        lower.contains('wwan')) {
       return 3;
     }
     return 2;
@@ -288,5 +305,46 @@ class AudioProxyServer {
   String getProxyUrl(String originalUrl) {
     final urlB64 = base64.encode(utf8.encode(originalUrl));
     return '$serverUrl/proxy?urlb64=$urlB64';
+  }
+
+  /// 🎯 根据上游 URL 域名构建合适的请求头
+  /// 音乐 CDN 通常有防盗链检测，需要正确的 User-Agent 和 Referer
+  static const String _browserUA =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+  Map<String, String> _getUpstreamHeaders(String url) {
+    final headers = <String, String>{
+      'User-Agent': _browserUA,
+      'Accept': '*/*',
+      'Accept-Encoding': 'identity',
+      'Connection': 'Keep-Alive',
+    };
+
+    // 根据 CDN 域名匹配平台，添加对应 Referer
+    final lowerUrl = url.toLowerCase();
+
+    if (lowerUrl.contains('music.126.net') ||
+        lowerUrl.contains('163.com') ||
+        lowerUrl.contains('ntes.com')) {
+      // 网易云音乐
+      headers['Referer'] = 'https://music.163.com/';
+    } else if (lowerUrl.contains('qq.com') || lowerUrl.contains('qqmusic.')) {
+      // QQ 音乐
+      headers['Referer'] = 'https://y.qq.com/';
+    } else if (lowerUrl.contains('kugou.com') ||
+        lowerUrl.contains('kgmusic.')) {
+      // 酷狗音乐
+      headers['Referer'] = 'https://www.kugou.com/';
+    } else if (lowerUrl.contains('kuwo.cn') || lowerUrl.contains('kuwo.com')) {
+      // 酷我音乐
+      headers['Referer'] = 'https://www.kuwo.cn/';
+    } else if (lowerUrl.contains('migu.cn') ||
+        lowerUrl.contains('miguvideo.')) {
+      // 咪咕音乐
+      headers['Referer'] = 'https://www.migu.cn/';
+    }
+
+    return headers;
   }
 }

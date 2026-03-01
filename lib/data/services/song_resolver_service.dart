@@ -306,7 +306,39 @@ class SongResolverService {
       'rights',
       'permission',
     ];
-    return badKeywords.any((k) => lower.contains(k));
+    if (badKeywords.any((k) => lower.contains(k))) return true;
+
+    // 🎯 网易云 CDN URL 过期检测
+    // 上游 API（如 lx.010504.xyz）可能被 CDN 缓存，返回已过期的 URL。
+    // 格式: http(s)://mXXX.music.126.net/yyyyMMddHHmmss/...
+    // CDN TTL 约 30 分钟，超过 25 分钟视为无效。
+    if (lower.contains('music.126.net') || lower.contains('ntes.com')) {
+      final match = RegExp(r'/(\d{14})/').firstMatch(url);
+      if (match != null) {
+        try {
+          final ts = match.group(1)!;
+          final generationTime = DateTime(
+            int.parse(ts.substring(0, 4)),
+            int.parse(ts.substring(4, 6)),
+            int.parse(ts.substring(6, 8)),
+            int.parse(ts.substring(8, 10)),
+            int.parse(ts.substring(10, 12)),
+            int.parse(ts.substring(12, 14)),
+          );
+          final ageMinutes = DateTime.now().difference(generationTime).inMinutes;
+          if (ageMinutes >= 25) {
+            debugPrint(
+              '⏰ [SongResolver] 网易云 URL 已过期 ${ageMinutes}分钟，跳过此结果（时间戳: $ts）',
+            );
+            return true;
+          }
+        } catch (_) {
+          // 解析失败，不影响后续判断
+        }
+      }
+    }
+
+    return false;
   }
 
   bool _isLikelyInvalidSongIdForPlatform(String platform, String? songId) {

@@ -464,7 +464,7 @@ class LocalPlaylistNotifier extends StateNotifier<LocalPlaylistState> {
         urlExpireTime:
             urlExpireTime ??
             (cachedUrl != null
-                ? DateTime.now().add(const Duration(hours: 6))
+                ? _calculateUrlExpireTime(cachedUrl)
                 : song.urlExpireTime),
         duration: duration ?? song.duration,
         platformSongIds: mergedIds,
@@ -656,6 +656,52 @@ class LocalPlaylistNotifier extends StateNotifier<LocalPlaylistState> {
       return DateTime.tryParse(raw);
     }
     return null;
+  }
+
+  /// 🎯 根据 CDN URL 智能计算过期时间
+  ///
+  /// 网易云 CDN URL 格式: http://m702.music.126.net/yyyyMMddHHmmss/...
+  /// 其中嵌入了 URL 生成时间戳，CDN TTL 约为 30 分钟。
+  /// 本方法提取该时间戳，设置为「生成时间 + 25 分钟」（预留 5 分钟余量）。
+  ///
+  /// 其他 CDN（QQ 音乐、酷狗等）无法提取生成时间，使用保守的 30 分钟 TTL。
+  static DateTime _calculateUrlExpireTime(String url) {
+    // 尝试从网易云 CDN URL 中提取时间戳（格式：yyyyMMddHHmmss）
+    // 例: http://m702.music.126.net/20260301194652/eb/7ae6/...
+    final lowerUrl = url.toLowerCase();
+    if (lowerUrl.contains('music.126.net') || lowerUrl.contains('ntes.com')) {
+      final pattern = RegExp(r'/(\d{14})/');
+      final match = pattern.firstMatch(url);
+      if (match != null) {
+        try {
+          final ts = match.group(1)!;
+          final year = int.parse(ts.substring(0, 4));
+          final month = int.parse(ts.substring(4, 6));
+          final day = int.parse(ts.substring(6, 8));
+          final hour = int.parse(ts.substring(8, 10));
+          final minute = int.parse(ts.substring(10, 12));
+          final second = int.parse(ts.substring(12, 14));
+          final generationTime = DateTime(year, month, day, hour, minute, second);
+
+          // CDN TTL ~30 分钟，提前 5 分钟过期，有效窗口 = 25 分钟
+          final expireTime = generationTime.add(const Duration(minutes: 25));
+
+          if (expireTime.isBefore(DateTime.now())) {
+            // 生成时间戳已超过 25 分钟，URL 视为立即过期
+            debugPrint('⏰ [LocalPlaylist] 网易云 URL 已超过 25 分钟，立即标记过期: $ts');
+            return DateTime.now().subtract(const Duration(seconds: 1));
+          }
+
+          debugPrint('⏰ [LocalPlaylist] 网易云 URL 过期时间: $expireTime（生成时间: $ts）');
+          return expireTime;
+        } catch (e) {
+          debugPrint('⚠️ [LocalPlaylist] 解析网易云 URL 时间戳失败: $e');
+        }
+      }
+    }
+
+    // 其他 CDN：保守使用 30 分钟 TTL
+    return DateTime.now().add(const Duration(minutes: 30));
   }
 }
 
