@@ -801,6 +801,7 @@ class MiIoTService {
     required String musicUrl,
     bool compatMode = false,
     String? musicName,
+    int? durationMs, // 🎯 歌曲时长（毫秒），传给设备可能改善 play_song_detail 返回
   }) async {
     if (!isLoggedIn) {
       print('❌ [MiIoT] 未登录，无法播放音乐');
@@ -973,6 +974,7 @@ class MiIoTService {
       'url': playUrl,  // 🔧 使用原始URL
       'type': 2, // 2=普通类型
       'media': 'app_ios',
+      if (durationMs != null) 'duration': durationMs, // 🎯 传入歌曲时长
     });
 
     // 🎯 方案2：使用 player_play_music（完整播放，支持更多设备）
@@ -1032,6 +1034,7 @@ class MiIoTService {
     final message2 = jsonEncode({
       'startaudioid': audioId,
       'music': jsonEncode(music), // 注意：music 需要二次 JSON 编码
+      if (durationMs != null) 'duration': durationMs, // 🎯 传入歌曲时长
     });
 
     // 🎯 播放前先完整停止当前播放
@@ -1149,6 +1152,36 @@ class MiIoTService {
     return await _sendPlayerOperation(deviceId, 'play');
   }
 
+  /// 设备端下一首
+  Future<bool> next(String deviceId) async {
+    print('⏭️ [MiIoT] 设备端下一首: $deviceId');
+    return await _sendPlayerOperation(deviceId, 'next');
+  }
+
+  /// 设备端上一首
+  Future<bool> previous(String deviceId) async {
+    print('⏮️ [MiIoT] 设备端上一首: $deviceId');
+    return await _sendPlayerOperation(deviceId, 'prev');
+  }
+
+  /// 切换播放/暂停
+  Future<bool> toggle(String deviceId) async {
+    print('⏯️ [MiIoT] 切换播放/暂停: $deviceId');
+    return await _sendPlayerOperation(deviceId, 'toggle');
+  }
+
+  /// 设置循环模式
+  /// 使用正确的 player_set_loop ubus API
+  /// [loopType] 0=单曲循环, 1=列表循环, 3=随机播放
+  Future<bool> setLoopType(String deviceId, int loopType) async {
+    print('🔁 [MiIoT] 设置循环模式: type=$loopType (设备: $deviceId)');
+    return await _sendUbusRequest(
+      deviceId: deviceId,
+      method: 'player_set_loop',
+      message: {'type': loopType, 'media': 'common'},
+    );
+  }
+
   /// 设置播放模式
   /// [deviceId] 设备ID
   /// [playMode] 播放模式 (ONE/ALL/RND/SIN/SEQ)
@@ -1166,15 +1199,9 @@ class MiIoTService {
     try {
       print('🎵 [MiIoT] 设置播放模式: ${MiPlayMode.getModeDescription(playMode)}');
 
-      // 构建播放模式命令
-      final command = _getPlayModeCommand(playMode);
-      if (command.isEmpty) {
-        print('❌ [MiIoT] 无法获取播放模式命令: $playMode');
-        return false;
-      }
-
-      // 发送命令到设备
-      final success = await _sendPlayerOperation(deviceId, command);
+      // 🎯 使用正确的 player_set_loop API（而非 player_play_operation）
+      final loopType = _playModeToLoopType(playMode);
+      final success = await setLoopType(deviceId, loopType);
       if (success) {
         print('✅ [MiIoT] 播放模式设置成功: ${MiPlayMode.getModeDescription(playMode)}');
       } else {
@@ -1188,21 +1215,19 @@ class MiIoTService {
     }
   }
 
-  /// 根据播放模式获取对应的命令
-  String _getPlayModeCommand(String playMode) {
+  /// 将 MiPlayMode 常量映射到 player_set_loop 的 type 值
+  int _playModeToLoopType(String playMode) {
     switch (playMode) {
-      case MiPlayMode.PLAY_TYPE_ONE:
-        return 'set_loop_mode';  // 单曲循环
-      case MiPlayMode.PLAY_TYPE_ALL:
-        return 'set_all_loop';   // 全部循环
-      case MiPlayMode.PLAY_TYPE_RND:
-        return 'set_random';     // 随机播放
-      case MiPlayMode.PLAY_TYPE_SIN:
-        return 'set_single';     // 单曲播放
-      case MiPlayMode.PLAY_TYPE_SEQ:
-        return 'set_sequence';   // 顺序播放
+      case MiPlayMode.PLAY_TYPE_ONE:  // 单曲循环
+      case MiPlayMode.PLAY_TYPE_SIN:  // 单曲播放
+        return 0;
+      case MiPlayMode.PLAY_TYPE_ALL:  // 全部循环
+      case MiPlayMode.PLAY_TYPE_SEQ:  // 顺序播放
+        return 1;
+      case MiPlayMode.PLAY_TYPE_RND:  // 随机播放
+        return 3;
       default:
-        return '';
+        return 1;
     }
   }
 
@@ -1214,25 +1239,35 @@ class MiIoTService {
   /// 获取当前播放模式
   /// [deviceId] 设备ID
   /// 返回播放模式字符串，如果获取失败返回null
+  /// 🎯 从 player_get_play_status 返回的 loop_type 字段解析真实循环模式
   Future<String?> getPlayMode(String deviceId) async {
     try {
       print('🎵 [MiIoT] 获取当前播放模式: $deviceId');
 
-      // 通过获取播放状态来推断播放模式
       final status = await getPlayStatus(deviceId);
       if (status == null) {
         print('⚠️ [MiIoT] 无法获取播放状态');
         return null;
       }
 
-      // 这里可以根据设备状态推断播放模式
-      // 由于小米IoT API可能不直接提供播放模式查询
-      // 我们返回一个默认值或根据其他状态推断
-      print('✅ [MiIoT] 获取播放模式成功');
-      return MiPlayMode.PLAY_TYPE_ALL; // 默认返回全部循环
+      // 🎯 从 loop_type 字段解析真实循环模式
+      final loopType = status['loop_type'] as int?;
+      final mode = _loopTypeToPlayMode(loopType);
+      print('✅ [MiIoT] 获取播放模式成功: loop_type=$loopType → $mode');
+      return mode;
     } catch (e) {
       print('❌ [MiIoT] 获取播放模式异常: $e');
       return null;
+    }
+  }
+
+  /// 将 loop_type 转换回 MiPlayMode 常量
+  String _loopTypeToPlayMode(int? loopType) {
+    switch (loopType) {
+      case 0: return MiPlayMode.PLAY_TYPE_ONE;  // 单曲循环
+      case 1: return MiPlayMode.PLAY_TYPE_ALL;  // 列表循环
+      case 3: return MiPlayMode.PLAY_TYPE_RND;  // 随机播放
+      default: return MiPlayMode.PLAY_TYPE_ALL;  // 默认列表循环
     }
   }
 
@@ -1243,6 +1278,63 @@ class MiIoTService {
       method: 'player_set_volume',
       message: {'volume': volume, 'media': 'app_ios'},
     );
+  }
+
+  /// 跳转播放进度
+  /// [positionMs] 目标位置（毫秒）
+  /// 注意：API 原始拼写为 player_set_positon（少了一个 i），这是固件的拼写错误
+  Future<bool> seekTo(String deviceId, int positionMs) async {
+    print('🎯 [MiIoT] 跳转进度: ${positionMs}ms (设备: $deviceId)');
+    return await _sendUbusRequest(
+      deviceId: deviceId,
+      method: 'player_set_positon', // ⚠️ 固件原始拼写，少了一个 i
+      message: {'position': positionMs, 'media': 'app_ios'},
+    );
+  }
+
+  /// 设置播放速率
+  /// [rate] 播放速率字符串，如 "0.5", "1.0", "1.5", "2.0"
+  Future<bool> setPlayRate(String deviceId, String rate) async {
+    print('⏩ [MiIoT] 设置播放速率: $rate (设备: $deviceId)');
+    return await _sendUbusRequest(
+      deviceId: deviceId,
+      method: 'set_playrate',
+      message: {'rate': rate},
+    );
+  }
+
+  /// 设置睡眠定时器（定时暂停播放）
+  /// [hour] 小时, [minute] 分钟, [second] 秒
+  Future<bool> setSleepTimer(String deviceId, {int hour = 0, int minute = 30, int second = 0}) async {
+    print('😴 [MiIoT] 设置睡眠定时器: ${hour}h ${minute}m ${second}s (设备: $deviceId)');
+    return await _sendUbusRequest(
+      deviceId: deviceId,
+      method: 'player_set_shutdown_timer',
+      message: {'action': 'pause_later', 'hour': hour, 'minute': minute, 'second': second, 'media': 'app_ios'},
+    );
+  }
+
+  /// 取消睡眠定时器
+  Future<bool> cancelSleepTimer(String deviceId) async {
+    print('😴 [MiIoT] 取消睡眠定时器 (设备: $deviceId)');
+    return await _sendUbusRequest(
+      deviceId: deviceId,
+      method: 'player_set_shutdown_timer',
+      message: {'action': 'cancel_ending'},
+    );
+  }
+
+  /// 获取睡眠定时器状态
+  /// 返回 {remain_time: 毫秒, type: 0或1}，type=0 表示无定时器
+  Future<Map<String, dynamic>?> getSleepTimer(String deviceId) async {
+    print('😴 [MiIoT] 查询睡眠定时器 (设备: $deviceId)');
+    final result = await _sendUbusRequest(
+      deviceId: deviceId,
+      method: 'get_shutdown_timer',
+      message: {},
+      returnResult: true,
+    );
+    return result is Map<String, dynamic> ? result : null;
   }
 
   /// 获取播放状态
@@ -1264,6 +1356,64 @@ class MiIoTService {
           return parsed;
         } catch (e) {
           print('❌ [MiIoT] 解析播放状态info失败: $e');
+        }
+      }
+    }
+
+    return result is Map<String, dynamic> ? result : null;
+  }
+
+  /// 🔬 实验性：调用 player_play_status（区别于 player_get_play_status）
+  /// 固件中存在两个不同的方法，可能返回不同格式的状态数据
+  Future<Map<String, dynamic>?> getPlayStatusAlt(String deviceId) async {
+    print('🔬 [MiIoT] 实验性调用 player_play_status...');
+    final result = await _sendUbusRequest(
+      deviceId: deviceId,
+      method: 'player_play_status',
+      message: {},
+      returnResult: true,
+    );
+    print('🔬 [MiIoT] player_play_status 返回: $result');
+
+    // 尝试解析 info 字符串
+    if (result != null && result is Map) {
+      final info = result['info'];
+      if (info != null && info is String) {
+        try {
+          final parsed = jsonDecode(info) as Map<String, dynamic>;
+          print('🔬 [MiIoT] player_play_status 解析成功: $parsed');
+          return parsed;
+        } catch (e) {
+          print('🔬 [MiIoT] player_play_status 解析失败: $e');
+        }
+      }
+    }
+
+    return result is Map<String, dynamic> ? result : null;
+  }
+
+  /// 🔬 实验性：调用 player_get_context 获取播放上下文
+  /// 可能返回播放队列、当前曲目详情等信息
+  Future<Map<String, dynamic>?> getPlayContext(String deviceId) async {
+    print('🔬 [MiIoT] 实验性调用 player_get_context...');
+    final result = await _sendUbusRequest(
+      deviceId: deviceId,
+      method: 'player_get_context',
+      message: {},
+      returnResult: true,
+    );
+    print('🔬 [MiIoT] player_get_context 返回: $result');
+
+    // 尝试解析 info 字符串
+    if (result != null && result is Map) {
+      final info = result['info'];
+      if (info != null && info is String) {
+        try {
+          final parsed = jsonDecode(info) as Map<String, dynamic>;
+          print('🔬 [MiIoT] player_get_context 解析成功: $parsed');
+          return parsed;
+        } catch (e) {
+          print('🔬 [MiIoT] player_get_context 解析失败: $e');
         }
       }
     }

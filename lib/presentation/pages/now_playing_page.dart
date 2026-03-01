@@ -301,8 +301,9 @@ class _ProgressBarState extends ConsumerState<_ProgressBar> {
 
     debugPrint('🎯 [ProgressBar] disabled=${widget.disabled}, isLocalMode=${widget.isLocalMode}, progress=$progress, currentTime=${widget.currentTime}, totalTime=${widget.totalTime}');
 
-    // 🎵 只有本地播放模式才允许拖动进度条
-    final bool canSeek = widget.isLocalMode && !widget.disabled;
+    // 🎵 本地播放模式和直连模式都允许拖动进度条
+    // 直连模式通过 player_set_positon ubus API 实现 seek
+    final bool canSeek = !widget.disabled;
 
     return Column(
       children: [

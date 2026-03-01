@@ -2517,6 +2517,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
     }
 
     try {
+      // 🎯 立即更新本地预测基准，避免 250ms 定时器用旧值导致进度条回弹
+      _lastServerOffset = seconds;
+      _lastUpdateTime = DateTime.now();
+
       // 🎯 乐观更新：先更新本地UI状态，提升响应性
       if (state.currentMusic != null) {
         final updatedMusic = PlayingMusic(

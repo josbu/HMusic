@@ -65,9 +65,21 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
   String? _lastValidAudioId;
   int _lastValidDuration = 0;
 
-  // 🎯 播放状态保护窗口（用于修复 playMusic 后状态被轮询覆盖的问题）
-  // playMusic() 成功后，在保护窗口内忽略轮询返回的"暂停"状态
-  DateTime? _playingStateProtectedUntil;
+  // 🎯 命令状态保护窗口（用于修复设备状态API不可靠的问题）
+  // 发送 play/pause 命令后，在保护窗口内信任本地状态，忽略设备返回的矛盾状态
+  // 原因：部分设备（如OH2P）的 player_get_play_status 始终返回 status=1
+  DateTime? _playingStateProtectedUntil;  // 保护"播放中"状态
+  DateTime? _pauseStateProtectedUntil;    // 保护"已暂停"状态
+
+  // 🎯 本地时间预测进度（用于 detail=null 的设备，如OH2P）
+  // 原理与 xiaomusic 的 time.time() - _start_time 相同：
+  // 播放开始时记录时间戳，根据已播放时间计算 offset
+  DateTime? _localPlayStartTime;         // 当前歌曲开始播放的时间
+  Duration _localAccumulatedPause = Duration.zero; // 累计暂停时长
+  DateTime? _localPauseStartTime;        // 当前暂停开始的时间（null=非暂停状态）
+
+  // 🔬 实验性 API 标志：避免重复调用
+  bool _hasTriedAltApis = false;
 
   // 🎯 自动下一首保护：防止重复触发
   bool _isAutoNextTriggered = false;
@@ -315,6 +327,43 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     debugPrint('✅ [MiIoTDirect] 退出切歌 warmup: $reason');
   }
 
+  /// 🎯 本地时间预测：计算当前播放 offset（秒）
+  /// 原理：从播放开始时间戳推算已播放时间，扣除累计暂停时长
+  /// 与 xiaomusic 的 time.time() - self._start_time 实现相同逻辑
+  int _getLocalPredictedOffset() {
+    if (_localPlayStartTime == null) return 0;
+
+    final now = DateTime.now();
+    var elapsed = now.difference(_localPlayStartTime!);
+
+    // 扣除累计暂停时长
+    elapsed -= _localAccumulatedPause;
+
+    // 扣除当前正在进行的暂停时长
+    if (_localPauseStartTime != null) {
+      elapsed -= now.difference(_localPauseStartTime!);
+    }
+
+    final maxDuration = _currentPlayingMusic?.duration ?? 999999;
+    return elapsed.inSeconds.clamp(0, maxDuration);
+  }
+
+  /// 🎯 用服务器返回的真实进度校准本地计时器
+  /// 当 detail!=null（如L05B）时，用服务器的 position 反推 _localPlayStartTime
+  void _syncLocalTimerWithServer(int serverOffsetSeconds) {
+    if (_localPlayStartTime == null) return;
+
+    final now = DateTime.now();
+    // 反推：startTime = now - serverOffset - accumulatedPause
+    var totalPaused = _localAccumulatedPause;
+    if (_localPauseStartTime != null) {
+      totalPaused += now.difference(_localPauseStartTime!);
+    }
+    _localPlayStartTime = now.subtract(
+      Duration(seconds: serverOffsetSeconds) + totalPaused,
+    );
+  }
+
   /// 🔄 轮询播放状态
   Future<void> _pollPlayStatus() async {
     // 🎯 后台时跳过轮询，避免网络访问被系统限制
@@ -353,19 +402,33 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         var isPlaying = status['status'] == 1;
         final detail = status['play_song_detail'] as Map<String, dynamic>?;
 
-        // 🎯 检查播放状态保护窗口
-        // 如果在保护窗口内且设备返回"暂停"，忽略这个状态，保持为"播放"
-        // 原因：playMusic() 成功后设备状态同步有延迟，前几次轮询可能返回旧的"暂停"状态
+        // 🎯 检查命令状态保护窗口
+        // 部分设备（如OH2P）的 player_get_play_status 始终返回 status=1，
+        // 即使已暂停也报告"播放中"，必须信任本地命令状态
+
+        // 播放保护：playMusic()/play() 成功后，忽略设备返回的"暂停"
         if (_playingStateProtectedUntil != null) {
           if (DateTime.now().isBefore(_playingStateProtectedUntil!)) {
             if (!isPlaying && _currentPlayingMusic?.isPlaying == true) {
-              debugPrint('🛡️ [MiIoTDirect] 保护窗口内，忽略设备返回的"暂停"状态，保持为"播放"');
+              debugPrint('🛡️ [MiIoTDirect] 播放保护窗口内，忽略设备"暂停"，保持为"播放"');
               isPlaying = true;
             }
           } else {
-            // 保护窗口已过期，清除
             _playingStateProtectedUntil = null;
-            debugPrint('🛡️ [MiIoTDirect] 播放状态保护窗口已过期');
+            debugPrint('🛡️ [MiIoTDirect] 播放保护窗口已过期');
+          }
+        }
+
+        // 暂停保护：pause() 成功后，忽略设备返回的"播放"
+        if (_pauseStateProtectedUntil != null) {
+          if (DateTime.now().isBefore(_pauseStateProtectedUntil!)) {
+            if (isPlaying && _currentPlayingMusic?.isPlaying == false) {
+              debugPrint('🛡️ [MiIoTDirect] 暂停保护窗口内，忽略设备"播放"，保持为"暂停"');
+              isPlaying = false;
+            }
+          } else {
+            _pauseStateProtectedUntil = null;
+            debugPrint('🛡️ [MiIoTDirect] 暂停保护窗口已过期');
           }
         }
 
@@ -496,17 +559,59 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
               debugPrint('⏭️ [MiIoTDirect] 音箱空闲，保持 null 状态');
             }
           }
+          // 🎯 detail 有真实进度，用服务器数据校准本地计时器
+          _syncLocalTimerWithServer(position);
         } else if (_currentPlayingMusic != null) {
-          // 没有详情时只更新播放状态
+          // 🎯 detail == null: 设备不返回播放详情（如OH2P始终无 play_song_detail）
+          // 使用本地时间预测 offset（与 xiaomusic 的 time.time()-_start_time 同理）
+
+          // 🔬 实验性：首次遇到 detail=null 时尝试调用备选 API
+          if (!_hasTriedAltApis && isPlaying) {
+            _hasTriedAltApis = true;
+            debugPrint('🔬 [MiIoTDirect] detail=null，尝试实验性 API...');
+            try {
+              // 尝试 player_play_status（与 player_get_play_status 不同）
+              final altStatus = await _miService.getPlayStatusAlt(_deviceId);
+              debugPrint('🔬 [MiIoTDirect] player_play_status 结果: $altStatus');
+
+              // 尝试 player_get_context
+              final context = await _miService.getPlayContext(_deviceId);
+              debugPrint('🔬 [MiIoTDirect] player_get_context 结果: $context');
+            } catch (e) {
+              debugPrint('🔬 [MiIoTDirect] 实验性 API 调用失败: $e');
+            }
+          }
+
+          // 🎯 非对称信任策略（针对 detail=null 设备如 OH2P）：
+          // - 设备报告 status=0（停止）→ 信任（设备没有理由谎报停止）
+          // - 设备报告 status=1（播放）但本地为"暂停"→ 不信任
+          //   原因：OH2P 暂停后仍然返回 status=1，保护窗口过期后会错误恢复播放
+          //   只有 play()/playMusic() 才能将 isPlaying 从 false 变为 true
+          if (isPlaying && !_currentPlayingMusic!.isPlaying) {
+            debugPrint('🛡️ [MiIoTDirect] detail=null 非对称信任：设备报告播放但本地为暂停，保持暂停');
+            isPlaying = false;
+          }
+
+          // 🎯 边界情况：APP重启后检测到设备正在播放，但本地计时器未初始化
+          // 从当前时刻开始计时（offset从0开始递增，虽然不精确但比卡在0好）
+          if (_localPlayStartTime == null && isPlaying) {
+            _localPlayStartTime = DateTime.now();
+            _localAccumulatedPause = Duration.zero;
+            _localPauseStartTime = null;
+            debugPrint('⏱️ [MiIoTDirect] detail=null 设备正在播放但本地计时器未启动，立即初始化');
+          }
+
+          final predictedOffset = _getLocalPredictedOffset();
+
           _currentPlayingMusic = PlayingMusic(
             ret: _currentPlayingMusic!.ret,
             curMusic: _currentPlayingMusic!.curMusic,
             curPlaylist: _currentPlayingMusic!.curPlaylist,
             isPlaying: isPlaying,
             duration: _currentPlayingMusic!.duration,
-            offset: _currentPlayingMusic!.offset,
+            offset: predictedOffset,
           );
-          debugPrint('🔄 [MiIoTDirect] 仅更新播放状态: $isPlaying');
+          debugPrint('🔄 [MiIoTDirect] detail=null，本地预测进度: $predictedOffset/${_currentPlayingMusic!.duration}秒, 播放=$isPlaying');
         }
 
         if (_isWarmupPolling) {
@@ -527,7 +632,8 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
           }
         }
 
-        // 通知状态变化
+        // 通知状态变化（始终通知，让 Provider 的进度预测定时器正常运作）
+        // detail=null 时通过本地时间预测提供递增的 offset，不会导致进度重置
         onStatusChanged?.call(_activeSwitchSessionId);
 
         // 🎯 自动下一首检测：当歌曲播放完成时自动播放下一首
@@ -748,6 +854,29 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
       if (success) {
         debugPrint('✅ [MiIoTDirect] 播放成功');
 
+        // 🎯 立即更新本地播放状态为播放中
+        if (_currentPlayingMusic != null) {
+          _currentPlayingMusic = PlayingMusic(
+            ret: _currentPlayingMusic!.ret,
+            curMusic: _currentPlayingMusic!.curMusic,
+            curPlaylist: _currentPlayingMusic!.curPlaylist,
+            isPlaying: true,
+            duration: _currentPlayingMusic!.duration,
+            offset: _currentPlayingMusic!.offset,
+          );
+        }
+
+        // 🛡️ 设置播放保护窗口（5秒内忽略设备返回的"暂停"状态）
+        _playingStateProtectedUntil = DateTime.now().add(const Duration(seconds: 5));
+        _pauseStateProtectedUntil = null; // 互斥：清除暂停保护
+
+        // 🎯 恢复本地计时器：累计暂停时长，清除暂停时间点
+        if (_localPauseStartTime != null) {
+          _localAccumulatedPause += DateTime.now().difference(_localPauseStartTime!);
+          _localPauseStartTime = null;
+          debugPrint('⏱️ [MiIoTDirect] 本地计时器：恢复计时，累计暂停=${_localAccumulatedPause.inSeconds}秒');
+        }
+
         // 通知状态变化
         onStatusChanged?.call(_activeSwitchSessionId);
       } else {
@@ -767,6 +896,30 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
       if (success) {
         debugPrint('✅ [MiIoTDirect] 暂停成功');
+
+        // 🎯 立即更新本地播放状态为暂停
+        // 部分设备（如OH2P）状态API不可靠，始终返回 status=1
+        // 必须信任本地命令状态，而非设备返回值
+        if (_currentPlayingMusic != null) {
+          _currentPlayingMusic = PlayingMusic(
+            ret: _currentPlayingMusic!.ret,
+            curMusic: _currentPlayingMusic!.curMusic,
+            curPlaylist: _currentPlayingMusic!.curPlaylist,
+            isPlaying: false,
+            duration: _currentPlayingMusic!.duration,
+            offset: _currentPlayingMusic!.offset,
+          );
+        }
+
+        // 🛡️ 设置暂停保护窗口（5秒内忽略设备返回的"播放"状态）
+        _pauseStateProtectedUntil = DateTime.now().add(const Duration(seconds: 5));
+        _playingStateProtectedUntil = null; // 互斥：清除播放保护
+
+        // 🎯 记录暂停开始时间（用于本地时间预测）
+        if (_localPauseStartTime == null) {
+          _localPauseStartTime = DateTime.now();
+          debugPrint('⏱️ [MiIoTDirect] 本地计时器：记录暂停时间点');
+        }
 
         // 通知状态变化
         onStatusChanged?.call(_activeSwitchSessionId);
@@ -845,8 +998,35 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
   @override
   Future<void> seekTo(int seconds) async {
-    debugPrint('⚠️ [MiIoTDirect] 直连模式暂不支持进度拖动');
-    // 小米IoT API目前不支持进度控制
+    debugPrint('🎯 [MiIoTDirect] 跳转进度: ${seconds}秒 (设备: $_deviceId)');
+    try {
+      final positionMs = seconds * 1000;
+      final success = await _miService.seekTo(_deviceId, positionMs);
+      if (success) {
+        debugPrint('✅ [MiIoTDirect] 跳转进度成功');
+        // 🎯 同步本地计时器：重置起始时间 = now - seekPosition
+        _localPlayStartTime = DateTime.now().subtract(Duration(seconds: seconds));
+        _localAccumulatedPause = Duration.zero;
+        _localPauseStartTime = null;
+
+        // 🎯 同步当前播放状态的 offset
+        if (_currentPlayingMusic != null) {
+          _currentPlayingMusic = PlayingMusic(
+            ret: _currentPlayingMusic!.ret,
+            curMusic: _currentPlayingMusic!.curMusic,
+            curPlaylist: _currentPlayingMusic!.curPlaylist,
+            isPlaying: _currentPlayingMusic!.isPlaying,
+            duration: _currentPlayingMusic!.duration,
+            offset: seconds,
+          );
+          onStatusChanged?.call(_activeSwitchSessionId);
+        }
+      } else {
+        debugPrint('❌ [MiIoTDirect] 跳转进度失败');
+      }
+    } catch (e) {
+      debugPrint('❌ [MiIoTDirect] 跳转进度异常: $e');
+    }
   }
 
   @override
@@ -896,6 +1076,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         deviceId: _deviceId,
         musicUrl: url,
         musicName: musicName, // 🎯 传入音乐名称用于生成音频ID
+        durationMs: duration != null ? duration * 1000 : null, // 🎯 传入歌曲时长（秒→毫秒）
       );
 
       if (success) {
@@ -949,10 +1130,16 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
           debugPrint('✅ [MiIoTDirect] 已更新通知栏播放状态为播放中（进度:0s）');
         }
 
-        // 🎯 设置播放状态保护窗口（5秒内忽略轮询返回的"暂停"状态）
-        // 原因：小米设备状态同步有延迟，轮询可能获取到旧的"暂停"状态
+        // 🛡️ 设置播放状态保护窗口（5秒内忽略轮询返回的"暂停"状态）
         _playingStateProtectedUntil = DateTime.now().add(const Duration(seconds: 5));
+        _pauseStateProtectedUntil = null; // 互斥：清除暂停保护
         debugPrint('🛡️ [MiIoTDirect] 设置播放状态保护窗口: 5秒');
+
+        // 🎯 初始化本地时间预测计时器（新歌从 0 开始计时）
+        _localPlayStartTime = DateTime.now();
+        _localAccumulatedPause = Duration.zero;
+        _localPauseStartTime = null;
+        debugPrint('⏱️ [MiIoTDirect] 本地计时器已启动');
 
         // 🎯 方案C：设置备用自动下一首定时器
         // 当 API 返回的 play_song_detail 为空或 duration=0 时，使用此定时器作为备用
@@ -973,6 +1160,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         // 🔄 重置自动下一首保护标志（新歌开始）
         _isAutoNextTriggered = false;
         _lastCompletedAudioId = null;
+        _hasTriedAltApis = false; // 🔬 新歌开始时重置实验性 API 标志
 
         // 🎯 播放命令推送成功，立即通知 Provider 开始进度计时
         // offset=0 就是正确的起始点（歌曲此刻刚开始播放）
@@ -1083,6 +1271,12 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
     // 🎯 清理播放状态保护窗口
     _playingStateProtectedUntil = null;
+    _pauseStateProtectedUntil = null;
+
+    // 🎯 清理本地时间预测计时器
+    _localPlayStartTime = null;
+    _localAccumulatedPause = Duration.zero;
+    _localPauseStartTime = null;
 
     // 🔇 清理切歌准备状态
     _isSongSwitchPending = false;

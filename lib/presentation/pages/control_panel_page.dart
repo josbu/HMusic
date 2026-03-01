@@ -896,11 +896,10 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     final progress =
         (totalTime > 0) ? (displayTime / totalTime).clamp(0.0, 1.0) : 0.0;
 
-    // 🎵 只有本地播放模式才允许拖动进度条
-    final playbackState = ref.watch(playbackProvider);
-    final canSeek = playbackState.isLocalMode;
+    // 🎵 所有模式都允许拖动进度条（直连模式通过 player_set_positon API 实现 seek）
+    final canSeek = totalTime > 0;
 
-    debugPrint('🎯 [ControlPanel-ProgressBar] isLocalMode=${playbackState.isLocalMode}, canSeek=$canSeek, progress=$progress, currentTime=$currentTime, totalTime=$totalTime, dragging=${_draggingValue != null}');
+    debugPrint('🎯 [ControlPanel-ProgressBar] canSeek=$canSeek, progress=$progress, currentTime=$currentTime, totalTime=$totalTime, dragging=${_draggingValue != null}');
 
     return Column(
       children: [
