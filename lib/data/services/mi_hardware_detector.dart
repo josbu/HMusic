@@ -26,12 +26,43 @@ class MiHardwareDetector {
     'X10A',   // 小爱音箱 (触屏)
   ];
 
+  /// 暂停后必须重新发送完整播放命令（不支持 player_play_operation('play') 恢复）的设备列表
+  ///
+  /// 背景：
+  ///   大多数设备暂停后可以用 player_play_operation('play') 恢复播放。
+  ///   但 OH2P 等设备的 player_play_operation('play') 静默失效（API 返回 200 但无声音），
+  ///   必须重新发送完整的 player_play_music 命令才能让音箱重新发声。
+  ///
+  /// 注意：
+  ///   此列表独立于 NEED_USE_PLAY_MUSIC_API！
+  ///   NEED_USE_PLAY_MUSIC_API 表示"播放新歌时需要用 player_play_music"，
+  ///   而本列表表示"连 resume 也需要重新播放"，范围更窄。
+  ///   例如 L05B 在 NEED_USE_PLAY_MUSIC_API 中但不在此列表，它支持正常 resume。
+  static const List<String> _NEED_FULL_REPLAY_ON_RESUME = [
+    'OH2P',   // XIAOMI 智能音箱 Pro：已确认 player_play_operation('play') 静默失效
+    // 'OH2', // XIAOMI 智能音箱：未验证，暂不列入，如发现同样问题再添加
+  ];
+
   /// 检查设备硬件是否需要使用 player_play_music API
   static bool needsPlayMusicApi(String hardware) {
     if (hardware.isEmpty) return false;
 
     final upperHardware = hardware.toUpperCase();
     return NEED_USE_PLAY_MUSIC_API.any((need) => upperHardware.contains(need));
+  }
+
+  /// 检查设备暂停后是否需要重新发送完整播放命令才能恢复播放
+  ///
+  /// 返回 true 的设备：player_play_operation('play') 静默失效，
+  /// 需要重新调用 player_play_music 才能让音箱发声。
+  ///
+  /// 注意：与 needsPlayMusicApi() 是独立的概念！
+  static bool needsFullReplayOnResume(String hardware) {
+    if (hardware.isEmpty) return false;
+
+    final upperHardware = hardware.toUpperCase();
+    return _NEED_FULL_REPLAY_ON_RESUME
+        .any((need) => upperHardware.contains(need));
   }
 
   /// 获取设备的推荐播放方式

@@ -83,7 +83,21 @@ class SongResolverService {
       strategy,
       originalPlatform: originalPlatform,
     );
+    final planBeforeBreaker = List<String>.from(plan);
     plan = _breaker.adjustOrder(plan);
+
+    // 🔍 当熔断器改变了顺序时，输出详细日志方便排查平台切换原因
+    if (plan.toString() != planBeforeBreaker.toString()) {
+      final openPlatforms = planBeforeBreaker.where(_breaker.isOpen).toList();
+      final failCounts = {
+        for (final p in planBeforeBreaker) p: _breaker.failureCount(p),
+      };
+      debugPrint(
+        '⚡ [SongResolver] 熔断器调整了平台顺序！'
+        ' 原顺序: $planBeforeBreaker → 实际顺序: $plan'
+        ' | 熔断平台: $openPlatforms | 失败计数: $failCounts',
+      );
+    }
 
     debugPrint('🔧 [SongResolver] 解析计划: strategy=$strategy, plan=$plan');
 
@@ -311,7 +325,7 @@ class SongResolverService {
     // 🎯 网易云 CDN URL 过期检测
     // 上游 API（如 lx.010504.xyz）可能被 CDN 缓存，返回已过期的 URL。
     // 格式: http(s)://mXXX.music.126.net/yyyyMMddHHmmss/...
-    // CDN TTL 约 30 分钟，超过 25 分钟视为无效。
+    // 网易云 CDN URL 实际 TTL 约 20 分钟，超过 15 分钟视为无效（留出 5 分钟传输余量）。
     if (lower.contains('music.126.net') || lower.contains('ntes.com')) {
       final match = RegExp(r'/(\d{14})/').firstMatch(url);
       if (match != null) {
@@ -326,7 +340,9 @@ class SongResolverService {
             int.parse(ts.substring(12, 14)),
           );
           final ageMinutes = DateTime.now().difference(generationTime).inMinutes;
-          if (ageMinutes >= 25) {
+          // 🔧 阈值从 25 分钟降至 15 分钟：网易云 CDN URL 实际有效期更短，
+          //    保留 5 分钟余量以防止解析成功但播放时已过期导致代理 403
+          if (ageMinutes >= 15) {
             debugPrint(
               '⏰ [SongResolver] 网易云 URL 已过期 ${ageMinutes}分钟，跳过此结果（时间戳: $ts）',
             );

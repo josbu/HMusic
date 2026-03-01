@@ -25,12 +25,8 @@ import 'device_provider.dart';
 import 'music_library_provider.dart';
 import 'direct_mode_provider.dart'; // 🎯 直连模式Provider
 import 'playback_queue_provider.dart'; // 🎯 播放队列Provider
-import 'js_proxy_provider.dart'; // 🎯 QuickJS代理
-import 'js_source_provider.dart'; // 🎯 WebView JS 和 LocalJS 解析（两个都在这里）
 import '../../data/models/playlist_item.dart'; // 🎯 播放列表项模型
 import '../../data/models/playlist_queue.dart'; // 🎯 播放队列模型
-import '../../data/utils/lx_music_info_builder.dart';
-import '../../core/utils/platform_id.dart';
 
 // 用于区分"未传入参数"和"传入 null"
 const _undefined = Object();
@@ -4625,128 +4621,6 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
   ///
   /// 这是一个公用方法，不依赖xiaomusic服务器
   /// 支持所有模式使用（本地/xiaomusic/直连）
-  Future<String?> _resolveUrlByJS({
-    required String platform,
-    required String songId,
-    String quality = '320k',
-    String? title,
-    String? artist,
-    String? album,
-    int? duration,
-    String? coverUrl,
-    Map<String, dynamic>? extra,
-  }) async {
-    try {
-      debugPrint(
-        '🔍 [JS解析] 开始解析: platform=$platform, songId=$songId, quality=$quality',
-      );
-      final musicInfo = buildLxMusicInfo(
-        songId: songId,
-        title: title,
-        artist: artist,
-        album: album,
-        duration: duration,
-        coverUrl: coverUrl,
-        extra: extra,
-      );
-
-      // 优先级1：QuickJS代理解析
-      try {
-        final jsProxyState = ref.read(jsProxyProvider);
-        if (jsProxyState.isInitialized && jsProxyState.currentScript != null) {
-          debugPrint('🔍 [JS解析] 尝试使用QuickJS...');
-          final jsProxy = ref.read(jsProxyProvider.notifier);
-          final mapped = _mapPlatformName(platform);
-          final url = await jsProxy.getMusicUrl(
-            source: mapped,
-            songId: songId,
-            quality: quality,
-            musicInfo: musicInfo,
-          );
-          if (url != null && url.isNotEmpty) {
-            debugPrint(
-              '✅ [JS解析] QuickJS成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...',
-            );
-            return url;
-          }
-          debugPrint('⚠️ [JS解析] QuickJS返回空URL');
-        }
-      } catch (e) {
-        debugPrint('⚠️ [JS解析] QuickJS失败: $e');
-      }
-
-      // 优先级2：WebView JS解析
-      try {
-        debugPrint('🔍 [JS解析] 尝试使用WebView JS...');
-        final webSvc = await ref.read(webviewJsSourceServiceProvider.future);
-        if (webSvc != null) {
-          final url = await webSvc.resolveMusicUrl(
-            platform: platform,
-            songId: songId,
-            quality: quality,
-          );
-          if (url != null && url.isNotEmpty) {
-            debugPrint(
-              '✅ [JS解析] WebView成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...',
-            );
-            return url;
-          }
-          debugPrint('⚠️ [JS解析] WebView返回空URL');
-        }
-      } catch (e) {
-        debugPrint('⚠️ [JS解析] WebView失败: $e');
-      }
-
-      // 优先级3：内置LocalJS解析
-      try {
-        debugPrint('🔍 [JS解析] 尝试使用LocalJS...');
-        final jsSvc = await ref.read(jsSourceServiceProvider.future);
-        if (jsSvc != null && jsSvc.isReady) {
-          final mapped = _mapPlatformName(platform);
-          final js = """
-            (function(){
-              try{
-                if (!lx || !lx.EVENT_NAMES) return '';
-                var musicInfo = ${jsonEncode(musicInfo)};
-                var payload = {
-                  action: 'musicUrl',
-                  source: '$mapped',
-                  info: { type: '$quality', musicInfo: musicInfo }
-                };
-                var res = lx.emit(lx.EVENT_NAMES.request, payload);
-                if (res && typeof res.then === 'function') return '';
-                if (typeof res === 'string') return res;
-                if (res && res.url) return res.url;
-                return '';
-              }catch(e){ return '' }
-            })()
-          """;
-          final url = jsSvc.evaluateToString(js);
-          if (url.isNotEmpty) {
-            debugPrint(
-              '✅ [JS解析] LocalJS成功: ${url.substring(0, url.length > 80 ? 80 : url.length)}...',
-            );
-            return url;
-          }
-          debugPrint('⚠️ [JS解析] LocalJS返回空URL');
-        }
-      } catch (e) {
-        debugPrint('⚠️ [JS解析] LocalJS失败: $e');
-      }
-
-      debugPrint('❌ [JS解析] 所有解析方式均失败');
-      return null;
-    } catch (e) {
-      debugPrint('❌ [JS解析] 异常: $e');
-      return null;
-    }
-  }
-
-  /// 映射平台名称（用于JS解析）
-  String _mapPlatformName(String platform) {
-    return PlatformId.normalize(platform);
-  }
-
   /// 🎵 从播放队列播放指定索引的歌曲
   ///
   /// 公共方法，供外部调用（如歌单详情页）
@@ -4804,24 +4678,19 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       debugPrint('🎵 [队列播放] 来源类型: ${item.sourceType}');
 
       String? url;
+      int? resolvedDuration;
 
       // 根据来源类型获取播放URL
       if (item.isOnline) {
-        // 在线音乐：使用公用的JS解析服务
+        // 在线音乐：通过 SongResolverService 解析
+        // 遵循 playlistResolveStrategy（如 qqFirst）+ URL 有效性检测（过期/无效 URL 自动跨平台回退）
         if (item.platform == null || item.songId == null) {
           throw Exception('在线音乐缺少platform或songId');
         }
-        debugPrint('🎵 [队列播放] 在线音乐，使用JS解析: ${item.platform}/${item.songId}');
-        url = await _resolveUrlByJS(
-          platform: item.platform!,
-          songId: item.songId!,
-          quality: '320k',
-          title: item.title,
-          artist: item.artist,
-          album: item.album,
-          duration: item.duration,
-          coverUrl: item.coverUrl,
-        );
+        debugPrint('🎵 [队列播放] 在线音乐，通过 SongResolver 解析: ${item.platform}/${item.songId}');
+        final resolveResult = await _resolveUrlWithPerSongFallback(item);
+        url = resolveResult.url;
+        resolvedDuration = resolveResult.duration;
       } else if (item.isLocal) {
         // 本地音乐：直接使用文件路径
         url = item.localPath;
@@ -4848,7 +4717,8 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
       await _currentStrategy!.playMusic(
         musicName: item.displayName,
         url: url,
-        duration: item.duration, // 🎯 传递 duration，避免策略层拿到 null
+        // 🎯 优先使用 SongResolver 返回的 duration（搜索匹配后可能比 item 自带的更准确）
+        duration: resolvedDuration ?? item.duration,
         switchSessionId:
             _currentStrategy is MiIoTDirectPlaybackStrategy
                 ? _directSwitchSessionId

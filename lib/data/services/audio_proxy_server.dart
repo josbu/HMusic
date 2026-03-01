@@ -147,8 +147,17 @@ class AudioProxyServer {
       final originalUrl = utf8.decode(urlBytes);
       debugPrint('🔗 [ProxyServer] 代理请求 #$_totalRequests: $originalUrl');
 
+      // 🔒 HTTP → HTTPS 升级（防止音乐 CDN 因 HTTP 协议返回 403）
+      // 网易云、QQ 等主流音乐 CDN 仅支持 HTTPS，但 JS 解析器返回的 URL 可能是 http://
+      // 浏览器会自动用 HSTS 升级，代理服务器需要手动升级
+      final targetUrl = _upgradeToHttps(originalUrl);
+      if (targetUrl != originalUrl) {
+        debugPrint('🔒 [ProxyServer] HTTP → HTTPS 升级: $targetUrl');
+      }
+
       // 🎯 根据上游 URL 域名动态构建请求头（防盗链需要正确的 UA 和 Referer）
-      final upstreamHeaders = _getUpstreamHeaders(originalUrl);
+      final upstreamHeaders = _getUpstreamHeaders(targetUrl);
+
 
       // 🎯 透传客户端的 Range 请求头（音箱通常会发 Range: bytes=0- 进行分段请求）
       final rangeHeader = request.headers['range'] ?? request.headers['Range'];
@@ -159,7 +168,7 @@ class AudioProxyServer {
 
       // 🎯 发起HTTP请求获取音频流
       final response = await _dio.get(
-        originalUrl,
+        targetUrl,
         options: Options(
           responseType: ResponseType.stream,
           followRedirects: true,
@@ -173,7 +182,42 @@ class AudioProxyServer {
       final statusCode = response.statusCode ?? 500;
       if (statusCode != 200 && statusCode != 206) {
         _failedRequests++; // 🎯 统计失败请求
-        debugPrint('❌ [ProxyServer] 上游响应错误: $statusCode');
+        // 🔍 对 403 输出更详细的诊断信息，方便判断是 URL 过期还是 Referer 不对
+        if (statusCode == 403) {
+          final lowerUrl = targetUrl.toLowerCase();
+          final hasUA = upstreamHeaders.containsKey('User-Agent');
+          debugPrint(
+            '❌ [ProxyServer] 上游 403 Forbidden'
+            ' | URL: ${targetUrl.substring(0, targetUrl.length.clamp(0, 80))}...'
+            ' | 已发送 Referer: ${upstreamHeaders['Referer'] ?? '无'}'
+            ' | UA: ${hasUA ? '已设置' : '未设置'}'
+            ' | 可能原因: (1) CDN URL 已过期 (2) 需要额外 Cookie',
+          );
+          // 检测网易云 URL 是否含有过期时间戳
+          if (lowerUrl.contains('music.126.net') || lowerUrl.contains('ntes.com')) {
+            final match = RegExp(r'/(\d{14})/').firstMatch(targetUrl);
+            if (match != null) {
+              try {
+                final ts = match.group(1)!;
+                final genTime = DateTime(
+                  int.parse(ts.substring(0, 4)),
+                  int.parse(ts.substring(4, 6)),
+                  int.parse(ts.substring(6, 8)),
+                  int.parse(ts.substring(8, 10)),
+                  int.parse(ts.substring(10, 12)),
+                  int.parse(ts.substring(12, 14)),
+                );
+                final ageMin = DateTime.now().difference(genTime).inMinutes;
+                debugPrint(
+                  '⏰ [ProxyServer] 网易云 URL 生成于 $ageMin 分钟前'
+                  '${ageMin >= 20 ? ' ← 【已超 20 分钟，URL 可能已过期！】' : ' (仍在有效期内)'}',
+                );
+              } catch (_) {}
+            }
+          }
+        } else {
+          debugPrint('❌ [ProxyServer] 上游响应错误: $statusCode');
+        }
         return shelf.Response(statusCode);
       }
 
@@ -305,6 +349,34 @@ class AudioProxyServer {
   String getProxyUrl(String originalUrl) {
     final urlB64 = base64.encode(utf8.encode(originalUrl));
     return '$serverUrl/proxy?urlb64=$urlB64';
+  }
+
+  /// 🔒 将音乐 CDN 的 HTTP URL 升级为 HTTPS
+  /// 网易云、QQ 音乐等 CDN 实际只接受 HTTPS，但 JS 解析器返回的 URL 有时是 http://
+  /// 浏览器用 HSTS 自动升级，代理服务器需要手动处理
+  static String _upgradeToHttps(String url) {
+    if (!url.startsWith('http://')) return url;
+
+    final lowerUrl = url.toLowerCase();
+    // 已知仅支持 HTTPS 的音乐 CDN 域名
+    const httpsOnlyDomains = [
+      'music.126.net',   // 网易云音乐
+      'ntes.com',        // 网易
+      'qq.com',          // QQ 音乐
+      'qqmusic.',        // QQ 音乐
+      'kugou.com',       // 酷狗
+      'kgmusic.',        // 酷狗
+      'kuwo.cn',         // 酷我
+      'kuwo.com',        // 酷我
+      'migu.cn',         // 咪咕
+      'miguvideo.',      // 咪咕
+    ];
+
+    if (httpsOnlyDomains.any((d) => lowerUrl.contains(d))) {
+      return 'https://' + url.substring('http://'.length);
+    }
+
+    return url;
   }
 
   /// 🎯 根据上游 URL 域名构建合适的请求头

@@ -35,6 +35,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
   // 当前播放状态缓存
   PlayingMusic? _currentPlayingMusic;
   String? _albumCoverUrl;
+  String? _currentMusicUrl; // 🎯 保存当前播放 URL（用于 OH2P 暂停后恢复播放）
 
   // 🎵 播放列表管理（APP端维护）
   List<Music> _playlist = [];
@@ -877,6 +878,31 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     debugPrint('🎵 [MiIoTDirect] 执行播放 (设备: $_deviceId)');
 
     try {
+      // 🎯 OH2P 等需要 player_play_music API 的设备：
+      // player_play_operation('play') 对这类设备无法恢复播放（API 返回 200 但设备无声音）
+      // 必须重新发送完整的 player_play_music 命令才能让音箱重新发声
+      // 注意：L05B 等设备虽然用 player_play_music 播新歌，但支持正常 resume，不在此列
+      final needsFullReplay = _hardware != null &&
+          MiHardwareDetector.needsFullReplayOnResume(_hardware!) &&
+          _currentMusicUrl != null &&
+          _currentPlayingMusic != null;
+
+      if (needsFullReplay) {
+        final resumeOffset = _currentPlayingMusic!.offset;
+        debugPrint(
+            '🔄 [MiIoTDirect] 设备 $_hardware 不支持 resume，重新发送播放命令 (从 ${resumeOffset}s 恢复)...');
+        await playMusic(
+          musicName: _currentPlayingMusic!.curMusic,
+          url: _currentMusicUrl,
+          duration: _currentPlayingMusic!.duration > 0
+              ? _currentPlayingMusic!.duration
+              : null,
+          startOffsetSec: resumeOffset > 0 ? resumeOffset : null, // 🎯 从暂停位置恢复
+        );
+        // playMusic() 内部已完整处理状态更新，直接返回
+        return;
+      }
+
       final success = await _miService.resume(_deviceId);
 
       if (success) {
@@ -1093,6 +1119,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     String? songId,
     int? duration, // 🎯 方案C：歌曲时长（秒），用于设置备用倒计时定时器
     int? switchSessionId,
+    int? startOffsetSec, // 🎯 起始播放位置（秒），用于 OH2P 暂停后从指定位置恢复
   }) async {
     debugPrint('🎵 [MiIoTDirect] 播放音乐: $musicName');
     debugPrint('🔗 [MiIoTDirect] URL: $url');
@@ -1102,6 +1129,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
       debugPrint('❌ [MiIoTDirect] 播放URL为空');
       return;
     }
+
+    // 🎯 保存当前播放 URL（用于 OH2P 等设备暂停后恢复播放）
+    _currentMusicUrl = url;
 
     _activeSwitchSessionId = switchSessionId;
 
@@ -1118,6 +1148,10 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         musicUrl: url,
         musicName: musicName, // 🎯 传入音乐名称用于生成音频ID
         durationMs: duration != null ? duration * 1000 : null, // 🎯 传入歌曲时长（秒→毫秒）
+        startOffsetMs:
+            startOffsetSec != null && startOffsetSec > 0
+                ? startOffsetSec * 1000
+                : null, // 🎯 传入起始位置（秒→毫秒），OH2P 暂停后恢复用
       );
 
       if (success) {
@@ -1142,7 +1176,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
           curPlaylist: '直连播放',
           isPlaying: true,
           duration: duration ?? 0, // 使用传入的歌曲时长，无则回退 0
-          offset: 0,
+          offset: startOffsetSec ?? 0, // 🎯 从起始位置开始（恢复播放时为暂停位置，新歌为0）
         );
         debugPrint('✅ [MiIoTDirect] 已设置播放状态: 歌曲=$musicName, 播放=true');
         debugPrint('🔧 [MiIoTDirect] _currentPlayingMusic.curMusic = "${_currentPlayingMusic!.curMusic}"');
@@ -1190,20 +1224,26 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         _seekTargetPosition = null;
         debugPrint('🛡️ [MiIoTDirect] 设置播放状态保护窗口: 5秒');
 
-        // 🎯 初始化本地时间预测计时器（新歌从 0 开始计时）
-        _localPlayStartTime = DateTime.now();
+        // 🎯 初始化本地时间预测计时器
+        // 恢复播放时从暂停位置开始计时，新歌从 0 开始
+        _localPlayStartTime = startOffsetSec != null && startOffsetSec > 0
+            ? DateTime.now().subtract(Duration(seconds: startOffsetSec))
+            : DateTime.now();
         _localAccumulatedPause = Duration.zero;
         _localPauseStartTime = null;
-        debugPrint('⏱️ [MiIoTDirect] 本地计时器已启动');
+        debugPrint('⏱️ [MiIoTDirect] 本地计时器已启动 (起始: ${startOffsetSec ?? 0}s)');
 
         // 🎯 方案C：设置备用自动下一首定时器
         // 当 API 返回的 play_song_detail 为空或 duration=0 时，使用此定时器作为备用
         _backupAutoNextTimer?.cancel();
         _backupTimerMusicName = musicName;
         if (duration != null && duration > 10) {
-          // 定时器时间 = 歌曲时长 + 5秒缓冲（确保歌曲真的播放完成）
-          final timerDuration = Duration(seconds: duration + 5);
-          debugPrint('⏱️ [MiIoTDirect] 设置备用自动下一首定时器: ${timerDuration.inSeconds}秒 (歌曲时长: ${duration}秒)');
+          // 定时器时间 = 剩余时长 + 5秒缓冲（恢复播放时要减去已播放部分）
+          final elapsed = startOffsetSec ?? 0;
+          final remaining = (duration - elapsed).clamp(0, duration);
+          final timerDuration = Duration(seconds: remaining + 5);
+          debugPrint(
+              '⏱️ [MiIoTDirect] 设置备用自动下一首定时器: ${timerDuration.inSeconds}秒 (歌曲时长: ${duration}秒, 起始: ${elapsed}s, 剩余: ${remaining}s)');
 
           _backupAutoNextTimer = Timer(timerDuration, () {
             _handleBackupAutoNextTimer(musicName);

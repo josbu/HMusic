@@ -802,6 +802,7 @@ class MiIoTService {
     bool compatMode = false,
     String? musicName,
     int? durationMs, // 🎯 歌曲时长（毫秒），传给设备可能改善 play_song_detail 返回
+    int? startOffsetMs, // 🎯 起始播放位置（毫秒），用于从暂停位置恢复（player_play_music 专用）
   }) async {
     if (!isLoggedIn) {
       print('❌ [MiIoT] 未登录，无法播放音乐');
@@ -1035,6 +1036,8 @@ class MiIoTService {
       'startaudioid': audioId,
       'music': jsonEncode(music), // 注意：music 需要二次 JSON 编码
       if (durationMs != null) 'duration': durationMs, // 🎯 传入歌曲时长
+      if (startOffsetMs != null && startOffsetMs > 0)
+        'startOffset': startOffsetMs, // 🎯 从指定位置开始播放（毫秒），用于暂停后恢复
     });
 
     // 🎯 播放前先完整停止当前播放
