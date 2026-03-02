@@ -53,3 +53,7 @@ app.*.map.json
 .claude/
 .spec-workflow/
 .playwright-mcp/
+
+# Dart analysis server cache
+.dart-tool/
+.dartServer/
