@@ -30,7 +30,7 @@ class MiHardwareDetector {
   ///
   /// 背景：
   ///   大多数设备暂停后可以用 player_play_operation('play') 恢复播放。
-  ///   但 OH2P 等设备的 player_play_operation('play') 静默失效（API 返回 200 但无声音），
+  ///   但 OH2/OH2P 等设备的 player_play_operation('play') 静默失效（API 返回 200 但无声音），
   ///   必须重新发送完整的 player_play_music 命令才能让音箱重新发声。
   ///
   /// 注意：
@@ -40,31 +40,34 @@ class MiHardwareDetector {
   ///   例如 L05B 在 NEED_USE_PLAY_MUSIC_API 中但不在此列表，它支持正常 resume。
   static const List<String> _NEED_FULL_REPLAY_ON_RESUME = [
     'OH2P',   // XIAOMI 智能音箱 Pro：已确认 player_play_operation('play') 静默失效
-    // 'OH2', // XIAOMI 智能音箱：未验证，暂不列入，如发现同样问题再添加
+    'OH2',    // XIAOMI 智能音箱：同系列产品，固件行为一致
   ];
 
   /// 不支持 player_play_music 的 startOffset 参数的设备列表
   ///
   /// 背景：
   ///   player_play_music 支持 startOffset 参数（毫秒），理论上可从指定位置开始播放。
-  ///   但 OH2P 等设备会忽略该参数，始终从 0 秒开始播放，导致 APP 端计时器与实际进度脱节。
+  ///   但 OH2/OH2P 等设备会忽略该参数，始终从 0 秒开始播放，
+  ///   导致 APP 端计时器与实际进度脱节。
+  ///   这类设备的 player_get_play_status 也始终返回 position=null，
+  ///   说明固件整体不支持精确进度相关功能。
   ///
   /// 影响：
   ///   resume 时不传 startOffset，APP 端计时器也从 0 开始，保持一致。
   static const List<String> _NO_START_OFFSET_SUPPORT = [
     'OH2P',   // 已确认 startOffset 被忽略，实际从头播放
-    // 'OH2', // 未验证，暂不列入
+    'OH2',    // 同系列产品，position=null 佐证无精确进度能力
   ];
 
   /// 不支持 player_set_positon (seek) 的设备列表
   ///
   /// 背景：
-  ///   OH2P 的 player_get_play_status 始终返回 position=null，
+  ///   OH2/OH2P 的 player_get_play_status 始终返回 position=null，
   ///   说明固件未实现精确进度跟踪，seek 命令极大概率同样无效。
-  ///   用户反馈拖动进度条无任何反应，与此一致。
+  ///   OH2P 用户反馈拖动进度条无任何反应，与此一致。
   static const List<String> _NO_SEEK_SUPPORT = [
     'OH2P',   // 已通过用户反馈确认 seek 无效；position 永远 null 佐证固件无此能力
-    // 'OH2', // 未验证，暂不列入
+    'OH2',    // 同系列产品，固件行为一致
   ];
 
   /// 检查设备硬件是否需要使用 player_play_music API
@@ -129,8 +132,8 @@ class MiHardwareDetector {
     if (upperHardware.contains('X8F')) return '小爱音箱 Pro';
     if (upperHardware.contains('X4B')) return '小爱音箱';
     if (upperHardware.contains('LX05')) return '小爱音箱 Play (LX05)';
-    if (upperHardware.contains('OH2')) return '小爱音箱 HD';
     if (upperHardware.contains('OH2P')) return '小爱音箱 HD Plus';
+    if (upperHardware.contains('OH2')) return '小爱音箱 HD';
     if (upperHardware.contains('X6A')) return '小爱音箱 Art 电池版';
 
     return '小爱音箱';
