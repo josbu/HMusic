@@ -4,6 +4,19 @@
 
 [![Release](https://img.shields.io/github/v/release/hpcll/HMusic?label=版本)](https://github.com/hpcll/HMusic/releases)
 
+## 🚀 v2.3.0 重点更新
+
+- 播放链路稳定性大幅提升，直连模式与 xiaomusic 模式行为更一致。
+- 新增外部歌单导入与平台归一化，跨平台歌曲解析更稳。
+- 新增并增强 `pushUrl`、`getPlayerStatus` 等联动能力。
+- 修复自动下一首、切歌竞态、进度同步、通知栏控制等关键问题。
+- 修复 iOS 导入 LX 脚本闪退与 OH2P 设备进度/seek 异常问题。
+- 音源策略更新：网易默认直连，QQ/酷我默认走代理（QQ 直连仅实验开关）。
+- 产物发布升级：Android 提供通用包 + 三架构包，iOS 提供 unsigned 自签包。
+
+> ⚠️ **重要建议（xiaomusic 用户）**  
+> 为保证 HMusic v2.3.0 功能完整与稳定，建议将 xiaomusic 服务端升级到 **v0.4.23 或更高版本**。
+
 ## 📱 下载安装
 
 从 [Releases](https://github.com/hpcll/HMusic/releases) 下载最新版本：
@@ -36,8 +49,10 @@
 ### xiaomusic 模式
 
 1. 先部署 [xiaomusic 服务端](https://github.com/hanxi/xiaomusic)
-2. 打开应用 → 选择 **xiaomusic 模式**
-3. 输入服务器地址和认证信息
+2. 建议升级到 **v0.4.23+**（与 HMusic v2.3.0 联动更完整）
+3. 可参考官方文档站：[https://xdocs.hanxi.cc/](https://xdocs.hanxi.cc/)
+4. 打开应用 → 选择 **xiaomusic 模式**
+5. 输入服务器地址和认证信息
 
 ## 📚 文档
 
