@@ -205,6 +205,7 @@ class LocalPlaylistSong {
   /// 2. 网易云专项：从 CDN URL 内嵌的 yyyyMMddHHmmss 时间戳提取生成时间，
   ///    确保距生成时间不超过 25 分钟（CDN TTL ~30 分钟，保留 5 分钟余量）。
   ///    这可以修复旧缓存条目使用 6 小时 TTL 导致 URL 实际已过期但仍被判定有效的问题。
+  /// 3. QQ专项：wx.music.tc.qq.com/qqmusic 直链短时易失效，强制短 TTL + 基础参数检查。
   bool get isCacheValid {
     if (cachedUrl == null || cachedUrl!.isEmpty) return false;
     if (urlExpireTime == null) return false;
@@ -233,6 +234,27 @@ class LocalPlaylistSong {
         } catch (_) {
           // 解析失败，回退到通用 TTL 判断（已在上方通过）
         }
+      }
+    }
+
+    // QQ CDN 专项检查：
+    // 1) 旧版本缓存可能给了 30 分钟 TTL，这里强制把 QQ 缓存窗口压到 2 分钟
+    // 2) guid/vkey 缺失或明显异常时，视为无效缓存
+    if (url.contains('wx.music.tc.qq.com') ||
+        url.contains('qqmusic.qq.com') ||
+        url.contains('stream.qqmusic')) {
+      final remain = urlExpireTime!.difference(DateTime.now());
+      if (remain > const Duration(minutes: 2, seconds: 10)) {
+        return false;
+      }
+
+      final uri = Uri.tryParse(cachedUrl!);
+      if (uri == null) return false;
+      final guid = uri.queryParameters['guid'] ?? '';
+      final vkey = uri.queryParameters['vkey'] ?? '';
+      if (vkey.isEmpty) return false;
+      if (guid.isEmpty || !RegExp(r'^\d+$').hasMatch(guid)) {
+        return false;
       }
     }
 

@@ -322,6 +322,29 @@ class SongResolverService {
     ];
     if (badKeywords.any((k) => lower.contains(k))) return true;
 
+    // 🎯 QQ CDN URL 基础合法性校验
+    // 一些脚本会返回形如 guid=English/Geography 的异常链接，实际播放会稳定 403。
+    if (lower.contains('wx.music.tc.qq.com') ||
+        lower.contains('qqmusic.qq.com') ||
+        lower.contains('stream.qqmusic')) {
+      final uri = Uri.tryParse(url);
+      if (uri == null) {
+        debugPrint('⚠️ [SongResolver] QQ URL 解析失败，判定无效: $url');
+        return true;
+      }
+
+      final guid = uri.queryParameters['guid'] ?? '';
+      final vkey = uri.queryParameters['vkey'] ?? '';
+      if (vkey.isEmpty) {
+        debugPrint('⚠️ [SongResolver] QQ URL 缺少 vkey，判定无效');
+        return true;
+      }
+      if (guid.isEmpty || !RegExp(r'^\d+$').hasMatch(guid)) {
+        debugPrint('⚠️ [SongResolver] QQ URL guid 异常("$guid")，判定无效');
+        return true;
+      }
+    }
+
     // 🎯 网易云 CDN URL 过期检测
     // 上游 API（如 lx.010504.xyz）可能被 CDN 缓存，返回已过期的 URL。
     // 格式: http(s)://mXXX.music.126.net/yyyyMMddHHmmss/...

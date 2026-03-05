@@ -22,6 +22,7 @@ import '../providers/direct_mode_provider.dart'; // 🎯 新增：播放模式
 import '../providers/local_playlist_provider.dart'; // 🎯 新增：直连模式歌单
 import '../providers/navigation_provider.dart'; // 🎯 新增：Tab 索引管理
 import '../widgets/sponsor_prompt_dialog.dart';
+import '../widgets/app_layout.dart';
 
 class MainPage extends ConsumerStatefulWidget {
   const MainPage({super.key});
@@ -30,7 +31,8 @@ class MainPage extends ConsumerStatefulWidget {
   ConsumerState<MainPage> createState() => _MainPageState();
 }
 
-class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderStateMixin {
+class _MainPageState extends ConsumerState<MainPage>
+    with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
   final _searchController = TextEditingController();
   Timer? _searchDebounce;
@@ -250,10 +252,7 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
             left: 0,
             right: 0,
             bottom: 0,
-            child: SafeArea(
-              top: false,
-              child: RepaintBoundary(child: _buildModernBottomNav()),
-            ),
+            child: RepaintBoundary(child: _buildModernBottomNav()),
           ),
         ],
       ),
@@ -279,7 +278,8 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
             ),
             const Spacer(),
             // Upload button - only show on music library tab (index 3) in xiaomusic mode
-            if (_selectedIndex == 3 && ref.watch(playbackModeProvider) == PlaybackMode.xiaomusic)
+            if (_selectedIndex == 3 &&
+                ref.watch(playbackModeProvider) == PlaybackMode.xiaomusic)
               Container(
                 margin: const EdgeInsets.only(right: 8),
                 child: IconButton(
@@ -396,21 +396,21 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
   }
 
   Widget _buildModernBottomNav() {
-    // 使用精确订阅 paddingOf 替代 MediaQuery.of，避免键盘弹出时
-    // viewInsets 变化引发全页面重建（BackdropFilter 高斯模糊重绘很昂贵）
-    final bottomPadding = MediaQuery.paddingOf(context).bottom;
-    final hasGesture = bottomPadding > 0;
+    final bottomMargin = AppLayout.bottomOverlayBottomMargin(context);
 
     return Container(
       margin: EdgeInsets.only(
         left: 20,
         right: 20,
-        bottom: hasGesture ? ((bottomPadding + 8 - 15).clamp(0, double.infinity)) : 20,
+        bottom: bottomMargin,
         top: 10,
       ),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.06), width: 1), // 更淡的边框
+        border: Border.all(
+          color: Colors.black.withValues(alpha: 0.06),
+          width: 1,
+        ), // 更淡的边框
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04), // 更淡的阴影
@@ -486,19 +486,23 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
             children: [
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
-                transitionBuilder: (child, animation) =>
-                    ScaleTransition(scale: animation, child: child),
-                child: index == 0
-                    ? _PlayTabIcon(
-                        key: ValueKey<String>('play_tab_$isSelected'),
-                        isSelected: isSelected,
-                      )
-                    : Icon(
-                        isSelected ? activeIcon : icon,
-                        key: ValueKey<String>('nav_icon_${index}_$isSelected'),
-                        size: 26,
-                        color: isSelected ? activeColor : inactiveColor,
-                      ),
+                transitionBuilder:
+                    (child, animation) =>
+                        ScaleTransition(scale: animation, child: child),
+                child:
+                    index == 0
+                        ? _PlayTabIcon(
+                          key: ValueKey<String>('play_tab_$isSelected'),
+                          isSelected: isSelected,
+                        )
+                        : Icon(
+                          isSelected ? activeIcon : icon,
+                          key: ValueKey<String>(
+                            'nav_icon_${index}_$isSelected',
+                          ),
+                          size: 26,
+                          color: isSelected ? activeColor : inactiveColor,
+                        ),
               ),
               const SizedBox(height: 4),
               Text(
@@ -577,10 +581,7 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
       }
     } catch (e) {
       if (mounted) {
-        AppSnackBar.showError(
-          context,
-          '选择文件失败：$e',
-        );
+        AppSnackBar.showError(context, '选择文件失败：$e');
       }
     }
   }
@@ -653,19 +654,13 @@ class _MainPageState extends ConsumerState<MainPage> with SingleTickerProviderSt
       if (mounted) {
         Navigator.pop(context); // Close progress dialog
         if (ok) {
-          AppSnackBar.showSuccess(
-            context,
-            '$mode 上传成功：${files.length} 个文件',
-          );
+          AppSnackBar.showSuccess(context, '$mode 上传成功：${files.length} 个文件');
         }
       }
     } catch (e) {
       if (mounted) {
         Navigator.pop(context); // Close progress dialog
-        AppSnackBar.showError(
-          context,
-          '上传失败：$e',
-        );
+        AppSnackBar.showError(context, '上传失败：$e');
       }
     }
   }
@@ -721,11 +716,12 @@ class _PlayTabIcon extends ConsumerWidget {
           imageUrl: cover,
           fit: BoxFit.cover,
           fadeInDuration: const Duration(milliseconds: 150),
-          errorWidget: (_, __, ___) => Icon(
-            Icons.music_note_rounded,
-            size: 16,
-            color: inactiveColor,
-          ),
+          errorWidget:
+              (_, __, ___) => Icon(
+                Icons.music_note_rounded,
+                size: 16,
+                color: inactiveColor,
+              ),
         ),
       );
     }

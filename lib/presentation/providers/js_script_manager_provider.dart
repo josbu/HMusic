@@ -3,13 +3,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../data/models/js_script.dart';
-import 'js_proxy_provider.dart';
 
 class JsScriptManager extends StateNotifier<List<JsScript>> {
   static const _kScriptList = 'js_script_list';
   static const _kSelectedScriptId = 'selected_script_id';
+  static const _kScriptStorageDir = 'js_scripts';
 
   String? _selectedScriptId;
   String? get selectedScriptId => _selectedScriptId;
@@ -47,6 +49,8 @@ class JsScriptManager extends StateNotifier<List<JsScript>> {
         }
       }
 
+      final migration = await _migrateLocalScriptsIfNeeded(scripts, prefs);
+      scripts = migration.scripts;
       state = scripts;
 
       // 公开版本：清理遗留的内置脚本选择
@@ -57,6 +61,9 @@ class JsScriptManager extends StateNotifier<List<JsScript>> {
       } else {
         _selectedScriptId =
             selectedId ?? (scripts.isNotEmpty ? scripts.first.id : null);
+        if (migration.changed) {
+          await _saveScripts();
+        }
       }
 
       print(
@@ -89,6 +96,124 @@ class JsScriptManager extends StateNotifier<List<JsScript>> {
     }
   }
 
+  Future<Directory> _getScriptStorageDirectory() async {
+    final appSupportDir = await getApplicationSupportDirectory();
+    final scriptDir = Directory(p.join(appSupportDir.path, _kScriptStorageDir));
+    if (!await scriptDir.exists()) {
+      await scriptDir.create(recursive: true);
+    }
+    return scriptDir;
+  }
+
+  String _sanitizeFileName(String rawName) {
+    final trimmed = rawName.trim();
+    if (trimmed.isEmpty) {
+      return 'script';
+    }
+    return trimmed.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  }
+
+  Future<String> _persistLocalScriptContent({
+    required String content,
+    required String scriptId,
+    required String scriptName,
+  }) async {
+    final scriptDir = await _getScriptStorageDirectory();
+    final safeName = _sanitizeFileName(scriptName);
+    final targetPath = p.join(scriptDir.path, '${scriptId}_$safeName.js');
+
+    final file = File(targetPath);
+    await file.writeAsString(content, flush: true);
+    return targetPath;
+  }
+
+  String _buildScriptCacheKey(JsScript script) {
+    return 'js_cached_content_${script.id}';
+  }
+
+  bool _isLikelyTempPath(String path) {
+    final normalized = path.replaceAll('\\', '/').toLowerCase();
+    return normalized.contains('/tmp/') || normalized.contains('/cache/');
+  }
+
+  bool _isPathUnderDirectory(String filePath, String dirPath) {
+    final normalizedFile = p.normalize(filePath);
+    final normalizedDir = p.normalize(dirPath);
+    return p.isWithin(normalizedDir, normalizedFile) ||
+        normalizedFile == normalizedDir;
+  }
+
+  Future<({List<JsScript> scripts, bool changed})> _migrateLocalScriptsIfNeeded(
+    List<JsScript> scripts,
+    SharedPreferences prefs,
+  ) async {
+    if (scripts.every((s) => s.source != JsScriptSource.localFile)) {
+      return (scripts: scripts, changed: false);
+    }
+
+    bool changed = false;
+    final migrated = <JsScript>[];
+    final scriptDir = await _getScriptStorageDirectory();
+
+    for (final script in scripts) {
+      if (script.source != JsScriptSource.localFile) {
+        migrated.add(script);
+        continue;
+      }
+
+      final currentPath = script.content.trim();
+      final file = File(currentPath);
+      final exists = currentPath.isNotEmpty && await file.exists();
+      final alreadyManaged =
+          currentPath.isNotEmpty &&
+          _isPathUnderDirectory(currentPath, scriptDir.path);
+
+      if (exists && alreadyManaged) {
+        migrated.add(script);
+        continue;
+      }
+
+      String? content;
+      if (exists) {
+        content = await file.readAsString();
+      } else {
+        final cached = prefs.getString(_buildScriptCacheKey(script));
+        if (cached != null && cached.trim().isNotEmpty) {
+          content = cached;
+          print('[XMC] 🔁 [JsScriptManager] 使用缓存恢复本地脚本: ${script.name}');
+        }
+      }
+
+      if (content == null || content.trim().isEmpty) {
+        migrated.add(script);
+        if (!exists) {
+          print(
+            '[XMC] ⚠️ [JsScriptManager] 本地脚本路径失效且无可恢复缓存: ${script.name} -> $currentPath',
+          );
+        }
+        continue;
+      }
+
+      final persistedPath = await _persistLocalScriptContent(
+        content: content,
+        scriptId: script.id,
+        scriptName: script.name,
+      );
+      if (persistedPath != currentPath) {
+        changed = true;
+      }
+      migrated.add(script.copyWith(content: persistedPath));
+
+      if (_isLikelyTempPath(currentPath)) {
+        print('[XMC] ✅ [JsScriptManager] 已迁移临时目录脚本到持久目录: ${script.name}');
+      } else {
+        print('[XMC] ✅ [JsScriptManager] 已归档本地脚本到持久目录: ${script.name}');
+      }
+    }
+
+    return (scripts: migrated, changed: changed);
+  }
+
   // 从本地文件导入脚本
   Future<bool> importFromLocalFile() async {
     try {
@@ -98,12 +223,17 @@ class JsScriptManager extends StateNotifier<List<JsScript>> {
         allowMultiple: false,
       );
 
-      if (result == null || result.files.single.path == null) {
+      if (result == null) {
         return false;
       }
 
-      final filePath = result.files.single.path!;
-      final fileName = result.files.single.name;
+      final pickedFile = result.files.single;
+      final filePath = pickedFile.path;
+      final fileName = pickedFile.name;
+      if (filePath == null || filePath.trim().isEmpty) {
+        print('[XMC] ❌ [JsScriptManager] 选择的文件路径无效');
+        return false;
+      }
 
       // 读取文件内容以验证
       final file = File(filePath);
@@ -120,20 +250,27 @@ class JsScriptManager extends StateNotifier<List<JsScript>> {
               ? fileName.substring(0, fileName.length - 3)
               : fileName;
 
+      final existingIndex = state.indexWhere(
+        (s) => s.name == scriptName && s.source == JsScriptSource.localFile,
+      );
+      final scriptId =
+          existingIndex >= 0 ? state[existingIndex].id : const Uuid().v4();
+      final persistedPath = await _persistLocalScriptContent(
+        content: content,
+        scriptId: scriptId,
+        scriptName: scriptName,
+      );
+
       final script = JsScript(
-        id: const Uuid().v4(),
+        id: scriptId,
         name: scriptName,
         description: '从本地文件导入: $fileName',
         source: JsScriptSource.localFile,
-        content: filePath, // 存储文件路径
+        content: persistedPath,
         addedTime: DateTime.now(),
       );
 
       // 检查是否已存在同名脚本
-      final existingIndex = state.indexWhere(
-        (s) => s.name == script.name && s.source == JsScriptSource.localFile,
-      );
-
       if (existingIndex >= 0) {
         // 替换已存在的脚本
         final newState = [...state];
@@ -224,8 +361,20 @@ class JsScriptManager extends StateNotifier<List<JsScript>> {
     await _saveScripts();
     print('[XMC] 🗑️ [JsScriptManager] 删除脚本: ${script.name}');
 
+    if (script.source == JsScriptSource.localFile) {
+      try {
+        final file = File(script.content);
+        if (await file.exists()) {
+          await file.delete();
+          print('[XMC] 🧹 [JsScriptManager] 已删除本地脚本文件: ${script.content}');
+        }
+      } catch (e) {
+        print('[XMC] ⚠️ [JsScriptManager] 删除本地脚本文件失败: $e');
+      }
+    }
+
     try {
-      final cacheKey = 'js_cached_content_${script.id ?? script.name}';
+      final cacheKey = _buildScriptCacheKey(script);
       final prefs = await SharedPreferences.getInstance();
       final ok = await prefs.remove(cacheKey);
       print('[XMC] 🧹 [JsScriptManager] 已同步清除缓存: $ok');
@@ -275,7 +424,7 @@ final jsScriptManagerProvider =
 
 // 获取当前选中的脚本
 final selectedJsScriptProvider = Provider<JsScript?>((ref) {
-  final scripts = ref.watch(jsScriptManagerProvider);
+  ref.watch(jsScriptManagerProvider);
   final manager = ref.read(jsScriptManagerProvider.notifier);
   return manager.selectedScript;
 });

@@ -3,24 +3,11 @@ import '../../data/services/enhanced_js_proxy_executor_service.dart';
 import '../../data/models/online_music_result.dart';
 import '../../data/models/js_script.dart';
 import '../../data/utils/lx_music_info_builder.dart';
-import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/source_settings_provider.dart';
 import '../providers/js_script_manager_provider.dart';
-
-class JSProxyScriptReader {
-  Future<String?> readLocal(String path) async {
-    try {
-      // Defer to js_script_manager logic if needed; simple read here
-      return await File(path).readAsString();
-    } catch (_) {
-      return null;
-    }
-  }
-}
-// duplicate removed
 
 /// JS代理执行器状态
 class JSProxyState {
@@ -115,9 +102,7 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
         // 清除选中的脚本，防止下次再次崩溃
         await prefs.remove('selected_script_id');
         // 通知用户
-        state = state.copyWith(
-          error: '检测到脚本兼容性问题，已自动禁用。请尝试其他脚本。',
-        );
+        state = state.copyWith(error: '检测到脚本兼容性问题，已自动禁用。请尝试其他脚本。');
         return;
       }
 
@@ -214,10 +199,7 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
       } else {
         // 🔧 修复：使用 service 的 lastLoadError 提供精确的错误信息
         final errorMsg = _service.lastLoadError ?? '脚本加载失败';
-        state = state.copyWith(
-          isLoading: false,
-          error: errorMsg,
-        );
+        state = state.copyWith(isLoading: false, error: errorMsg);
         print('[JSProxyProvider] ❌ 脚本加载失败: $errorMsg');
         return false;
       }
@@ -239,23 +221,29 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
       // 1) 先尝试读取缓存
       content = prefs.getString(cacheKey);
       if (content != null && content.isNotEmpty) {
-        print('[JSProxyProvider] 💾 使用已缓存脚本: ${script.name} (${content.length} chars)');
+        print(
+          '[JSProxyProvider] 💾 使用已缓存脚本: ${script.name} (${content.length} chars)',
+        );
       }
 
       // 2) 缓存为空则读取源
       if (content == null || content.isEmpty) {
         if (script.source == JsScriptSource.localFile) {
-          final manager = JSProxyScriptReader();
-          content = await manager.readLocal(script.content);
+          final manager = _ref.read(jsScriptManagerProvider.notifier);
+          content = await manager.getScriptContent(script);
           if (content != null) {
-            print('[JSProxyProvider] 📂 读取本地脚本成功: ${script.content} (${content.length} chars)');
+            print(
+              '[JSProxyProvider] 📂 读取本地脚本成功: ${script.content} (${content.length} chars)',
+            );
           }
         } else if (script.source == JsScriptSource.url) {
           final url = script.content;
           final resp = await http.get(Uri.parse(url));
           if (resp.statusCode == 200) {
             content = utf8.decode(resp.bodyBytes, allowMalformed: true);
-            print('[JSProxyProvider] 🌐 下载脚本成功: ${url} (${content.length} chars)');
+            print(
+              '[JSProxyProvider] 🌐 下载脚本成功: ${url} (${content.length} chars)',
+            );
           }
         } else {
           content = script.content;
@@ -282,8 +270,7 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
   }
 
   String _buildCacheKey(JsScript script) {
-    final idPart = (script.id ?? script.name).toString();
-    return 'js_cached_content_$idPart';
+    return 'js_cached_content_${script.id}';
   }
 
   /// 从URL加载JS脚本
@@ -609,7 +596,11 @@ class JSProxyNotifier extends StateNotifier<JSProxyState> {
   Future<int> clearAllScriptCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final keys = prefs.getKeys().where((k) => k.startsWith('js_cached_content_')).toList();
+      final keys =
+          prefs
+              .getKeys()
+              .where((k) => k.startsWith('js_cached_content_'))
+              .toList();
       int removed = 0;
       for (final k in keys) {
         final ok = await prefs.remove(k);

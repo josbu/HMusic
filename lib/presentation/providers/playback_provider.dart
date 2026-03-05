@@ -28,6 +28,7 @@ import 'direct_mode_provider.dart'; // 🎯 直连模式Provider
 import 'playback_queue_provider.dart'; // 🎯 播放队列Provider
 import '../../data/models/playlist_item.dart'; // 🎯 播放列表项模型
 import '../../data/models/playlist_queue.dart'; // 🎯 播放队列模型
+import 'audio_proxy_provider.dart'; // 🎯 音频代理服务器Provider
 
 // 用于区分"未传入参数"和"传入 null"
 const _undefined = Object();
@@ -569,7 +570,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         }
 
         // 🎯 创建本地播放策略（apiService 可以为 null，支持完全独立模式）
-        final localStrategy = LocalPlaybackStrategy(apiService: apiService);
+        final localStrategy = LocalPlaybackStrategy(
+          apiService: apiService,
+          audioProxyServer: ref.read(audioProxyServerProvider),
+        );
         _currentStrategy = localStrategy;
         _currentDeviceId = 'local';
 
@@ -925,7 +929,10 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         );
         debugPrint('🎵 [PlaybackProvider] 切换到本地播放模式');
 
-        final localStrategy = LocalPlaybackStrategy(apiService: apiService);
+        final localStrategy = LocalPlaybackStrategy(
+          apiService: apiService,
+          audioProxyServer: ref.read(audioProxyServerProvider),
+        );
         _currentStrategy = localStrategy;
 
         try {

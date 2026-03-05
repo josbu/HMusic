@@ -664,7 +664,8 @@ class LocalPlaylistNotifier extends StateNotifier<LocalPlaylistState> {
   /// 其中嵌入了 URL 生成时间戳，CDN TTL 约为 30 分钟。
   /// 本方法提取该时间戳，设置为「生成时间 + 25 分钟」（预留 5 分钟余量）。
   ///
-  /// 其他 CDN（QQ 音乐、酷狗等）无法提取生成时间，使用保守的 30 分钟 TTL。
+  /// QQ 音乐直链（wx.music.tc.qq.com 等）短期易失效，使用 2 分钟 TTL。
+  /// 其他 CDN（酷狗等）无法提取生成时间，使用保守的 30 分钟 TTL。
   static DateTime _calculateUrlExpireTime(String url) {
     // 尝试从网易云 CDN URL 中提取时间戳（格式：yyyyMMddHHmmss）
     // 例: http://m702.music.126.net/20260301194652/eb/7ae6/...
@@ -698,6 +699,13 @@ class LocalPlaylistNotifier extends StateNotifier<LocalPlaylistState> {
           debugPrint('⚠️ [LocalPlaylist] 解析网易云 URL 时间戳失败: $e');
         }
       }
+    }
+
+    // QQ 音乐 CDN：vkey/guid 链接短时有效，避免缓存过久导致播放时 403
+    if (lowerUrl.contains('wx.music.tc.qq.com') ||
+        lowerUrl.contains('qqmusic.qq.com') ||
+        lowerUrl.contains('stream.qqmusic')) {
+      return DateTime.now().add(const Duration(minutes: 2));
     }
 
     // 其他 CDN：保守使用 30 分钟 TTL

@@ -34,7 +34,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final packageInfo = await PackageInfo.fromPlatform();
     final version = packageInfo.version;
     final buildNumber = packageInfo.buildNumber;
-    final versionText = buildNumber.isNotEmpty ? '$version ($buildNumber)' : version;
+    final versionText =
+        buildNumber.isNotEmpty ? '$version ($buildNumber)' : version;
     if (mounted) {
       setState(() {
         _appVersion = versionText;
@@ -115,9 +116,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _buildSettingsGroup(
             context,
             title: '播放模式',
-            children: [
-              _buildPlaybackModeItem(context, onSurface),
-            ],
+            children: [_buildPlaybackModeItem(context, onSurface)],
           ),
 
           const SizedBox(height: 24),
@@ -411,11 +410,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           color: iconColor.withOpacity(0.1),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Icon(
-          modeIcon,
-          color: iconColor.withOpacity(0.8),
-          size: 20,
-        ),
+        child: Icon(modeIcon, color: iconColor.withOpacity(0.8), size: 20),
       ),
       title: Text(
         modeText,
@@ -445,39 +440,40 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
     final result = await showDialog<PlaybackMode>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('切换播放模式'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildModeOption(
-              context: context,
-              mode: PlaybackMode.xiaomusic,
-              title: 'xiaomusic 模式',
-              subtitle: '通过服务器控制，功能完整',
-              icon: Icons.dns,
-              color: const Color(0xFF21B0A5),
-              isSelected: playbackMode == PlaybackMode.xiaomusic,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('切换播放模式'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildModeOption(
+                  context: context,
+                  mode: PlaybackMode.xiaomusic,
+                  title: 'xiaomusic 模式',
+                  subtitle: '通过服务器控制，功能完整',
+                  icon: Icons.dns,
+                  color: const Color(0xFF21B0A5),
+                  isSelected: playbackMode == PlaybackMode.xiaomusic,
+                ),
+                const SizedBox(height: 12),
+                _buildModeOption(
+                  context: context,
+                  mode: PlaybackMode.miIoTDirect,
+                  title: '直连模式',
+                  subtitle: '直接控制，无需服务器',
+                  icon: Icons.phone_android,
+                  color: const Color(0xFF007AFF),
+                  isSelected: playbackMode == PlaybackMode.miIoTDirect,
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            _buildModeOption(
-              context: context,
-              mode: PlaybackMode.miIoTDirect,
-              title: '直连模式',
-              subtitle: '直接控制，无需服务器',
-              icon: Icons.phone_android,
-              color: const Color(0xFF007AFF),
-              isSelected: playbackMode == PlaybackMode.miIoTDirect,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
 
     if (result != null && result != playbackMode) {
@@ -510,10 +506,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           }
         }
 
-        AppSnackBar.showSuccess(
-          context,
-          message,
-        );
+        AppSnackBar.showSuccess(context, message);
 
         // 🎯 统一跳转到根路由,让 AuthWrapper 根据模式和登录状态自动决定显示什么页面
         if (mounted) {
@@ -571,20 +564,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
               ),
             ),
-            if (isSelected)
-              Icon(
-                Icons.check_circle,
-                color: color,
-                size: 24,
-              ),
+            if (isSelected) Icon(Icons.check_circle, color: color, size: 24),
           ],
         ),
       ),
@@ -717,28 +702,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             .read(musicLibraryProvider.notifier)
             .downloadOneMusic(result['name']!, url: result['url']);
         if (context.mounted) {
-          AppSnackBar.showSuccess(
-            context,
-            '已提交单曲下载任务',
-          );
+          AppSnackBar.showSuccess(context, '已提交单曲下载任务');
         }
       } else if (result['type'] == 'playlist') {
         await ref
             .read(playlistProvider.notifier)
             .downloadPlaylist(result['name']!, url: result['url']);
         if (context.mounted) {
-          AppSnackBar.showSuccess(
-            context,
-            '已提交整表下载任务',
-          );
+          AppSnackBar.showSuccess(context, '已提交整表下载任务');
         }
       }
     } catch (e) {
       if (context.mounted) {
-        AppSnackBar.showError(
-          context,
-          '下载失败：$e',
-        );
+        AppSnackBar.showError(context, '下载失败：$e');
       }
     }
   }
@@ -746,106 +722,200 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   /// 退出登录对话框（根据当前模式退出对应的登录）
   void _showLogoutDialog(BuildContext context, WidgetRef ref) {
     final playbackMode = ref.read(playbackModeProvider);
-    final modeName = playbackMode == PlaybackMode.xiaomusic ? 'xiaomusic' : '直连模式';
+    final modeName =
+        playbackMode == PlaybackMode.xiaomusic ? 'xiaomusic' : '直连模式';
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('退出登录'),
-        content: Text('确定要退出 $modeName 的登录吗？\n\n退出后将返回登录页面。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
+      builder:
+          (context) => AlertDialog(
+            title: const Text('退出登录'),
+            content: Text('确定要退出 $modeName 的登录吗？\n\n退出后将返回登录页面。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.of(context).pop();
 
-              // 🎯 根据当前模式退出对应的登录
-              if (playbackMode == PlaybackMode.xiaomusic) {
-                await ref.read(authProvider.notifier).logout();
-              } else {
-                await ref.read(directModeProvider.notifier).logout();
-              }
+                  // 🎯 根据当前模式退出对应的登录
+                  if (playbackMode == PlaybackMode.xiaomusic) {
+                    await ref.read(authProvider.notifier).logout();
+                  } else {
+                    await ref.read(directModeProvider.notifier).logout();
+                  }
 
-              // 跳转到根路由，AuthWrapper 会根据 playbackMode 显示对应登录页
-              if (context.mounted) context.go('/');
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('退出'),
+                  // 跳转到根路由，AuthWrapper 会根据 playbackMode 显示对应登录页
+                  if (context.mounted) context.go('/');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('退出'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   /// 切换模式对话框（退出所有登录，清除模式选择）
   void _showSwitchModeDialog(BuildContext context, WidgetRef ref) {
     final playbackMode = ref.read(playbackModeProvider);
-    final currentModeName = playbackMode == PlaybackMode.xiaomusic ? 'xiaomusic' : '直连模式';
+    final currentModeName =
+        playbackMode == PlaybackMode.xiaomusic ? 'xiaomusic' : '直连模式';
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('切换模式'),
-        content: Text(
-          '当前模式：$currentModeName\n\n'
-          '切换模式将：\n'
-          '• 退出所有模式的登录\n'
-          '• 返回模式选择页面\n'
-          '• 可以重新选择播放模式\n\n'
-          '确定要继续吗？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-
-              // 🎯 退出所有模式的登录
-              await ref.read(authProvider.notifier).logout();
-              await ref.read(directModeProvider.notifier).logout();
-
-              // 🎯 清除模式选择
-              await ref.read(playbackModeProvider.notifier).clearMode();
-
-              // 跳转到根路由，AuthWrapper 会自动展示模式选择页
-              if (context.mounted) context.go('/');
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('切换模式'),
+            content: Text(
+              '当前模式：$currentModeName\n\n'
+              '切换模式将：\n'
+              '• 退出所有模式的登录\n'
+              '• 返回模式选择页面\n'
+              '• 可以重新选择播放模式\n\n'
+              '确定要继续吗？',
             ),
-            child: const Text('切换'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+
+                  // 🎯 退出所有模式的登录
+                  await ref.read(authProvider.notifier).logout();
+                  await ref.read(directModeProvider.notifier).logout();
+
+                  // 🎯 清除模式选择
+                  await ref.read(playbackModeProvider.notifier).clearMode();
+
+                  // 跳转到根路由，AuthWrapper 会自动展示模式选择页
+                  if (context.mounted) context.go('/');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('切换'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
+  }
+
+  Rect _resolveSharePositionOrigin(BuildContext context) {
+    Rect? rectFromBox(RenderBox? box) {
+      if (box == null || !box.hasSize) {
+        return null;
+      }
+      final size = box.size;
+      if (size.width <= 0 || size.height <= 0) {
+        return null;
+      }
+      final origin = box.localToGlobal(Offset.zero);
+      return origin & size;
+    }
+
+    final currentBox = context.findRenderObject() as RenderBox?;
+    final currentRect = rectFromBox(currentBox);
+    if (currentRect != null) {
+      return currentRect;
+    }
+
+    final overlayBox =
+        Navigator.of(
+              context,
+              rootNavigator: true,
+            ).overlay?.context.findRenderObject()
+            as RenderBox?;
+    final overlayRect = rectFromBox(overlayBox);
+    if (overlayRect != null) {
+      return Rect.fromCenter(center: overlayRect.center, width: 1, height: 1);
+    }
+
+    final mediaQuery = MediaQuery.maybeOf(context);
+    if (mediaQuery != null &&
+        mediaQuery.size.width > 0 &&
+        mediaQuery.size.height > 0) {
+      return Rect.fromCenter(
+        center: mediaQuery.size.center(Offset.zero),
+        width: 1,
+        height: 1,
+      );
+    }
+
+    return const Rect.fromLTWH(1, 1, 1, 1);
   }
 
   Future<void> _exportLogs(BuildContext context) async {
     try {
-      final files = await AppLogger.instance.getLogFiles();
-      if (files.isEmpty) {
+      final sharePositionOrigin = _resolveSharePositionOrigin(context);
+      final level = await _selectLogExportLevel(context);
+      if (level == null) {
+        return;
+      }
+      final exportFile = await AppLogger.instance.buildShareableLogFile(
+        level: level,
+      );
+      if (exportFile == null) {
         if (context.mounted) {
           AppSnackBar.showText(context, '暂无日志文件');
         }
         return;
       }
-      final xfiles = files.map((f) => XFile(f.path)).toList();
-      await Share.shareXFiles(xfiles, text: 'HMusic 日志');
+      final xfiles = [XFile(exportFile.path)];
+      await Share.shareXFiles(
+        xfiles,
+        text: 'HMusic 日志（${level.displayName}）',
+        sharePositionOrigin: sharePositionOrigin,
+      );
     } catch (e) {
       if (context.mounted) {
         AppSnackBar.showText(context, '导出日志失败: $e');
       }
     }
+  }
+
+  Future<LogExportLevel?> _selectLogExportLevel(BuildContext context) async {
+    return showModalBottomSheet<LogExportLevel>(
+      context: context,
+      showDragHandle: true,
+      builder:
+          (context) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.flash_on_rounded),
+                  title: const Text('精简导出（推荐）'),
+                  subtitle: const Text('仅保留关键状态、告警和错误，体积最小'),
+                  onTap:
+                      () => Navigator.of(context).pop(LogExportLevel.essential),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.tune_rounded),
+                  title: const Text('标准导出'),
+                  subtitle: const Text('保留主要流程，过滤调试工具噪音'),
+                  onTap:
+                      () => Navigator.of(context).pop(LogExportLevel.standard),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.article_rounded),
+                  title: const Text('完整导出'),
+                  subtitle: const Text('尽量完整保留（仍会去除少量工具噪音）'),
+                  onTap: () => Navigator.of(context).pop(LogExportLevel.full),
+                ),
+              ],
+            ),
+          ),
+    );
   }
 
   /// 下载音质选择器
@@ -869,11 +939,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           size: 20,
         ),
       ),
-      title: const Text(
-        '默认下载音质',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: const Text('默认下载音质', maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: Padding(
         padding: const EdgeInsets.only(right: 2),
         child: DropdownButton<String>(
@@ -902,9 +968,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ],
           onChanged: (value) {
             if (value != null) {
-              ref.read(sourceSettingsProvider.notifier).save(
-                settings.copyWith(defaultDownloadQuality: value),
-              );
+              ref
+                  .read(sourceSettingsProvider.notifier)
+                  .save(settings.copyWith(defaultDownloadQuality: value));
             }
           },
         ),
@@ -945,10 +1011,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 final actualPath = await _getDownloadPath();
                 await Clipboard.setData(ClipboardData(text: actualPath));
                 if (context.mounted) {
-                  AppSnackBar.showSuccess(
-                    context,
-                    '已复制到剪贴板',
-                  );
+                  AppSnackBar.showSuccess(context, '已复制到剪贴板');
                 }
               },
               borderRadius: BorderRadius.circular(20),

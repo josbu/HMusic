@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_service/audio_service.dart';
@@ -7,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/playing_music.dart';
 import '../models/music.dart';
 import 'music_api_service.dart';
+import 'audio_proxy_server.dart';
+import 'music_cdn_url_policy.dart';
 import 'playback_strategy.dart';
 import 'audio_handler_service.dart';
 
@@ -55,6 +58,7 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
 
   static AudioHandlerService? get sharedAudioHandler => _sharedAudioHandler;
   final MusicApiService? _apiService; // 🎯 改为可选参数,支持完全独立模式
+  final AudioProxyServer? _audioProxyServer; // 🎯 本地代理服务器（解决 iOS ATS HTTP 限制）
   AudioPlayer? _player; // 🔧 改为可空，从共享的静态变量获取
   AudioHandlerService? _audioHandler;
   int _loadToken = 0;
@@ -83,8 +87,9 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
   Function()? onNext;
   Function()? onPrevious;
 
-  LocalPlaybackStrategy({MusicApiService? apiService})
-    : _apiService = apiService {
+  LocalPlaybackStrategy({MusicApiService? apiService, AudioProxyServer? audioProxyServer})
+    : _apiService = apiService,
+      _audioProxyServer = audioProxyServer {
     _initAudioSession();
 
     // 🔧 先尝试立即绑定(如果 AudioHandler 已就绪)
@@ -352,6 +357,27 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
       } else {
         debugPrint('🌐 [LocalPlayback] 在线音乐URL或完全独立模式,保持原样');
       }
+
+      // 🎯 iOS ATS 修复：规避 iOS ATS 对公网 HTTP URL 的拦截
+      // iOS 26+ 即使设置了 NSAllowsArbitraryLoads，AVPlayer 仍会拒绝公网 HTTP URL
+      // 策略：网易云/QQ CDN 均支持 HTTPS，直接升级协议；其他 CDN 走本地代理
+      final proxyServer = _audioProxyServer;
+      if (Platform.isIOS &&
+          playUrl.startsWith('http://') &&
+          !playUrl.startsWith('http://127.0.0.1') &&
+          !playUrl.startsWith('http://localhost')) {
+        if (MusicCdnUrlPolicy.isNeteaseCdn(playUrl) || MusicCdnUrlPolicy.isQqCdn(playUrl)) {
+          // 网易云 / QQ CDN 均支持 HTTPS，直接升级协议，无需走代理
+          // 好处：iOS 本地 just_audio 可直接发 Range 请求，进度条/seek 正常工作
+          playUrl = 'https${playUrl.substring(4)}';
+          debugPrint('🔀 [LocalPlayback] iOS ATS: HTTP→HTTPS 直接升级');
+        } else if (proxyServer != null && proxyServer.isRunning) {
+          // 其他 CDN（酷我等）走本地代理
+          playUrl = proxyServer.getProxyUrl(playUrl);
+          debugPrint('🔀 [LocalPlayback] iOS ATS: HTTP URL 已通过本地代理转发');
+        }
+      }
+
       debugPrint('✅ [LocalPlayback] 最终播放链接: $playUrl');
 
       // 先更新状态和缓存
