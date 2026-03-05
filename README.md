@@ -4,18 +4,15 @@
 
 [![Release](https://img.shields.io/github/v/release/hpcll/HMusic?label=版本)](https://github.com/hpcll/HMusic/releases)
 
-## 🚀 v2.3.0 重点更新
+## 🚀 v2.3.1 重点更新
 
-- 播放链路稳定性大幅提升，直连模式与 xiaomusic 模式行为更一致。
-- 新增外部歌单导入与平台归一化，跨平台歌曲解析更稳。
-- 新增并增强 `pushUrl`、`getPlayerStatus` 等联动能力。
-- 修复自动下一首、切歌竞态、进度同步、通知栏控制等关键问题。
-- 修复 iOS 导入 LX 脚本闪退与 OH2P 设备进度/seek 异常问题。
-- 音源策略更新：网易默认直连，QQ/酷我默认走代理（QQ 直连仅实验开关）。
-- 产物发布升级：Android 提供通用包 + 三架构包，iOS 提供 unsigned 自签包。
+- 修复 L06A 直连暂停可能无效的问题，播放控制参数与官方 App 对齐。
+- 修复直连模式暂停状态误判，避免“App 显示暂停但音箱仍播放”。
+- 增加暂停确认与兜底策略，提升暂停操作可靠性。
+- 优化 MiIoT 状态查询与 ubus 域名兼容性，弱网和机型差异场景更稳。
 
 > ⚠️ **重要建议（xiaomusic 用户）**  
-> 为保证 HMusic v2.3.0 功能完整与稳定，建议将 xiaomusic 服务端升级到 **v0.4.23 或更高版本**。
+> 为保证 HMusic v2.3.1 功能完整与稳定，建议将 xiaomusic 服务端升级到 **v0.4.23 或更高版本**。
 
 ## 📱 下载安装
 
@@ -23,10 +20,10 @@
 
 | 平台 | 文件 | 说明 |
 |------|------|------|
-| 🤖 Android 通用版 | `HMusic-v2.3.0-android-universal.apk` | 推荐，兼容所有设备 |
-| 🤖 Android arm64 | `HMusic-v2.3.0-android-arm64-v8a.apk` | 现代手机，体积更小 |
-| 🤖 Android arm32 | `HMusic-v2.3.0-android-armeabi-v7a.apk` | 老旧设备 |
-| 🍎 iOS | `HMusic-v2.3.0-ios-unsigned.ipa` | 需自签名安装 |
+| 🤖 Android 通用版 | `HMusic-v2.3.1-android-universal.apk` | 推荐，兼容所有设备 |
+| 🤖 Android arm64 | `HMusic-v2.3.1-android-arm64-v8a.apk` | 现代手机，体积更小 |
+| 🤖 Android arm32 | `HMusic-v2.3.1-android-armeabi-v7a.apk` | 老旧设备 |
+| 🍎 iOS | `HMusic-v2.3.1-ios-unsigned.ipa` | 需自签名安装 |
 
 ## 🎯 两种模式
 
@@ -49,7 +46,7 @@
 ### xiaomusic 模式
 
 1. 先部署 [xiaomusic 服务端](https://github.com/hanxi/xiaomusic)
-2. 建议升级到 **v0.4.23+**（与 HMusic v2.3.0 联动更完整）
+2. 建议升级到 **v0.4.23+**（与 HMusic v2.3.1 联动更完整）
 3. 可参考官方文档站：[https://xdocs.hanxi.cc/](https://xdocs.hanxi.cc/)
 4. 打开应用 → 选择 **xiaomusic 模式**
 5. 输入服务器地址和认证信息

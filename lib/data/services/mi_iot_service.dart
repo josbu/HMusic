@@ -57,13 +57,15 @@ class MiIoTService {
   void _startLoadingDeviceId() {
     if (_deviceIdLoadCompleter != null) return;
     _deviceIdLoadCompleter = Completer<void>();
-    _loadPersistedDeviceIdInternal().then((_) {
-      _deviceIdLoaded = true;
-      _deviceIdLoadCompleter!.complete();
-    }).catchError((e) {
-      _deviceIdLoaded = true;
-      _deviceIdLoadCompleter!.complete();
-    });
+    _loadPersistedDeviceIdInternal()
+        .then((_) {
+          _deviceIdLoaded = true;
+          _deviceIdLoadCompleter!.complete();
+        })
+        .catchError((e) {
+          _deviceIdLoaded = true;
+          _deviceIdLoadCompleter!.complete();
+        });
   }
 
   /// 🎯 等待 deviceId 加载完成（供外部和内部方法调用）
@@ -109,7 +111,10 @@ class MiIoTService {
     if (_publicProxyUrl != null && _publicProxyUrl!.isNotEmpty) {
       // 移除末尾斜杠
       if (_publicProxyUrl!.endsWith('/')) {
-        _publicProxyUrl = _publicProxyUrl!.substring(0, _publicProxyUrl!.length - 1);
+        _publicProxyUrl = _publicProxyUrl!.substring(
+          0,
+          _publicProxyUrl!.length - 1,
+        );
       }
       print('✅ [MiIoT] 已设置公共代理: $_publicProxyUrl');
     } else {
@@ -165,7 +170,11 @@ class MiIoTService {
     return masked;
   }
 
-  Future<bool> login(String account, String password, {String? captchaCode}) async {
+  Future<bool> login(
+    String account,
+    String password, {
+    String? captchaCode,
+  }) async {
     try {
       print('🔐 [MiIoT] 开始登录小米账号: $account');
       if (captchaCode != null) {
@@ -179,7 +188,8 @@ class MiIoTService {
 
       // 设置请求头和Cookie
       final headers = {
-        'User-Agent': 'APP/com.xiaomi.mihome APPV/6.0.103 iosPassportSDK/3.9.0 iOS/14.4 miHSTS',
+        'User-Agent':
+            'APP/com.xiaomi.mihome APPV/6.0.103 iosPassportSDK/3.9.0 iOS/14.4 miHSTS',
       };
 
       // 1. 获取登录sign
@@ -187,10 +197,7 @@ class MiIoTService {
 
       final signResponse = await _dio.get(
         'https://account.xiaomi.com/pass/serviceLogin',
-        queryParameters: {
-          'sid': 'micoapi',
-          '_json': 'true',
-        },
+        queryParameters: {'sid': 'micoapi', '_json': 'true'},
         options: Options(
           headers: {
             ...headers,
@@ -234,7 +241,8 @@ class MiIoTService {
       print('📝 [MiIoT] Sign 阶段的 location: $signLocation');
 
       // 2. 计算密码MD5 (大写)
-      final passwordHash = md5.convert(utf8.encode(password)).toString().toUpperCase();
+      final passwordHash =
+          md5.convert(utf8.encode(password)).toString().toUpperCase();
 
       // 3. 登录请求
       final loginData = {
@@ -255,7 +263,9 @@ class MiIoTService {
 
       // 🎯 打印完整的请求参数
       print('📝 [MiIoT] ===== 登录请求参数 =====');
-      print('📝 [MiIoT] URL: https://account.xiaomi.com/pass/serviceLoginAuth2');
+      print(
+        '📝 [MiIoT] URL: https://account.xiaomi.com/pass/serviceLoginAuth2',
+      );
       print('📝 [MiIoT] 请求头:');
       print('  User-Agent: ${headers['User-Agent']}');
       print('  Cookie: sdkVersion=3.9; deviceId=$_deviceId');
@@ -300,7 +310,9 @@ class MiIoTService {
         return false;
       }
 
-      print('📝 [MiIoT] 登录响应: code=${loginResponseData['code']}, desc=${loginResponseData['desc']}');
+      print(
+        '📝 [MiIoT] 登录响应: code=${loginResponseData['code']}, desc=${loginResponseData['desc']}',
+      );
 
       // 🎯 打印所有响应字段（用于诊断）
       print('📝 [MiIoT] 登录响应中的所有字段:');
@@ -319,9 +331,15 @@ class MiIoTService {
       print('  nonce: ${loginResponseData['nonce'] ?? "❌ 缺失"}');
       print('  userId: ${loginResponseData['userId'] ?? "❌ 缺失"}');
       final passToken = loginResponseData['passToken']?.toString();
-      print('  passToken: ${passToken == null ? "❌ 缺失" : _maskValue(passToken)}');
-      print('  notificationUrl: ${loginResponseData['notificationUrl'] ?? "❌ 缺失"}');
-      print('  securityStatus: ${loginResponseData['securityStatus'] ?? "❌ 缺失"}');
+      print(
+        '  passToken: ${passToken == null ? "❌ 缺失" : _maskValue(passToken)}',
+      );
+      print(
+        '  notificationUrl: ${loginResponseData['notificationUrl'] ?? "❌ 缺失"}',
+      );
+      print(
+        '  securityStatus: ${loginResponseData['securityStatus'] ?? "❌ 缺失"}',
+      );
 
       // 🎯 保存登录响应（用于UI层提取验证码URL）
       _lastLoginResponse = loginResponseData;
@@ -329,14 +347,17 @@ class MiIoTService {
       // 检查登录结果
       if (loginResponseData['code'] != 0) {
         final errorCode = loginResponseData['code'];
-        final errorDesc = loginResponseData['desc'] ?? loginResponseData['description'];
+        final errorDesc =
+            loginResponseData['desc'] ?? loginResponseData['description'];
 
         // 🎯 特殊处理验证码错误（错误码70016）
         if (errorCode == 70016) {
           var captchaUrl = loginResponseData['captchaUrl'] as String?;
 
           // 🎯 如果登录认证返回的 captchaUrl 为空，使用 Sign 阶段的 location
-          if ((captchaUrl == null || captchaUrl.isEmpty) && signLocation != null && signLocation.isNotEmpty) {
+          if ((captchaUrl == null || captchaUrl.isEmpty) &&
+              signLocation != null &&
+              signLocation.isNotEmpty) {
             captchaUrl = signLocation;
             print('⚠️ [MiIoT] 登录认证未返回 captchaUrl，使用 Sign 阶段的 location');
           }
@@ -371,9 +392,10 @@ class MiIoTService {
 
         if (notificationUrl != null && notificationUrl.isNotEmpty) {
           // 构建完整的验证 URL
-          final fullVerificationUrl = notificationUrl.startsWith('http')
-              ? notificationUrl
-              : 'https://account.xiaomi.com$notificationUrl';
+          final fullVerificationUrl =
+              notificationUrl.startsWith('http')
+                  ? notificationUrl
+                  : 'https://account.xiaomi.com$notificationUrl';
 
           print('⚠️ [MiIoT] 需要二次身份验证 (securityStatus: $securityStatus)');
           print('⚠️ [MiIoT] 验证URL: $fullVerificationUrl');
@@ -400,7 +422,8 @@ class MiIoTService {
       final clientSign = base64Encode(clientSignBytes);
 
       // 获取serviceToken
-      final tokenUrl = '$location&clientSign=${Uri.encodeComponent(clientSign)}';
+      final tokenUrl =
+          '$location&clientSign=${Uri.encodeComponent(clientSign)}';
       final tokenResponse = await _dio.get(
         tokenUrl,
         options: Options(
@@ -436,7 +459,11 @@ class MiIoTService {
 
   /// 🎯 使用 WebView 提取的 Cookie 登录
   /// 当用户在 WebView 中完成验证后，使用提取的 Cookie 直接获取 serviceToken
-  Future<bool> loginWithCookies(String account, String password, {Map<String, String>? cookies}) async {
+  Future<bool> loginWithCookies(
+    String account,
+    String password, {
+    Map<String, String>? cookies,
+  }) async {
     try {
       print('🔐 [MiIoT] 使用 Cookie 登录小米账号: $account');
 
@@ -453,7 +480,8 @@ class MiIoTService {
       print('🍪 [MiIoT] 收到的 Cookie: $safeCookies');
 
       // 🎯 检查是否有 serviceToken（最直接的情况）
-      if (cookies.containsKey('serviceToken') && cookies['serviceToken']!.isNotEmpty) {
+      if (cookies.containsKey('serviceToken') &&
+          cookies['serviceToken']!.isNotEmpty) {
         _serviceToken = cookies['serviceToken'];
         _userId = cookies['userId'];
         _ssecurity = cookies['ssecurity'];
@@ -516,7 +544,10 @@ class MiIoTService {
 
   /// 🎯 STS 验证完成后再次尝试登录
   /// 此时小米服务器应该已经记录了验证状态
-  Future<bool> _loginAfterStsVerification(String account, String password) async {
+  Future<bool> _loginAfterStsVerification(
+    String account,
+    String password,
+  ) async {
     try {
       print('🔧 [MiIoT] STS 验证后尝试登录...');
 
@@ -529,16 +560,14 @@ class MiIoTService {
       print('🔧 [MiIoT] STS 验证后使用 deviceId: $_deviceId');
 
       final headers = {
-        'User-Agent': 'APP/com.xiaomi.mihome APPV/6.0.103 iosPassportSDK/3.9.0 iOS/14.4 miHSTS',
+        'User-Agent':
+            'APP/com.xiaomi.mihome APPV/6.0.103 iosPassportSDK/3.9.0 iOS/14.4 miHSTS',
       };
 
       // 1. 获取 sign
       final signResponse = await _dio.get(
         'https://account.xiaomi.com/pass/serviceLogin',
-        queryParameters: {
-          'sid': 'micoapi',
-          '_json': 'true',
-        },
+        queryParameters: {'sid': 'micoapi', '_json': 'true'},
         options: Options(
           headers: {
             ...headers,
@@ -564,7 +593,8 @@ class MiIoTService {
       }
 
       // 2. 计算密码 MD5
-      final passwordHash = md5.convert(utf8.encode(password)).toString().toUpperCase();
+      final passwordHash =
+          md5.convert(utf8.encode(password)).toString().toUpperCase();
 
       // 3. 登录请求
       final loginResponse = await _dio.post(
@@ -594,7 +624,9 @@ class MiIoTService {
         return false;
       }
 
-      print('📝 [MiIoT] 验证后登录响应: code=${loginResponseData['code']}, desc=${loginResponseData['desc']}');
+      print(
+        '📝 [MiIoT] 验证后登录响应: code=${loginResponseData['code']}, desc=${loginResponseData['desc']}',
+      );
       print('📝 [MiIoT] 响应字段: ${loginResponseData.keys}');
 
       // 检查是否成功获取到关键信息
@@ -609,7 +641,8 @@ class MiIoTService {
           final clientSignBytes = sha1.convert(utf8.encode(nsec)).bytes;
           final clientSign = base64Encode(clientSignBytes);
 
-          final tokenUrl = '$location&clientSign=${Uri.encodeComponent(clientSign)}';
+          final tokenUrl =
+              '$location&clientSign=${Uri.encodeComponent(clientSign)}';
           final tokenResponse = await _dio.get(
             tokenUrl,
             options: Options(
@@ -639,18 +672,12 @@ class MiIoTService {
 
       print('❌ [MiIoT] 验证后登录未能获取 serviceToken');
       // 🎯 设置明确的错误响应，告知 UI 层验证后登录失败
-      _lastLoginResponse = {
-        'code': -1,
-        'desc': '验证完成但登录失败，请重试',
-      };
+      _lastLoginResponse = {'code': -1, 'desc': '验证完成但登录失败，请重试'};
       return false;
     } catch (e) {
       print('❌ [MiIoT] 验证后登录异常: $e');
       // 🎯 设置明确的错误响应
-      _lastLoginResponse = {
-        'code': -1,
-        'desc': '验证后登录异常: $e',
-      };
+      _lastLoginResponse = {'code': -1, 'desc': '验证后登录异常: $e'};
       return false;
     }
   }
@@ -666,13 +693,15 @@ class MiIoTService {
       print('🔧 [MiIoT] 使用 passToken 获取 serviceToken...');
 
       // 构建请求 URL
-      final url = 'https://account.xiaomi.com/pass/serviceLogin?sid=micoapi&_json=true';
+      final url =
+          'https://account.xiaomi.com/pass/serviceLogin?sid=micoapi&_json=true';
 
       final response = await _dio.get(
         url,
         options: Options(
           headers: {
-            'User-Agent': 'APP/com.xiaomi.mihome APPV/6.0.103 iosPassportSDK/3.9.0 iOS/14.4 miHSTS',
+            'User-Agent':
+                'APP/com.xiaomi.mihome APPV/6.0.103 iosPassportSDK/3.9.0 iOS/14.4 miHSTS',
             'Cookie': 'passToken=$_passToken; userId=$_userId',
           },
           responseType: ResponseType.plain,
@@ -700,7 +729,8 @@ class MiIoTService {
           final clientSign = base64Encode(clientSignBytes);
 
           // 获取 serviceToken
-          final tokenUrl = '$location&clientSign=${Uri.encodeComponent(clientSign)}';
+          final tokenUrl =
+              '$location&clientSign=${Uri.encodeComponent(clientSign)}';
           final tokenResponse = await _dio.get(
             tokenUrl,
             options: Options(
@@ -747,9 +777,7 @@ class MiIoTService {
       final response = await _dio.get(
         'https://api.mina.mi.com/admin/v2/device_list',
         options: Options(
-          headers: {
-            'Cookie': 'serviceToken=$_serviceToken; userId=$_userId',
-          },
+          headers: {'Cookie': 'serviceToken=$_serviceToken; userId=$_userId'},
         ),
       );
 
@@ -763,13 +791,15 @@ class MiIoTService {
 
       final devices = <MiDevice>[];
       for (var deviceData in deviceList) {
-        final ip = deviceData['localip'] as String? ??
+        final ip =
+            deviceData['localip'] as String? ??
             deviceData['localIp'] as String? ??
             deviceData['ip'] as String?;
         final device = MiDevice(
           deviceId: deviceData['deviceID'] as String? ?? '',
           did: deviceData['miotDID'] as String? ?? '',
-          name: deviceData['alias'] as String? ??
+          name:
+              deviceData['alias'] as String? ??
               deviceData['name'] as String? ??
               '未知设备',
           hardware: deviceData['hardware'] as String? ?? '',
@@ -778,9 +808,10 @@ class MiIoTService {
 
         if (device.deviceId.isNotEmpty && device.did.isNotEmpty) {
           devices.add(device);
-          final ipSuffix = device.ip != null && device.ip!.isNotEmpty
-              ? ' - ${device.ip}'
-              : '';
+          final ipSuffix =
+              device.ip != null && device.ip!.isNotEmpty
+                  ? ' - ${device.ip}'
+                  : '';
           print('  📱 ${device.name} (${device.hardware})$ipSuffix');
         }
       }
@@ -819,7 +850,8 @@ class MiIoTService {
     bool useProxy = false;
 
     // 🔧 检查URL是否包含redirect参数（QQ音乐特征）
-    if (musicUrl.contains('redirect=1') || musicUrl.contains('wx.music.tc.qq.com')) {
+    if (musicUrl.contains('redirect=1') ||
+        musicUrl.contains('wx.music.tc.qq.com')) {
       print('🔄 [MiIoT] 检测到重定向URL，先解析真实地址...');
       try {
         // 🔧 改用 GET 请求并跟随重定向，获取最终的真实 URL
@@ -830,7 +862,8 @@ class MiIoTService {
             maxRedirects: 5, // 最多跟随5次重定向
             validateStatus: (status) => status! < 400,
             headers: {
-              'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
+              'User-Agent':
+                  'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
               'Range': 'bytes=0-1', // 只请求1字节，节省流量
             },
           ),
@@ -840,13 +873,17 @@ class MiIoTService {
         final realUri = response.realUri;
         if (realUri.toString() != musicUrl) {
           playUrl = realUri.toString();
-          print('✅ [MiIoT] 解析到真实URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...');
+          print(
+            '✅ [MiIoT] 解析到真实URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...',
+          );
         } else {
           // 尝试从响应头获取
           final location = response.headers.value('location');
           if (location != null && location.isNotEmpty) {
             playUrl = location;
-            print('✅ [MiIoT] 从响应头获取真实URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...');
+            print(
+              '✅ [MiIoT] 从响应头获取真实URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...',
+            );
           } else {
             print('⚠️ [MiIoT] 未找到重定向地址，使用原始URL');
           }
@@ -867,9 +904,9 @@ class MiIoTService {
     final networkDetector = NetworkDetector();
     final isWiFi = await networkDetector.isWiFiConnected();
     final device = _devices.cast<MiDevice?>().firstWhere(
-          (d) => d?.deviceId == deviceId || d?.did == deviceId,
-          orElse: () => null,
-        );
+      (d) => d?.deviceId == deviceId || d?.did == deviceId,
+      orElse: () => null,
+    );
     final deviceIp = device?.ip;
     final localIp = _proxyServer?.localIp;
     final sameSubnet = _isSameSubnet(deviceIp, localIp);
@@ -881,14 +918,18 @@ class MiIoTService {
     );
     // QQ/酷我默认必须走代理（不回退直连）
     final requireProxyForKnownCdn =
-        !forceDirectForKnownCdn && MusicCdnUrlPolicy.shouldRequireProxyForMiIoT(playUrl);
+        !forceDirectForKnownCdn &&
+        MusicCdnUrlPolicy.shouldRequireProxyForMiIoT(playUrl);
     if (forceDirectForKnownCdn) {
-      final directType = MusicCdnUrlPolicy.isNeteaseCdn(playUrl) ? '网易云CDN' : 'QQ音乐CDN';
+      final directType =
+          MusicCdnUrlPolicy.isNeteaseCdn(playUrl) ? '网易云CDN' : 'QQ音乐CDN';
       print('🎯 [MiIoT] 检测到$directType，跳过代理并直连播放');
       if (directType == 'QQ音乐CDN') {
         print('🧪 [MiIoT] QQ直连实验已启用：本次将直接下发给小爱音箱');
       }
-      print('   直连URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...');
+      print(
+        '   直连URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...',
+      );
     } else if (MusicCdnUrlPolicy.isKuwoCdn(playUrl)) {
       print('🧪 [MiIoT] 酷我代理策略已启用：本次必须走代理');
     } else if (MusicCdnUrlPolicy.isQqCdn(playUrl)) {
@@ -896,7 +937,10 @@ class MiIoTService {
     }
 
     // 方案1：尝试使用本地代理（仅在 WiFi 环境下）
-    if (!forceDirectForKnownCdn && isWiFi && _proxyServer != null && _proxyServer!.isRunning) {
+    if (!forceDirectForKnownCdn &&
+        isWiFi &&
+        _proxyServer != null &&
+        _proxyServer!.isRunning) {
       if (deviceIp != null && localIp != null && !sameSubnet) {
         print('⚠️ [MiIoT] 设备IP与手机IP不同网段，跳过本地代理');
         print('   设备IP: $deviceIp');
@@ -918,8 +962,12 @@ class MiIoTService {
           playUrl = _proxyServer!.getProxyUrl(playUrl);
           useProxy = true;
           print('✅ [MiIoT] 使用本地代理转发（URL已base64封装）');
-          print('   原始URL: ${originalUrl.substring(0, originalUrl.length > 80 ? 80 : originalUrl.length)}...');
-          print('   代理URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...');
+          print(
+            '   原始URL: ${originalUrl.substring(0, originalUrl.length > 80 ? 80 : originalUrl.length)}...',
+          );
+          print(
+            '   代理URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...',
+          );
         } else {
           print('⚠️ [MiIoT] 已确认不同网段，跳过本地代理');
         }
@@ -931,15 +979,22 @@ class MiIoTService {
     }
 
     // 方案2：本地代理不可用时，尝试公共代理
-    if (!forceDirectForKnownCdn && !useProxy && _publicProxyUrl != null && _publicProxyUrl!.isNotEmpty) {
+    if (!forceDirectForKnownCdn &&
+        !useProxy &&
+        _publicProxyUrl != null &&
+        _publicProxyUrl!.isNotEmpty) {
       final originalUrl = playUrl;
       try {
         // 使用 Cloudflare Workers 代理格式
         playUrl = '$_publicProxyUrl/proxy?url=${Uri.encodeComponent(playUrl)}';
         useProxy = true;
         print('🔄 [MiIoT] 本地代理不可用，使用公共代理转发');
-        print('   原始URL: ${originalUrl.substring(0, originalUrl.length > 80 ? 80 : originalUrl.length)}...');
-        print('   代理URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...');
+        print(
+          '   原始URL: ${originalUrl.substring(0, originalUrl.length > 80 ? 80 : originalUrl.length)}...',
+        );
+        print(
+          '   代理URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...',
+        );
       } catch (e) {
         print('⚠️ [MiIoT] 使用公共代理失败: $e');
       }
@@ -954,7 +1009,9 @@ class MiIoTService {
     // 方案3：代理都不可用，直接使用真实URL（仅用于非QQ/酷我）
     if (!useProxy) {
       print('⚠️ [MiIoT] 代理不可用，直接使用真实URL');
-      print('🔗 [MiIoT] 播放URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...');
+      print(
+        '🔗 [MiIoT] 播放URL: ${playUrl.substring(0, playUrl.length > 80 ? 80 : playUrl.length)}...',
+      );
     }
 
     // 🔧 调试：记录URL协议
@@ -975,8 +1032,12 @@ class MiIoTService {
         );
         hardware = device.hardware;
         if (hardware.isNotEmpty) {
-          final hardwareDesc = MiHardwareDetector.getHardwareDescription(hardware);
-          final playMethod = MiHardwareDetector.getRecommendedPlayMethod(hardware);
+          final hardwareDesc = MiHardwareDetector.getHardwareDescription(
+            hardware,
+          );
+          final playMethod = MiHardwareDetector.getRecommendedPlayMethod(
+            hardware,
+          );
           print('📱 [MiIoT] 设备硬件: $hardware ($hardwareDesc)');
           print('🎵 [MiIoT] 推荐播放方式: $playMethod');
         }
@@ -988,7 +1049,7 @@ class MiIoTService {
     // 🎯 方案1：使用 player_play_url（简单播放）
     final method1 = 'player_play_url';
     final message1 = jsonEncode({
-      'url': playUrl,  // 🔧 使用原始URL
+      'url': playUrl, // 🔧 使用原始URL
       'type': 2, // 2=普通类型
       'media': 'app_ios',
       if (durationMs != null) 'duration': durationMs, // 🎯 传入歌曲时长
@@ -1008,7 +1069,10 @@ class MiIoTService {
           print('🎵 [MiIoT] 从URL提取到音频ID: $audioId');
         } else {
           // 如果URL中无法提取，则基于音乐名称生成
-          audioId = await MiAudioIdGenerator.generateAudioId(musicName: musicName, deviceId: deviceId);
+          audioId = await MiAudioIdGenerator.generateAudioId(
+            musicName: musicName,
+            deviceId: deviceId,
+          );
           print('🎵 [MiIoT] 生成音频ID: $audioId');
         }
       } catch (e) {
@@ -1023,7 +1087,7 @@ class MiIoTService {
     // 之前错误地设置为 "MUSIC"，导致音箱有反应但不响
     final music = {
       'payload': {
-        'audio_type': '',  // 🔧 修复：使用空字符串而不是 "MUSIC"
+        'audio_type': '', // 🔧 修复：使用空字符串而不是 "MUSIC"
         'audio_items': [
           {
             'item_id': {
@@ -1036,7 +1100,7 @@ class MiIoTService {
               },
             },
             'stream': {'url': playUrl},
-          }
+          },
         ],
         'list_params': {
           'listId': '-1',
@@ -1062,6 +1126,8 @@ class MiIoTService {
     await pause(deviceId);
     print('⏹️ [MiIoT] 停止当前播放...');
     await stop(deviceId);
+    // 给设备一点时间清理旧状态，避免后续命令被吞（2.2.2 同步策略）
+    await Future.delayed(const Duration(milliseconds: 500));
 
     // 🎯 智能选择播放方案
     List<Map<String, dynamic>> attempts = [];
@@ -1070,14 +1136,30 @@ class MiIoTService {
     if (hardware != null && MiHardwareDetector.needsPlayMusicApi(hardware)) {
       print('🎯 [MiIoT] 设备需要使用 player_play_music API');
       attempts = [
-        {'name': 'player_play_music (完整)', 'method': method2, 'message': message2},
-        {'name': 'player_play_url (备用)', 'method': method1, 'message': message1},
+        {
+          'name': 'player_play_music (完整)',
+          'method': method2,
+          'message': message2,
+        },
+        {
+          'name': 'player_play_url (备用)',
+          'method': method1,
+          'message': message1,
+        },
       ];
     } else {
       print('🎯 [MiIoT] 设备可以使用 player_play_url API');
       attempts = [
-        {'name': 'player_play_url (简单)', 'method': method1, 'message': message1},
-        {'name': 'player_play_music (备用)', 'method': method2, 'message': message2},
+        {
+          'name': 'player_play_url (简单)',
+          'method': method1,
+          'message': message1,
+        },
+        {
+          'name': 'player_play_music (备用)',
+          'method': method2,
+          'message': message2,
+        },
       ];
     }
 
@@ -1105,7 +1187,8 @@ class MiIoTService {
             headers: {
               'Cookie': 'serviceToken=$_serviceToken; userId=$_userId',
               'Content-Type': 'application/x-www-form-urlencoded', // 表单格式
-              'User-Agent': 'MiHome/6.0.103 (com.xiaomi.mihome; build:6.0.103.1; iOS 14.4.0) Alamofire/6.0.103 MICO/iOSApp/appStore/6.0.103',
+              'User-Agent':
+                  'MiHome/6.0.103 (com.xiaomi.mihome; build:6.0.103.1; iOS 14.4.0) Alamofire/6.0.103 MICO/iOSApp/appStore/6.0.103',
             },
             contentType: Headers.formUrlEncodedContentType, // 表单编码
           ),
@@ -1118,8 +1201,6 @@ class MiIoTService {
           final data = response.data;
           if (data is Map && data['code'] == 0) {
             print('✅ [MiIoT] 播放成功! 使用方案: ${attempt['name']}');
-            // 对齐 xiaomusic: player_play_music 配合 REPLACE_ALL 会自动开始播放
-            // 不需要额外的 resume() 或状态检查
             return true;
           } else {
             print('⚠️ [MiIoT] 方案${i + 1}返回非成功状态: ${data}');
@@ -1237,13 +1318,13 @@ class MiIoTService {
   /// 将 MiPlayMode 常量映射到 player_set_loop 的 type 值
   int _playModeToLoopType(String playMode) {
     switch (playMode) {
-      case MiPlayMode.PLAY_TYPE_ONE:  // 单曲循环
-      case MiPlayMode.PLAY_TYPE_SIN:  // 单曲播放
+      case MiPlayMode.PLAY_TYPE_ONE: // 单曲循环
+      case MiPlayMode.PLAY_TYPE_SIN: // 单曲播放
         return 0;
-      case MiPlayMode.PLAY_TYPE_ALL:  // 全部循环
-      case MiPlayMode.PLAY_TYPE_SEQ:  // 顺序播放
+      case MiPlayMode.PLAY_TYPE_ALL: // 全部循环
+      case MiPlayMode.PLAY_TYPE_SEQ: // 顺序播放
         return 1;
-      case MiPlayMode.PLAY_TYPE_RND:  // 随机播放
+      case MiPlayMode.PLAY_TYPE_RND: // 随机播放
         return 3;
       default:
         return 1;
@@ -1283,20 +1364,88 @@ class MiIoTService {
   /// 将 loop_type 转换回 MiPlayMode 常量
   String _loopTypeToPlayMode(int? loopType) {
     switch (loopType) {
-      case 0: return MiPlayMode.PLAY_TYPE_ONE;  // 单曲循环
-      case 1: return MiPlayMode.PLAY_TYPE_ALL;  // 列表循环
-      case 3: return MiPlayMode.PLAY_TYPE_RND;  // 随机播放
-      default: return MiPlayMode.PLAY_TYPE_ALL;  // 默认列表循环
+      case 0:
+        return MiPlayMode.PLAY_TYPE_ONE; // 单曲循环
+      case 1:
+        return MiPlayMode.PLAY_TYPE_ALL; // 列表循环
+      case 3:
+        return MiPlayMode.PLAY_TYPE_RND; // 随机播放
+      default:
+        return MiPlayMode.PLAY_TYPE_ALL; // 默认列表循环
     }
   }
 
   /// 设置音量
   Future<bool> setVolume(String deviceId, int volume) async {
-    return await _sendUbusRequest(
-      deviceId: deviceId,
-      method: 'player_set_volume',
-      message: {'volume': volume, 'media': 'app_ios'},
-    );
+    final normalizedVolume = volume.clamp(0, 100);
+    final attempts = <Map<String, dynamic>>[
+      // 对齐 xiaomusic：优先不带 media 的 player_set_volume
+      {
+        'name': 'player_set_volume(no_media)',
+        'method': 'player_set_volume',
+        'message': {'volume': normalizedVolume},
+      },
+      {
+        'name': 'player_set_volume(app_ios)',
+        'method': 'player_set_volume',
+        'message': {'volume': normalizedVolume, 'media': 'app_ios'},
+      },
+      {
+        'name': 'player_set_volume(common)',
+        'method': 'player_set_volume',
+        'message': {'volume': normalizedVolume, 'media': 'common'},
+      },
+      {
+        'name': 'player_set_volume(app_android)',
+        'method': 'player_set_volume',
+        'message': {'volume': normalizedVolume, 'media': 'app_android'},
+      },
+      {
+        'name': 'player_set_continuous_volume',
+        'method': 'player_set_continuous_volume',
+        'message': {'volume': normalizedVolume, 'media': 'app_ios'},
+      },
+    ];
+
+    bool hasSuccessfulWrite = false;
+    for (final attempt in attempts) {
+      final attemptName = attempt['name'] as String;
+      print('🔊 [MiIoT] 设置音量尝试: $attemptName -> $normalizedVolume');
+      final ok = await _sendUbusRequest(
+        deviceId: deviceId,
+        method: attempt['method'] as String,
+        message: attempt['message'] as Map<String, dynamic>,
+      );
+
+      if (!ok) {
+        continue;
+      }
+
+      hasSuccessfulWrite = true;
+
+      // 回读确认，避免 "接口成功但音量未变" 的静默失败。
+      final status = await getPlayStatus(deviceId);
+      final deviceVolume = status?['volume'] as int?;
+      if (deviceVolume == null) {
+        print('⚠️ [MiIoT] 音量回读为空: $attemptName，继续尝试其他写法');
+        continue;
+      }
+
+      if ((deviceVolume - normalizedVolume).abs() <= 1) {
+        print('✅ [MiIoT] 音量设置已生效: $deviceVolume (尝试: $attemptName)');
+        return true;
+      }
+
+      print(
+        '⚠️ [MiIoT] 音量回读不匹配: 目标=$normalizedVolume, 实际=$deviceVolume, 继续回退尝试...',
+      );
+    }
+
+    if (hasSuccessfulWrite) {
+      print('⚠️ [MiIoT] 音量写入成功但回读未确认，返回成功（设备可能延迟生效）');
+      return true;
+    }
+    return false;
   }
 
   /// 跳转播放进度
@@ -1324,12 +1473,23 @@ class MiIoTService {
 
   /// 设置睡眠定时器（定时暂停播放）
   /// [hour] 小时, [minute] 分钟, [second] 秒
-  Future<bool> setSleepTimer(String deviceId, {int hour = 0, int minute = 30, int second = 0}) async {
+  Future<bool> setSleepTimer(
+    String deviceId, {
+    int hour = 0,
+    int minute = 30,
+    int second = 0,
+  }) async {
     print('😴 [MiIoT] 设置睡眠定时器: ${hour}h ${minute}m ${second}s (设备: $deviceId)');
     return await _sendUbusRequest(
       deviceId: deviceId,
       method: 'player_set_shutdown_timer',
-      message: {'action': 'pause_later', 'hour': hour, 'minute': minute, 'second': second, 'media': 'app_ios'},
+      message: {
+        'action': 'pause_later',
+        'hour': hour,
+        'minute': minute,
+        'second': second,
+        'media': 'app_ios',
+      },
     );
   }
 
@@ -1358,7 +1518,20 @@ class MiIoTService {
 
   /// 获取播放状态
   Future<Map<String, dynamic>?> getPlayStatus(String deviceId) async {
-    final result = await _sendUbusRequest(
+    // 对齐小爱音箱官方 App：优先发送空 message，再回退到带 media 的写法
+    dynamic result = await _sendUbusRequest(
+      deviceId: deviceId,
+      method: 'player_get_play_status',
+      message: {},
+      returnResult: true,
+    );
+    result ??= await _sendUbusRequest(
+      deviceId: deviceId,
+      method: 'player_get_play_status',
+      message: {'media': 'app_android'},
+      returnResult: true,
+    );
+    result ??= await _sendUbusRequest(
       deviceId: deviceId,
       method: 'player_get_play_status',
       message: {'media': 'app_ios'},
@@ -1371,7 +1544,9 @@ class MiIoTService {
       if (info != null && info is String) {
         try {
           final parsed = jsonDecode(info) as Map<String, dynamic>;
-          print('✅ [MiIoT] 播放状态解析成功: status=${parsed['status']}, position=${parsed['play_song_detail']?['position']}');
+          print(
+            '✅ [MiIoT] 播放状态解析成功: status=${parsed['status']}, position=${parsed['play_song_detail']?['position']}',
+          );
           return parsed;
         } catch (e) {
           print('❌ [MiIoT] 解析播放状态info失败: $e');
@@ -1443,11 +1618,29 @@ class MiIoTService {
   /// 发送播放控制指令（播放/暂停/停止）
   /// 使用 player_play_operation 方法，这是正确的 API
   Future<bool> _sendPlayerOperation(String deviceId, String action) async {
-    return await _sendUbusRequest(
-      deviceId: deviceId,
-      method: 'player_play_operation',
-      message: {'action': action, 'media': 'app_ios'},
-    );
+    // 对齐小爱音箱官方 App：优先使用 app_android
+    final attempts = <Map<String, dynamic>>[
+      {'action': action, 'media': 'app_android'},
+      {'action': action, 'media': 'app_ios'},
+      {'action': action, 'media': 'common'},
+      {'action': action},
+    ];
+
+    for (var i = 0; i < attempts.length; i++) {
+      final message = attempts[i];
+      print(
+        '🎛️ [MiIoT] player_play_operation尝试(${i + 1}/${attempts.length}): action=$action, message=$message',
+      );
+      final ok = await _sendUbusRequest(
+        deviceId: deviceId,
+        method: 'player_play_operation',
+        message: message,
+      );
+      if (ok) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// 通用 ubus 请求方法
@@ -1476,33 +1669,49 @@ class MiIoTService {
         'requestId': 'app_ios_${DateTime.now().millisecondsSinceEpoch}',
       };
 
-      final response = await _dio.post(
+      final endpoints = [
+        'https://api2.mina.xiaoaisound.com/remote/ubus',
         'https://api2.mina.mi.com/remote/ubus',
-        data: requestBody,
-        options: Options(
-          headers: {
-            'Cookie': 'serviceToken=$_serviceToken; userId=$_userId',
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'MiHome/6.0.103 (com.xiaomi.mihome; build:6.0.103.1; iOS 14.4.0) Alamofire/6.0.103 MICO/iOSApp/appStore/6.0.103',
-          },
-          contentType: Headers.formUrlEncodedContentType,
-        ),
-      );
+      ];
 
-      print('📡 [MiIoT] 响应: ${response.statusCode} - ${response.data}');
+      for (final endpoint in endpoints) {
+        try {
+          final response = await _dio.post(
+            endpoint,
+            data: requestBody,
+            options: Options(
+              headers: {
+                'Cookie': 'serviceToken=$_serviceToken; userId=$_userId',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent':
+                    'MiHome/6.0.103 (com.xiaomi.mihome; build:6.0.103.1; iOS 14.4.0) Alamofire/6.0.103 MICO/iOSApp/appStore/6.0.103',
+              },
+              contentType: Headers.formUrlEncodedContentType,
+            ),
+          );
 
-      if (response.statusCode == 200) {
-        final data = response.data;
-        if (data is Map && data['code'] == 0) {
-          print('✅ [MiIoT] 请求成功: $method');
-          if (returnResult) {
-            return data['data']; // 返回具体数据
+          print(
+            '📡 [MiIoT] 响应($endpoint): ${response.statusCode} - ${response.data}',
+          );
+
+          if (response.statusCode == 200) {
+            final data = response.data;
+            if (data is Map && data['code'] == 0) {
+              print('✅ [MiIoT] 请求成功: $method');
+              if (returnResult) {
+                return data['data']; // 返回具体数据
+              }
+              return true;
+            }
           }
-          return true;
+
+          print('⚠️ [MiIoT] 请求失败($endpoint): $method');
+        } catch (e) {
+          print('⚠️ [MiIoT] 请求异常($endpoint): $e');
         }
       }
 
-      print('⚠️ [MiIoT] 请求失败: $method');
+      print('⚠️ [MiIoT] 所有域名请求均失败: $method');
       return returnResult ? null : false;
     } catch (e) {
       print('❌ [MiIoT] 请求异常: $e');
@@ -1564,18 +1773,18 @@ class MiDevice {
   });
 
   Map<String, dynamic> toJson() => {
-        'deviceId': deviceId,
-        'did': did,
-        'name': name,
-        'hardware': hardware,
-        'ip': ip,
-      };
+    'deviceId': deviceId,
+    'did': did,
+    'name': name,
+    'hardware': hardware,
+    'ip': ip,
+  };
 
   factory MiDevice.fromJson(Map<String, dynamic> json) => MiDevice(
-        deviceId: json['deviceId'] as String,
-        did: json['did'] as String,
-        name: json['name'] as String,
-        hardware: json['hardware'] as String,
-        ip: json['ip'] as String?,
-      );
+    deviceId: json['deviceId'] as String,
+    did: json['did'] as String,
+    name: json['name'] as String,
+    hardware: json['hardware'] as String,
+    ip: json['ip'] as String?,
+  );
 }

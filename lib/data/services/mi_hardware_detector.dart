@@ -8,22 +8,21 @@ class MiHardwareDetector {
   /// 这些设备使用 player_play_url 会无效或不稳定
   static const List<String> NEED_USE_PLAY_MUSIC_API = [
     // --- 来自 xiaomusic NEED_USE_PLAY_MUSIC_API ---
-    'X08C',   // 小爱音箱 Play 增强版 (触屏)
-    'X08E',   // 小爱音箱 Play (触屏)
-    'X8F',    // 小爱音箱 Pro (触屏)
-    'X4B',    // 小爱音箱
-    'LX05',   // 小爱音箱 Play (2019款)
-    'OH2',    // XIAOMI 智能音箱
-    'OH2P',   // XIAOMI 智能音箱 Pro
-    'X6A',    // 小爱音箱 Art 电池版
+    'X08C', // 小爱音箱 Play 增强版 (触屏)
+    'X08E', // 小爱音箱 Play (触屏)
+    'X8F', // 小爱音箱 Pro (触屏)
+    'X4B', // 小爱音箱
+    'LX05', // 小爱音箱 Play (2019款)
+    'OH2', // XIAOMI 智能音箱
+    'OH2P', // XIAOMI 智能音箱 Pro
+    'X6A', // 小爱音箱 Art 电池版
     // --- 来自 miservice _USE_PLAY_MUSIC_API (补充) ---
-    'LX04',   // 小爱音箱 (触屏)
-    'L05B',   // 小爱音箱 Play
-    'L05C',   // 小米小爱音箱 Play 增强版
-    'L06',    // 小爱音箱
-    'L06A',   // 小爱音箱
-    'X08A',   // 小爱音箱 (触屏)
-    'X10A',   // 小爱音箱 (触屏)
+    'LX04', // 小爱音箱 (触屏)
+    'L05B', // 小爱音箱 Play
+    'L05C', // 小米小爱音箱 Play 增强版
+    'L06', // 小爱音箱
+    'X08A', // 小爱音箱 (触屏)
+    'X10A', // 小爱音箱 (触屏)
   ];
 
   /// 暂停后必须重新发送完整播放命令（不支持 player_play_operation('play') 恢复）的设备列表
@@ -39,8 +38,8 @@ class MiHardwareDetector {
   ///   而本列表表示"连 resume 也需要重新播放"，范围更窄。
   ///   例如 L05B 在 NEED_USE_PLAY_MUSIC_API 中但不在此列表，它支持正常 resume。
   static const List<String> _NEED_FULL_REPLAY_ON_RESUME = [
-    'OH2P',   // XIAOMI 智能音箱 Pro：已确认 player_play_operation('play') 静默失效
-    'OH2',    // XIAOMI 智能音箱：同系列产品，固件行为一致
+    'OH2P', // XIAOMI 智能音箱 Pro：已确认 player_play_operation('play') 静默失效
+    'OH2', // XIAOMI 智能音箱：同系列产品，固件行为一致
   ];
 
   /// 不支持 player_play_music 的 startOffset 参数的设备列表
@@ -55,8 +54,8 @@ class MiHardwareDetector {
   /// 影响：
   ///   resume 时不传 startOffset，APP 端计时器也从 0 开始，保持一致。
   static const List<String> _NO_START_OFFSET_SUPPORT = [
-    'OH2P',   // 已确认 startOffset 被忽略，实际从头播放
-    'OH2',    // 同系列产品，position=null 佐证无精确进度能力
+    'OH2P', // 已确认 startOffset 被忽略，实际从头播放
+    'OH2', // 同系列产品，position=null 佐证无精确进度能力
   ];
 
   /// 不支持 player_set_positon (seek) 的设备列表
@@ -66,15 +65,29 @@ class MiHardwareDetector {
   ///   说明固件未实现精确进度跟踪，seek 命令极大概率同样无效。
   ///   OH2P 用户反馈拖动进度条无任何反应，与此一致。
   static const List<String> _NO_SEEK_SUPPORT = [
-    'OH2P',   // 已通过用户反馈确认 seek 无效；position 永远 null 佐证固件无此能力
-    'OH2',    // 同系列产品，固件行为一致
+    'OH2P', // 已通过用户反馈确认 seek 无效；position 永远 null 佐证固件无此能力
+    'OH2', // 同系列产品，固件行为一致
   ];
+
+  /// 播放状态不可靠（player_get_play_status 的 status 字段不可信）的设备列表
+  ///
+  /// 返回 true 的设备：
+  /// - 常见现象是暂停后仍持续返回 status=1
+  /// - 需要依赖本地命令状态做保护，避免 UI 被错误覆盖
+  static const List<String> _UNRELIABLE_PLAY_STATUS = ['OH2P', 'OH2'];
 
   /// 检查设备硬件是否需要使用 player_play_music API
   static bool needsPlayMusicApi(String hardware) {
     if (hardware.isEmpty) return false;
 
     final upperHardware = hardware.toUpperCase();
+
+    // L06A 已确认在 2.2.2 中走 player_play_url 稳定可用，
+    // 不应被 "L06" 的子串规则误判为必须走 player_play_music。
+    if (upperHardware.contains('L06A')) {
+      return false;
+    }
+
     return NEED_USE_PLAY_MUSIC_API.any((need) => upperHardware.contains(need));
   }
 
@@ -88,8 +101,9 @@ class MiHardwareDetector {
     if (hardware.isEmpty) return false;
 
     final upperHardware = hardware.toUpperCase();
-    return _NEED_FULL_REPLAY_ON_RESUME
-        .any((need) => upperHardware.contains(need));
+    return _NEED_FULL_REPLAY_ON_RESUME.any(
+      (need) => upperHardware.contains(need),
+    );
   }
 
   /// 检查设备是否支持 player_play_music 的 startOffset 参数
@@ -111,6 +125,17 @@ class MiHardwareDetector {
 
     final upperHardware = hardware.toUpperCase();
     return !_NO_SEEK_SUPPORT.any((h) => upperHardware.contains(h));
+  }
+
+  /// 检查设备播放状态是否可靠
+  ///
+  /// 返回 false 表示该设备的 status 字段可用于判断真实播放态；
+  /// 返回 true 表示应优先信任本地命令状态（如 OH2/OH2P）。
+  static bool hasUnreliablePlayStatus(String hardware) {
+    if (hardware.isEmpty) return false;
+
+    final upperHardware = hardware.toUpperCase();
+    return _UNRELIABLE_PLAY_STATUS.any((h) => upperHardware.contains(h));
   }
 
   /// 获取设备的推荐播放方式
@@ -146,7 +171,7 @@ class MiHardwareDetector {
     final upperHardware = hardware.toUpperCase();
     // HD系列和Pro系列支持更多功能
     return upperHardware.contains('PRO') ||
-           upperHardware.contains('HD') ||
-           upperHardware.contains('ART');
+        upperHardware.contains('HD') ||
+        upperHardware.contains('ART');
   }
 }

@@ -69,8 +69,8 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
   // 🎯 命令状态保护窗口（用于修复设备状态API不可靠的问题）
   // 发送 play/pause 命令后，在保护窗口内信任本地状态，忽略设备返回的矛盾状态
   // 原因：部分设备（如OH2P）的 player_get_play_status 始终返回 status=1
-  DateTime? _playingStateProtectedUntil;  // 保护"播放中"状态
-  DateTime? _pauseStateProtectedUntil;    // 保护"已暂停"状态
+  DateTime? _playingStateProtectedUntil; // 保护"播放中"状态
+  DateTime? _pauseStateProtectedUntil; // 保护"已暂停"状态
 
   // 🎯 Seek 保护窗口：seek 后短期内忽略比 seek 目标小的进度值
   // 原因：设备 seek 后第一次轮询可能返回旧的 position（设备尚未完成 seek）
@@ -80,9 +80,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
   // 🎯 本地时间预测进度（用于 detail=null 的设备，如OH2P）
   // 原理与 xiaomusic 的 time.time() - _start_time 相同：
   // 播放开始时记录时间戳，根据已播放时间计算 offset
-  DateTime? _localPlayStartTime;         // 当前歌曲开始播放的时间
+  DateTime? _localPlayStartTime; // 当前歌曲开始播放的时间
   Duration _localAccumulatedPause = Duration.zero; // 累计暂停时长
-  DateTime? _localPauseStartTime;        // 当前暂停开始的时间（null=非暂停状态）
+  DateTime? _localPauseStartTime; // 当前暂停开始的时间（null=非暂停状态）
 
   // 🔬 实验性 API 标志：避免重复调用
   bool _hasTriedAltApis = false;
@@ -111,18 +111,18 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     required String deviceId,
     String? deviceName,
     AudioHandlerService? audioHandler,
-    Function(int? switchSessionId)?
-    onStatusChanged, // 🔧 在构造函数中接收回调，确保轮询启动前已设置
+    Function(int? switchSessionId)? onStatusChanged, // 🔧 在构造函数中接收回调，确保轮询启动前已设置
     Future<String?> Function(String musicName)? onGetMusicUrl, // 🔧 在构造函数中接收回调
     Function()? onSongComplete, // 🎯 歌曲播放完成回调（自动下一首）
     bool skipRestore = false, // 🎯 模式切换时跳过状态恢复，避免显示错误的歌曲
-  })  : _miService = miService,
-        _deviceId = deviceId,
-        _deviceName = deviceName ?? '小爱音箱',
-        _audioHandler = audioHandler,
-        onStatusChanged = onStatusChanged, // 🔧 立即设置回调，避免 NULL 问题
-        onGetMusicUrl = onGetMusicUrl,     // 🔧 立即设置回调
-        onSongComplete = onSongComplete {  // 🎯 设置播放完成回调
+  }) : _miService = miService,
+       _deviceId = deviceId,
+       _deviceName = deviceName ?? '小爱音箱',
+       _audioHandler = audioHandler,
+       onStatusChanged = onStatusChanged, // 🔧 立即设置回调，避免 NULL 问题
+       onGetMusicUrl = onGetMusicUrl, // 🔧 立即设置回调
+       onSongComplete = onSongComplete {
+    // 🎯 设置播放完成回调
     _initializeAudioHandler();
     _initializeHardwareInfo(); // 🎯 初始化硬件信息
     // 🎯 只有非模式切换时才恢复状态（APP 首次启动时恢复，模式切换时跳过）
@@ -153,11 +153,13 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         // 🎯 关键修复：APP回到前台时，立即轮询一次同步真实状态
         // 避免UI显示的状态与音箱真实状态不一致
         debugPrint('🔄 [MiIoTDirect] 立即轮询一次，同步真实状态');
-        _pollPlayStatus().then((_) {
-          debugPrint('✅ [MiIoTDirect] 前台状态同步完成');
-        }).catchError((e) {
-          debugPrint('⚠️ [MiIoTDirect] 前台状态同步失败: $e');
-        });
+        _pollPlayStatus()
+            .then((_) {
+              debugPrint('✅ [MiIoTDirect] 前台状态同步完成');
+            })
+            .catchError((e) {
+              debugPrint('⚠️ [MiIoTDirect] 前台状态同步失败: $e');
+            });
         break;
 
       case AppLifecycleState.paused:
@@ -183,8 +185,12 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
       if (device.hardware.isNotEmpty) {
         _hardware = device.hardware;
-        final hardwareDesc = MiHardwareDetector.getHardwareDescription(_hardware!);
-        final playMethod = MiHardwareDetector.getRecommendedPlayMethod(_hardware!);
+        final hardwareDesc = MiHardwareDetector.getHardwareDescription(
+          _hardware!,
+        );
+        final playMethod = MiHardwareDetector.getRecommendedPlayMethod(
+          _hardware!,
+        );
         debugPrint('📱 [MiIoTDirect] 设备硬件: ${_hardware!} ($hardwareDesc)');
         debugPrint('🎵 [MiIoTDirect] 推荐播放方式: $playMethod');
       }
@@ -222,7 +228,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         }
 
         debugPrint('✅ [MiIoTDirect] 恢复上次播放状态: $lastMusicName');
-        debugPrint('📀 [MiIoTDirect] 歌单: $lastPlaylist, 时长: $lastDuration秒, 封面: ${lastAlbumCover ?? "无"}');
+        debugPrint(
+          '📀 [MiIoTDirect] 歌单: $lastPlaylist, 时长: $lastDuration秒, 封面: ${lastAlbumCover ?? "无"}',
+        );
 
         // 🎯 立即更新通知栏显示恢复的歌曲信息
         if (_audioHandler != null) {
@@ -238,16 +246,18 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
             duration: lastDuration > 0 ? Duration(seconds: lastDuration) : null,
           );
 
-          _audioHandler!.playbackState.add(_audioHandler!.playbackState.value.copyWith(
-            playing: false, // 重启后默认显示播放按钮
-            processingState: AudioProcessingState.ready,
-            updatePosition: Duration.zero,
-            controls: [
-              MediaControl.skipToPrevious,
-              MediaControl.play,
-              MediaControl.skipToNext,
-            ],
-          ));
+          _audioHandler!.playbackState.add(
+            _audioHandler!.playbackState.value.copyWith(
+              playing: false, // 重启后默认显示播放按钮
+              processingState: AudioProcessingState.ready,
+              updatePosition: Duration.zero,
+              controls: [
+                MediaControl.skipToPrevious,
+                MediaControl.play,
+                MediaControl.skipToNext,
+              ],
+            ),
+          );
 
           debugPrint('🔔 [MiIoTDirect] 已将恢复的状态更新到通知栏');
         }
@@ -270,7 +280,10 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
       final prefs = await SharedPreferences.getInstance();
 
       await prefs.setString(_keyLastMusicName, _currentPlayingMusic!.curMusic);
-      await prefs.setString(_keyLastPlaylist, _currentPlayingMusic!.curPlaylist);
+      await prefs.setString(
+        _keyLastPlaylist,
+        _currentPlayingMusic!.curPlaylist,
+      );
       await prefs.setInt(_keyLastDuration, _currentPlayingMusic!.duration);
 
       if (_albumCoverUrl != null) {
@@ -370,6 +383,35 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     );
   }
 
+  /// 是否应将设备 status 视为不可靠（需优先信任本地命令状态）
+  bool _hasUnreliablePlayStatus() {
+    final hardware = _hardware;
+    if (hardware == null || hardware.isEmpty) {
+      // 硬件未知时采取保守策略，避免误判触发 toggle 等兜底操作。
+      return true;
+    }
+    return MiHardwareDetector.hasUnreliablePlayStatus(hardware);
+  }
+
+  /// 轮询确认设备是否已进入非播放态（status != 1）
+  Future<bool> _confirmDevicePaused({
+    required String phase,
+    int retries = 2,
+  }) async {
+    for (var i = 0; i < retries; i++) {
+      await Future.delayed(const Duration(milliseconds: 600));
+      final status = await _miService.getPlayStatus(_deviceId);
+      final playStatus = status?['status'];
+      debugPrint(
+        '🔍 [MiIoTDirect] 暂停确认[$phase](${i + 1}/$retries): status=$playStatus',
+      );
+      if (playStatus != 1) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// 🔄 轮询播放状态
   Future<void> _pollPlayStatus() async {
     // 🎯 后台时跳过轮询，避免网络访问被系统限制
@@ -399,7 +441,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         return;
       }
       if (_activeSwitchSessionId != sessionSnapshot) {
-        debugPrint('⏭️ [MiIoTDirect] 轮询期间 session 已变更 ($sessionSnapshot→$_activeSwitchSessionId)，丢弃旧结果');
+        debugPrint(
+          '⏭️ [MiIoTDirect] 轮询期间 session 已变更 ($sessionSnapshot→$_activeSwitchSessionId)，丢弃旧结果',
+        );
         return;
       }
 
@@ -442,7 +486,8 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
         if (detail != null) {
           final title = detail['title'] as String?;
-          final audioId = detail['audio_id'] as String?; // 🎯 获取 audio_id 用于判断是否同一首歌
+          final audioId =
+              detail['audio_id'] as String?; // 🎯 获取 audio_id 用于判断是否同一首歌
           final durationMs = detail['duration'] as int? ?? 0; // 毫秒
           final positionMs = detail['position'] as int? ?? 0; // 毫秒
 
@@ -457,11 +502,16 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
               // 同一首歌，检查 duration 是否异常
               // 异常条件：新 duration < 10秒 且 之前的有效 duration > 30秒
               // 或者：新 duration 与 position 非常接近（差值 < 5秒），说明返回的是剩余缓冲区
-              final isAbnormalDuration = (duration < 10 && _lastValidDuration > 30) ||
-                  (duration > 0 && (duration - position).abs() < 5 && _lastValidDuration > 30);
+              final isAbnormalDuration =
+                  (duration < 10 && _lastValidDuration > 30) ||
+                  (duration > 0 &&
+                      (duration - position).abs() < 5 &&
+                      _lastValidDuration > 30);
 
               if (isAbnormalDuration) {
-                debugPrint('⚠️ [MiIoTDirect] 检测到异常 duration: ${duration}秒（position=${position}秒），使用缓存值: ${_lastValidDuration}秒');
+                debugPrint(
+                  '⚠️ [MiIoTDirect] 检测到异常 duration: ${duration}秒（position=${position}秒），使用缓存值: ${_lastValidDuration}秒',
+                );
                 duration = _lastValidDuration;
               } else if (duration > 10) {
                 // 有效的 duration，更新缓存
@@ -472,7 +522,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
               _lastValidAudioId = audioId;
               if (duration > 10) {
                 _lastValidDuration = duration;
-                debugPrint('🎵 [MiIoTDirect] 新歌曲 audio_id: $audioId, duration: ${duration}秒');
+                debugPrint(
+                  '🎵 [MiIoTDirect] 新歌曲 audio_id: $audioId, duration: ${duration}秒',
+                );
               }
             }
           }
@@ -491,7 +543,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
             // 🎯 关键修复：严格保留原歌曲名！
             // 轮询只更新进度和播放状态，绝不覆盖歌曲名
             // API 返回的 title 通常为空，不能用它覆盖原有歌曲名
-            if (title != null && title.isNotEmpty && _currentPlayingMusic!.curMusic.isEmpty) {
+            if (title != null &&
+                title.isNotEmpty &&
+                _currentPlayingMusic!.curMusic.isEmpty) {
               // 仅当原歌曲名为空且API返回了标题时，才使用API的标题
               finalTitle = title;
               debugPrint('🎯 [MiIoTDirect] 使用API返回的标题: $title');
@@ -499,13 +553,14 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
               // 否则，严格保留原歌曲名（这是99%的情况）
               finalTitle = _currentPlayingMusic!.curMusic;
               if (title != null && title.isNotEmpty && title != finalTitle) {
-                debugPrint('⚠️ [MiIoTDirect] 忽略API标题 "$title"，保留原歌曲名 "$finalTitle"');
+                debugPrint(
+                  '⚠️ [MiIoTDirect] 忽略API标题 "$title"，保留原歌曲名 "$finalTitle"',
+                );
               }
             }
 
-            finalDuration = (duration > 0)
-                ? duration
-                : _currentPlayingMusic!.duration;
+            finalDuration =
+                (duration > 0) ? duration : _currentPlayingMusic!.duration;
 
             // 🎯 Seek 保护：如果在 seek 保护窗口内且轮询返回的进度明显低于 seek 目标，
             // 说明设备尚未完成 seek，使用 seek 目标值代替
@@ -516,7 +571,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
               final diff = _seekTargetPosition! - position;
               if (diff > 5) {
                 // 轮询返回的进度比 seek 目标低 5 秒以上 → 设备尚未完成 seek
-                debugPrint('🛡️ [MiIoTDirect] Seek保护: 轮询=${position}s < 目标=${_seekTargetPosition}s，使用目标值');
+                debugPrint(
+                  '🛡️ [MiIoTDirect] Seek保护: 轮询=${position}s < 目标=${_seekTargetPosition}s，使用目标值',
+                );
                 finalPosition = _seekTargetPosition!;
               } else {
                 // 进度已接近 seek 目标，清除保护
@@ -524,7 +581,7 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
                 _seekTargetPosition = null;
               }
             } else if (_seekProtectedUntil != null &&
-                       DateTime.now().isAfter(_seekProtectedUntil!)) {
+                DateTime.now().isAfter(_seekProtectedUntil!)) {
               // 保护窗口已过期，清除
               _seekProtectedUntil = null;
               _seekTargetPosition = null;
@@ -539,7 +596,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
               offset: finalPosition,
             );
 
-            debugPrint('🔄 [MiIoTDirect] 轮询更新: 播放=$isPlaying, 进度=$position/$finalDuration秒, 歌曲=${finalTitle.isEmpty ? "(空)" : finalTitle}');
+            debugPrint(
+              '🔄 [MiIoTDirect] 轮询更新: 播放=$isPlaying, 进度=$position/$finalDuration秒, 歌曲=${finalTitle.isEmpty ? "(空)" : finalTitle}',
+            );
 
             // 🎯 更新通知栏（无论是否有歌曲名，都要更新播放状态）
             // 确保通知栏按钮状态与音箱实际状态一致
@@ -549,17 +608,23 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
             } else {
               // 无歌曲名：只更新播放状态按钮
               if (_audioHandler != null) {
-                _audioHandler!.playbackState.add(_audioHandler!.playbackState.value.copyWith(
-                  playing: isPlaying,
-                  processingState: AudioProcessingState.ready,
-                  updatePosition: Duration(seconds: position), // 🎯 即使无歌曲名也要更新进度
-                  controls: [
-                    MediaControl.skipToPrevious,
-                    isPlaying ? MediaControl.pause : MediaControl.play,
-                    MediaControl.skipToNext,
-                  ],
-                ));
-                debugPrint('🔄 [MiIoTDirect] 已更新通知栏播放状态: $isPlaying, 进度: ${position}s');
+                _audioHandler!.playbackState.add(
+                  _audioHandler!.playbackState.value.copyWith(
+                    playing: isPlaying,
+                    processingState: AudioProcessingState.ready,
+                    updatePosition: Duration(
+                      seconds: position,
+                    ), // 🎯 即使无歌曲名也要更新进度
+                    controls: [
+                      MediaControl.skipToPrevious,
+                      isPlaying ? MediaControl.pause : MediaControl.play,
+                      MediaControl.skipToNext,
+                    ],
+                  ),
+                );
+                debugPrint(
+                  '🔄 [MiIoTDirect] 已更新通知栏播放状态: $isPlaying, 进度: ${position}s',
+                );
               }
             }
           } else {
@@ -577,7 +642,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
                 duration: duration,
                 offset: position,
               );
-              debugPrint('✅ [MiIoTDirect] 已创建状态对象: 播放=$isPlaying, 进度=$position/$duration 秒');
+              debugPrint(
+                '✅ [MiIoTDirect] 已创建状态对象: 播放=$isPlaying, 进度=$position/$duration 秒',
+              );
 
               // 如果有歌曲名，更新通知栏
               if (_currentPlayingMusic!.curMusic.isNotEmpty) {
@@ -617,8 +684,14 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
           //   原因：OH2P 暂停后仍然返回 status=1，保护窗口过期后会错误恢复播放
           //   只有 play()/playMusic() 才能将 isPlaying 从 false 变为 true
           if (isPlaying && !_currentPlayingMusic!.isPlaying) {
-            debugPrint('🛡️ [MiIoTDirect] detail=null 非对称信任：设备报告播放但本地为暂停，保持暂停');
-            isPlaying = false;
+            if (_hasUnreliablePlayStatus()) {
+              debugPrint(
+                '🛡️ [MiIoTDirect] detail=null 非对称信任：设备报告播放但本地为暂停，保持暂停',
+              );
+              isPlaying = false;
+            } else {
+              debugPrint('ℹ️ [MiIoTDirect] detail=null 设备状态可信：设备报告播放，覆盖本地暂停状态');
+            }
           }
 
           // 🎯 边界情况：APP重启后检测到设备正在播放，但本地计时器未初始化
@@ -640,7 +713,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
             duration: _currentPlayingMusic!.duration,
             offset: predictedOffset,
           );
-          debugPrint('🔄 [MiIoTDirect] detail=null，本地预测进度: $predictedOffset/${_currentPlayingMusic!.duration}秒, 播放=$isPlaying');
+          debugPrint(
+            '🔄 [MiIoTDirect] detail=null，本地预测进度: $predictedOffset/${_currentPlayingMusic!.duration}秒, 播放=$isPlaying',
+          );
         }
 
         if (_isWarmupPolling) {
@@ -684,34 +759,48 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
           final hasValidAudioId = audioId != null && audioId.isNotEmpty;
 
           // 🔄 重置保护标志：当 audio_id 变化时（新歌开始播放）
-          if (hasValidAudioId && _isAutoNextTriggered && audioId != _lastCompletedAudioId) {
+          if (hasValidAudioId &&
+              _isAutoNextTriggered &&
+              audioId != _lastCompletedAudioId) {
             _isAutoNextTriggered = false;
-            debugPrint('🔄 [MiIoTDirect] 检测到新歌曲 (audioId: $audioId)，重置自动下一首保护标志');
+            debugPrint(
+              '🔄 [MiIoTDirect] 检测到新歌曲 (audioId: $audioId)，重置自动下一首保护标志',
+            );
           }
 
           // ========== 歌曲完成检测（双保险） ==========
 
           // 方案A：position 接近 duration
-          final isNearEnd = detailDuration > 10 && detailPosition > 10 && (detailDuration - detailPosition) < 6;
+          final isNearEnd =
+              detailDuration > 10 &&
+              detailPosition > 10 &&
+              (detailDuration - detailPosition) < 6;
 
           // 方案B：位置跳跃检测（上一次接近结尾 → 这一次回到开头）
           // 条件：上一次 position 在最后 5 秒内，这一次 position 在前 10 秒内
           // 且是同一首歌（同一个 audio_id）
-          final wasNearEnd = _lastPolledDuration > 10 &&
+          final wasNearEnd =
+              _lastPolledDuration > 10 &&
               _lastPolledPosition > 10 &&
               (_lastPolledDuration - _lastPolledPosition) < 5;
           final jumpedToStart = detailPosition < 10;
           final isPositionJump = wasNearEnd && jumpedToStart;
 
           // 更新上一次的轮询位置（放在检测之后）
-          final shouldTrigger = (isNearEnd || isPositionJump) &&
+          final shouldTrigger =
+              (isNearEnd || isPositionJump) &&
               hasValidAudioId &&
               audioId != _lastCompletedAudioId &&
               !_isAutoNextTriggered;
 
           if (shouldTrigger) {
-            final reason = isNearEnd ? '接近结尾' : '位置跳跃 (${_lastPolledPosition}s→${detailPosition}s)';
-            debugPrint('🎵 [MiIoTDirect] 检测到歌曲播放完成 [$reason]: position=$detailPosition, duration=$detailDuration, audioId=$audioId');
+            final reason =
+                isNearEnd
+                    ? '接近结尾'
+                    : '位置跳跃 (${_lastPolledPosition}s→${detailPosition}s)';
+            debugPrint(
+              '🎵 [MiIoTDirect] 检测到歌曲播放完成 [$reason]: position=$detailPosition, duration=$detailDuration, audioId=$audioId',
+            );
             debugPrint('🎵 [MiIoTDirect] 触发自动下一首...');
 
             // 设置保护标志，防止重复触发
@@ -755,7 +844,8 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     // 1. 定时器对应的歌曲名与当前播放的歌曲名一致（没有被手动切歌）
     // 2. 尚未通过 API 检测触发过自动下一首
     final currentMusic = _currentPlayingMusic?.curMusic ?? '';
-    final isSameSong = currentMusic == expectedMusicName ||
+    final isSameSong =
+        currentMusic == expectedMusicName ||
         expectedMusicName == _backupTimerMusicName;
 
     if (!isSameSong) {
@@ -777,8 +867,10 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         // 实际播放时长还差很远，说明用户暂停了很久导致挂钟超时
         // 重新调度定时器（剩余播放时长 + 5秒缓冲）
         final reschedule = Duration(seconds: remaining + 5);
-        debugPrint('⏭️ [MiIoTDirect] 备用定时器：实际播放 $predictedOffset/$duration 秒，'
-            '剩余 $remaining 秒，未到结尾，重新调度 ${reschedule.inSeconds}秒后再检查');
+        debugPrint(
+          '⏭️ [MiIoTDirect] 备用定时器：实际播放 $predictedOffset/$duration 秒，'
+          '剩余 $remaining 秒，未到结尾，重新调度 ${reschedule.inSeconds}秒后再检查',
+        );
         _backupAutoNextTimer?.cancel();
         _backupAutoNextTimer = Timer(reschedule, () {
           _handleBackupAutoNextTimer(expectedMusicName);
@@ -788,7 +880,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     }
 
     // 🎯 触发自动下一首
-    debugPrint('🎵 [MiIoTDirect] 备用定时器：触发自动下一首！(播放进度: $predictedOffset/$duration)');
+    debugPrint(
+      '🎵 [MiIoTDirect] 备用定时器：触发自动下一首！(播放进度: $predictedOffset/$duration)',
+    );
     _isAutoNextTriggered = true;
 
     if (onSongComplete != null) {
@@ -818,23 +912,31 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     );
 
     // 🎯 同步播放状态到通知栏（修复按钮状态不一致问题）
-    _audioHandler!.playbackState.add(_audioHandler!.playbackState.value.copyWith(
-      playing: _currentPlayingMusic!.isPlaying,
-      processingState: AudioProcessingState.ready,
-      updatePosition: Duration(seconds: _currentPlayingMusic!.offset), // 🎯 关键修复：更新进度条位置
-      controls: [
-        MediaControl.skipToPrevious,
-        _currentPlayingMusic!.isPlaying ? MediaControl.pause : MediaControl.play,
-        MediaControl.skipToNext,
-      ],
-      systemActions: const {
-        MediaAction.seek,
-        MediaAction.seekForward,
-        MediaAction.seekBackward,
-      },
-    ));
+    _audioHandler!.playbackState.add(
+      _audioHandler!.playbackState.value.copyWith(
+        playing: _currentPlayingMusic!.isPlaying,
+        processingState: AudioProcessingState.ready,
+        updatePosition: Duration(
+          seconds: _currentPlayingMusic!.offset,
+        ), // 🎯 关键修复：更新进度条位置
+        controls: [
+          MediaControl.skipToPrevious,
+          _currentPlayingMusic!.isPlaying
+              ? MediaControl.pause
+              : MediaControl.play,
+          MediaControl.skipToNext,
+        ],
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+        },
+      ),
+    );
 
-    debugPrint('🔔 [MiIoTDirect] 通知栏已更新: 歌曲=$title, 播放=${_currentPlayingMusic!.isPlaying}, 进度=${_currentPlayingMusic!.offset}s');
+    debugPrint(
+      '🔔 [MiIoTDirect] 通知栏已更新: 歌曲=$title, 播放=${_currentPlayingMusic!.isPlaying}, 进度=${_currentPlayingMusic!.offset}s',
+    );
   }
 
   /// 初始化音频处理器（通知栏控制）
@@ -861,21 +963,24 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
       );
 
       // 🎯 设置初始播放状态，确保通知栏控制项正常显示
-      _audioHandler!.playbackState.add(_audioHandler!.playbackState.value.copyWith(
-        playing: false,
-        processingState: AudioProcessingState.ready, // 🔧 关键：设置为 ready 才能显示控制项
-        updatePosition: Duration.zero, // 🎯 初始化时进度为0
-        controls: [
-          MediaControl.skipToPrevious,
-          MediaControl.play,
-          MediaControl.skipToNext,
-        ],
-        systemActions: const {
-          MediaAction.seek,
-          MediaAction.seekForward,
-          MediaAction.seekBackward,
-        },
-      ));
+      _audioHandler!.playbackState.add(
+        _audioHandler!.playbackState.value.copyWith(
+          playing: false,
+          processingState:
+              AudioProcessingState.ready, // 🔧 关键：设置为 ready 才能显示控制项
+          updatePosition: Duration.zero, // 🎯 初始化时进度为0
+          controls: [
+            MediaControl.skipToPrevious,
+            MediaControl.play,
+            MediaControl.skipToNext,
+          ],
+          systemActions: const {
+            MediaAction.seek,
+            MediaAction.seekForward,
+            MediaAction.seekBackward,
+          },
+        ),
+      );
 
       debugPrint('🔧 [MiIoTDirect] 已初始化通知栏为直连模式');
     }
@@ -889,11 +994,43 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     debugPrint('🎵 [MiIoTDirect] 执行播放 (设备: $_deviceId)');
 
     try {
+      Future<bool> replayCurrentAsFallback(String reason) async {
+        if (_currentMusicUrl == null || _currentPlayingMusic == null) {
+          debugPrint('⚠️ [MiIoTDirect] 无法执行续播回退（缺少当前歌曲上下文）: reason=$reason');
+          return false;
+        }
+
+        final supportsOffset =
+            _hardware != null &&
+            MiHardwareDetector.supportsStartOffset(_hardware!);
+        final replayOffset =
+            supportsOffset && _currentPlayingMusic!.offset > 0
+                ? _currentPlayingMusic!.offset
+                : null;
+
+        debugPrint(
+          '🔄 [MiIoTDirect] 续播回退：改为重播当前歌曲'
+          ' (reason=$reason, startOffset=${replayOffset ?? 0}s)',
+        );
+
+        await playMusic(
+          musicName: _currentPlayingMusic!.curMusic,
+          url: _currentMusicUrl,
+          duration:
+              _currentPlayingMusic!.duration > 0
+                  ? _currentPlayingMusic!.duration
+                  : null,
+          startOffsetSec: replayOffset,
+        );
+        return true;
+      }
+
       // 🎯 OH2P 等需要 player_play_music API 的设备：
       // player_play_operation('play') 对这类设备无法恢复播放（API 返回 200 但设备无声音）
       // 必须重新发送完整的 player_play_music 命令才能让音箱重新发声
       // 注意：L05B 等设备虽然用 player_play_music 播新歌，但支持正常 resume，不在此列
-      final needsFullReplay = _hardware != null &&
+      final needsFullReplay =
+          _hardware != null &&
           MiHardwareDetector.needsFullReplayOnResume(_hardware!) &&
           _currentMusicUrl != null &&
           _currentPlayingMusic != null;
@@ -901,12 +1038,14 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
       if (needsFullReplay) {
         // 🎯 Bug1 fix: OH2P 不支持 startOffset，resume 必须从头播放
         // 不传 startOffsetSec，让 playMusic 内部和本地计时器都从 0 开始
-        final supportsOffset = _hardware != null &&
+        final supportsOffset =
+            _hardware != null &&
             MiHardwareDetector.supportsStartOffset(_hardware!);
         final resumeOffset = supportsOffset ? _currentPlayingMusic!.offset : 0;
         debugPrint(
-            '🔄 [MiIoTDirect] 设备 $_hardware 不支持 resume，重新发送播放命令'
-            ' (startOffset=${supportsOffset ? "${resumeOffset}s" : "不支持，从头播放"})...');
+          '🔄 [MiIoTDirect] 设备 $_hardware 不支持 resume，重新发送播放命令'
+          ' (startOffset=${supportsOffset ? "${resumeOffset}s" : "不支持，从头播放"})...',
+        );
 
         // 🎯 Bug fix: OH2/OH2P 从头播放时，立即预重置本地进度到 0
         // 原因：playMusic() 的网络请求需要 200–500ms，期间 Provider 仍显示旧 offset
@@ -930,10 +1069,12 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         await playMusic(
           musicName: _currentPlayingMusic!.curMusic,
           url: _currentMusicUrl,
-          duration: _currentPlayingMusic!.duration > 0
-              ? _currentPlayingMusic!.duration
-              : null,
-          startOffsetSec: supportsOffset && resumeOffset > 0 ? resumeOffset : null,
+          duration:
+              _currentPlayingMusic!.duration > 0
+                  ? _currentPlayingMusic!.duration
+                  : null,
+          startOffsetSec:
+              supportsOffset && resumeOffset > 0 ? resumeOffset : null,
         );
         // playMusic() 内部已完整处理状态更新，直接返回
         return;
@@ -942,6 +1083,26 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
       final success = await _miService.resume(_deviceId);
 
       if (success) {
+        // 🎯 通用机型兜底：
+        // 部分设备 resume 返回成功但实际仍未恢复，短轮询确认失败时回退为重播当前歌曲。
+        bool confirmedPlaying = false;
+        for (var i = 0; i < 2; i++) {
+          await Future.delayed(const Duration(milliseconds: 600));
+          final status = await _miService.getPlayStatus(_deviceId);
+          final playStatus = status?['status'];
+          debugPrint(
+            '🔍 [MiIoTDirect] resume确认(${i + 1}/2): status=$playStatus',
+          );
+          if (playStatus == 1) {
+            confirmedPlaying = true;
+            break;
+          }
+        }
+        if (!confirmedPlaying &&
+            await replayCurrentAsFallback('resume返回成功但状态未进入播放')) {
+          return;
+        }
+
         debugPrint('✅ [MiIoTDirect] 播放成功');
 
         // 🎯 立即更新本地播放状态为播放中
@@ -957,20 +1118,27 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         }
 
         // 🛡️ 设置播放保护窗口（5秒内忽略设备返回的"暂停"状态）
-        _playingStateProtectedUntil = DateTime.now().add(const Duration(seconds: 5));
+        _playingStateProtectedUntil = DateTime.now().add(
+          const Duration(seconds: 5),
+        );
         _pauseStateProtectedUntil = null; // 互斥：清除暂停保护
 
         // 🎯 恢复本地计时器：累计暂停时长，清除暂停时间点
         if (_localPauseStartTime != null) {
-          _localAccumulatedPause += DateTime.now().difference(_localPauseStartTime!);
+          _localAccumulatedPause += DateTime.now().difference(
+            _localPauseStartTime!,
+          );
           _localPauseStartTime = null;
-          debugPrint('⏱️ [MiIoTDirect] 本地计时器：恢复计时，累计暂停=${_localAccumulatedPause.inSeconds}秒');
+          debugPrint(
+            '⏱️ [MiIoTDirect] 本地计时器：恢复计时，累计暂停=${_localAccumulatedPause.inSeconds}秒',
+          );
         }
 
         // 通知状态变化
         onStatusChanged?.call(_activeSwitchSessionId);
       } else {
         debugPrint('❌ [MiIoTDirect] 播放失败');
+        await replayCurrentAsFallback('resume接口失败');
       }
     } catch (e) {
       debugPrint('❌ [MiIoTDirect] 播放异常: $e');
@@ -982,9 +1150,34 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
     debugPrint('🎵 [MiIoTDirect] 执行暂停 (设备: $_deviceId)');
 
     try {
+      if (_hardware == null || _hardware!.isEmpty) {
+        await _initializeHardwareInfo();
+      }
+      final hasUnreliablePlayStatus = _hasUnreliablePlayStatus();
       final success = await _miService.pause(_deviceId);
 
       if (success) {
+        var pauseConfirmed = true;
+
+        // 仅在状态可靠设备上做暂停确认，避免 OH2/OH2P 一类设备误判。
+        if (!hasUnreliablePlayStatus) {
+          pauseConfirmed = await _confirmDevicePaused(phase: 'pause');
+          if (!pauseConfirmed && (_currentPlayingMusic?.isPlaying ?? true)) {
+            debugPrint('⚠️ [MiIoTDirect] pause 可能未生效，尝试 toggle 兜底');
+            final toggled = await _miService.toggle(_deviceId);
+            if (toggled) {
+              pauseConfirmed = await _confirmDevicePaused(phase: 'toggle');
+            } else {
+              debugPrint('⚠️ [MiIoTDirect] toggle 调用失败，无法执行兜底暂停');
+            }
+          }
+        }
+
+        if (!pauseConfirmed) {
+          debugPrint('❌ [MiIoTDirect] 暂停未生效，保持当前播放状态');
+          return;
+        }
+
         debugPrint('✅ [MiIoTDirect] 暂停成功');
 
         // 🎯 立即更新本地播放状态为暂停
@@ -1002,7 +1195,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         }
 
         // 🛡️ 设置暂停保护窗口（5秒内忽略设备返回的"播放"状态）
-        _pauseStateProtectedUntil = DateTime.now().add(const Duration(seconds: 5));
+        _pauseStateProtectedUntil = DateTime.now().add(
+          const Duration(seconds: 5),
+        );
         _playingStateProtectedUntil = null; // 互斥：清除播放保护
 
         // 🎯 记录暂停开始时间（用于本地时间预测）
@@ -1032,7 +1227,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
     _currentIndex = (_currentIndex + 1) % _playlist.length;
     final nextMusic = _playlist[_currentIndex];
-    debugPrint('🎵 [MiIoTDirect] 下一首: ${nextMusic.name} (index: $_currentIndex)');
+    debugPrint(
+      '🎵 [MiIoTDirect] 下一首: ${nextMusic.name} (index: $_currentIndex)',
+    );
 
     // 获取音乐URL并播放
     await _playMusicFromPlaylist(nextMusic);
@@ -1049,7 +1246,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
     _currentIndex = (_currentIndex - 1 + _playlist.length) % _playlist.length;
     final prevMusic = _playlist[_currentIndex];
-    debugPrint('🎵 [MiIoTDirect] 上一首: ${prevMusic.name} (index: $_currentIndex)');
+    debugPrint(
+      '🎵 [MiIoTDirect] 上一首: ${prevMusic.name} (index: $_currentIndex)',
+    );
 
     // 获取音乐URL并播放
     await _playMusicFromPlaylist(prevMusic);
@@ -1080,7 +1279,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
   void setPlaylist(List<Music> playlist, {int startIndex = 0}) {
     _playlist = playlist;
     _currentIndex = startIndex;
-    debugPrint('🎵 [MiIoTDirect] 设置播放列表: ${playlist.length} 首歌曲, 起始索引: $startIndex');
+    debugPrint(
+      '🎵 [MiIoTDirect] 设置播放列表: ${playlist.length} 首歌曲, 起始索引: $startIndex',
+    );
   }
 
   /// 获取当前播放列表
@@ -1090,7 +1291,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
   Future<void> seekTo(int seconds) async {
     // 🎯 Bug3 fix: OH2P 等设备不支持 seek，直接忽略
     if (_hardware != null && !MiHardwareDetector.supportsSeek(_hardware!)) {
-      debugPrint('⚠️ [MiIoTDirect] 设备 $_hardware 不支持 seek，忽略 seekTo(${seconds}s)');
+      debugPrint(
+        '⚠️ [MiIoTDirect] 设备 $_hardware 不支持 seek，忽略 seekTo(${seconds}s)',
+      );
       return;
     }
 
@@ -1109,12 +1312,16 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         // 🎯 Seek 期间也保护播放状态：设备 seek 时可能短暂汇报 status=2（缓冲）
         // 不应让 APP 误认为用户暂停了
         if (_currentPlayingMusic?.isPlaying == true) {
-          _playingStateProtectedUntil = DateTime.now().add(const Duration(seconds: 3));
+          _playingStateProtectedUntil = DateTime.now().add(
+            const Duration(seconds: 3),
+          );
           debugPrint('🛡️ [MiIoTDirect] Seek期间保护播放状态: 3秒');
         }
 
         // 🎯 同步本地计时器：重置起始时间 = now - seekPosition
-        _localPlayStartTime = DateTime.now().subtract(Duration(seconds: seconds));
+        _localPlayStartTime = DateTime.now().subtract(
+          Duration(seconds: seconds),
+        );
         _localAccumulatedPause = Duration.zero;
         _localPauseStartTime = null;
 
@@ -1189,7 +1396,8 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
         deviceId: _deviceId,
         musicUrl: url,
         musicName: musicName, // 🎯 传入音乐名称用于生成音频ID
-        durationMs: duration != null ? duration * 1000 : null, // 🎯 传入歌曲时长（秒→毫秒）
+        durationMs:
+            duration != null ? duration * 1000 : null, // 🎯 传入歌曲时长（秒→毫秒）
         startOffsetMs:
             startOffsetSec != null && startOffsetSec > 0
                 ? startOffsetSec * 1000
@@ -1201,15 +1409,18 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
         // 🎯 异步设置设备为单曲循环，防止设备自行播放未知内容
         // APP 端自己管理播放队列和下一首逻辑
-        _miService.setLoopType(_deviceId, 0).then((ok) {
-          if (ok) {
-            debugPrint('🔁 [MiIoTDirect] 已设置设备为单曲循环（APP管理队列）');
-          } else {
-            debugPrint('⚠️ [MiIoTDirect] 设置单曲循环失败，设备可能自行切歌');
-          }
-        }).catchError((e) {
-          debugPrint('⚠️ [MiIoTDirect] 设置单曲循环异常: $e');
-        });
+        _miService
+            .setLoopType(_deviceId, 0)
+            .then((ok) {
+              if (ok) {
+                debugPrint('🔁 [MiIoTDirect] 已设置设备为单曲循环（APP管理队列）');
+              } else {
+                debugPrint('⚠️ [MiIoTDirect] 设置单曲循环失败，设备可能自行切歌');
+              }
+            })
+            .catchError((e) {
+              debugPrint('⚠️ [MiIoTDirect] 设置单曲循环异常: $e');
+            });
 
         // 更新当前播放信息
         _currentPlayingMusic = PlayingMusic(
@@ -1221,7 +1432,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
           offset: startOffsetSec ?? 0, // 🎯 从起始位置开始（恢复播放时为暂停位置，新歌为0）
         );
         debugPrint('✅ [MiIoTDirect] 已设置播放状态: 歌曲=$musicName, 播放=true');
-        debugPrint('🔧 [MiIoTDirect] _currentPlayingMusic.curMusic = "${_currentPlayingMusic!.curMusic}"');
+        debugPrint(
+          '🔧 [MiIoTDirect] _currentPlayingMusic.curMusic = "${_currentPlayingMusic!.curMusic}"',
+        );
 
         // 🎯 保存播放状态到本地（重启后可恢复）
         _saveCurrentPlayingState();
@@ -1241,26 +1454,30 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
           );
 
           // 2️⃣ 🎯 关键修复：更新播放状态和控制按钮
-          _audioHandler!.playbackState.add(_audioHandler!.playbackState.value.copyWith(
-            playing: true, // 设置为播放状态
-            processingState: AudioProcessingState.ready,
-            updatePosition: Duration.zero, // 🎯 播放新歌曲时进度从0开始
-            controls: [
-              MediaControl.skipToPrevious,
-              MediaControl.pause, // 显示暂停按钮
-              MediaControl.skipToNext,
-            ],
-            systemActions: const {
-              MediaAction.seek,
-              MediaAction.seekForward,
-              MediaAction.seekBackward,
-            },
-          ));
+          _audioHandler!.playbackState.add(
+            _audioHandler!.playbackState.value.copyWith(
+              playing: true, // 设置为播放状态
+              processingState: AudioProcessingState.ready,
+              updatePosition: Duration.zero, // 🎯 播放新歌曲时进度从0开始
+              controls: [
+                MediaControl.skipToPrevious,
+                MediaControl.pause, // 显示暂停按钮
+                MediaControl.skipToNext,
+              ],
+              systemActions: const {
+                MediaAction.seek,
+                MediaAction.seekForward,
+                MediaAction.seekBackward,
+              },
+            ),
+          );
           debugPrint('✅ [MiIoTDirect] 已更新通知栏播放状态为播放中（进度:0s）');
         }
 
         // 🛡️ 设置播放状态保护窗口（5秒内忽略轮询返回的"暂停"状态）
-        _playingStateProtectedUntil = DateTime.now().add(const Duration(seconds: 5));
+        _playingStateProtectedUntil = DateTime.now().add(
+          const Duration(seconds: 5),
+        );
         _pauseStateProtectedUntil = null; // 互斥：清除暂停保护
         _seekProtectedUntil = null; // 🎯 新歌开始，清除旧的 seek 保护
         _seekTargetPosition = null;
@@ -1268,9 +1485,10 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
         // 🎯 初始化本地时间预测计时器
         // 恢复播放时从暂停位置开始计时，新歌从 0 开始
-        _localPlayStartTime = startOffsetSec != null && startOffsetSec > 0
-            ? DateTime.now().subtract(Duration(seconds: startOffsetSec))
-            : DateTime.now();
+        _localPlayStartTime =
+            startOffsetSec != null && startOffsetSec > 0
+                ? DateTime.now().subtract(Duration(seconds: startOffsetSec))
+                : DateTime.now();
         _localAccumulatedPause = Duration.zero;
         _localPauseStartTime = null;
         debugPrint('⏱️ [MiIoTDirect] 本地计时器已启动 (起始: ${startOffsetSec ?? 0}s)');
@@ -1285,7 +1503,8 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
           final remaining = (duration - elapsed).clamp(0, duration);
           final timerDuration = Duration(seconds: remaining + 5);
           debugPrint(
-              '⏱️ [MiIoTDirect] 设置备用自动下一首定时器: ${timerDuration.inSeconds}秒 (歌曲时长: ${duration}秒, 起始: ${elapsed}s, 剩余: ${remaining}s)');
+            '⏱️ [MiIoTDirect] 设置备用自动下一首定时器: ${timerDuration.inSeconds}秒 (歌曲时长: ${duration}秒, 起始: ${elapsed}s, 剩余: ${remaining}s)',
+          );
 
           _backupAutoNextTimer = Timer(timerDuration, () {
             _handleBackupAutoNextTimer(musicName);
@@ -1342,7 +1561,9 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
   Future<PlayingMusic?> getCurrentStatus() async {
     // 直连模式无法主动查询播放状态
     // 返回缓存的状态
-    debugPrint('🔍 [MiIoTDirect] getCurrentStatus 被调用，返回: ${_currentPlayingMusic?.curMusic ?? "null"}');
+    debugPrint(
+      '🔍 [MiIoTDirect] getCurrentStatus 被调用，返回: ${_currentPlayingMusic?.curMusic ?? "null"}',
+    );
     return _currentPlayingMusic;
   }
 
@@ -1453,7 +1674,8 @@ class MiIoTDirectPlaybackStrategy implements PlaybackStrategy {
 
     if (_audioHandler != null && _currentPlayingMusic != null) {
       final parts = _currentPlayingMusic!.curMusic.split(' - ');
-      final title = parts.isNotEmpty ? parts[0] : _currentPlayingMusic!.curMusic;
+      final title =
+          parts.isNotEmpty ? parts[0] : _currentPlayingMusic!.curMusic;
       final artist = parts.length > 1 ? parts[1] : _deviceName;
 
       _audioHandler!.setMediaItem(

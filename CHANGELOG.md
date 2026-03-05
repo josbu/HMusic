@@ -5,6 +5,15 @@ All notable changes to HMusic will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-03-05
+
+### Fixed 🐛
+
+- 修复 L06A 在直连模式下暂停可能静默失败的问题：播放控制请求对齐小爱音箱 App（优先 `app_android`）。
+- 修复直连模式暂停状态误判：仅对已知状态不可靠机型应用“非对称信任”策略。
+- 增加暂停确认与兜底逻辑（`pause -> 状态确认 -> toggle`），避免“UI 显示暂停但设备仍播放”。
+- 优化 MiIoT 请求兼容性：`player_get_play_status` 优先空消息体，ubus 域名优先 `api2.mina.xiaoaisound.com`。
+
 ## [2.3.0] - 2026-03-04
 
 ### Added ✨

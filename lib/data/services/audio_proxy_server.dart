@@ -158,7 +158,6 @@ class AudioProxyServer {
       // 🎯 根据上游 URL 域名动态构建请求头（防盗链需要正确的 UA 和 Referer）
       final upstreamHeaders = _getUpstreamHeaders(targetUrl);
 
-
       // 🎯 透传客户端的 Range 请求头（音箱通常会发 Range: bytes=0- 进行分段请求）
       final rangeHeader = request.headers['range'] ?? request.headers['Range'];
       if (rangeHeader != null) {
@@ -167,16 +166,27 @@ class AudioProxyServer {
       }
 
       // 🎯 发起HTTP请求获取音频流
-      final response = await _dio.get(
-        targetUrl,
-        options: Options(
-          responseType: ResponseType.stream,
-          followRedirects: true,
-          maxRedirects: 5,
-          headers: upstreamHeaders,
-          validateStatus: (status) => status! < 500,
-        ),
-      );
+      // 若 URL 从 HTTP 强制升级为 HTTPS 后发生 TLS 主机名校验失败，
+      // 则回退到原始 HTTP 再尝试一次（已在日志中观察到酷我部分 CDN 证书与主机名不匹配）。
+      Response<dynamic> response;
+      try {
+        response = await _requestStream(targetUrl, upstreamHeaders);
+      } catch (e) {
+        final canFallbackToHttp =
+            targetUrl != originalUrl &&
+            originalUrl.startsWith('http://') &&
+            _isTlsHostnameMismatch(e);
+        if (!canFallbackToHttp) rethrow;
+
+        debugPrint(
+          '⚠️ [ProxyServer] HTTPS 握手失败，回退 HTTP 重试: $targetUrl -> $originalUrl',
+        );
+        final fallbackHeaders = _getUpstreamHeaders(originalUrl);
+        if (rangeHeader != null) {
+          fallbackHeaders['Range'] = rangeHeader;
+        }
+        response = await _requestStream(originalUrl, fallbackHeaders);
+      }
 
       // 接受 200 (完整响应) 和 206 (分段响应，Range 请求的正常返回)
       final statusCode = response.statusCode ?? 500;
@@ -194,7 +204,8 @@ class AudioProxyServer {
             ' | 可能原因: (1) CDN URL 已过期 (2) 需要额外 Cookie',
           );
           // 检测网易云 URL 是否含有过期时间戳
-          if (lowerUrl.contains('music.126.net') || lowerUrl.contains('ntes.com')) {
+          if (lowerUrl.contains('music.126.net') ||
+              lowerUrl.contains('ntes.com')) {
             final match = RegExp(r'/(\d{14})/').firstMatch(targetUrl);
             if (match != null) {
               try {
@@ -360,16 +371,14 @@ class AudioProxyServer {
     final lowerUrl = url.toLowerCase();
     // 已知仅支持 HTTPS 的音乐 CDN 域名
     const httpsOnlyDomains = [
-      'music.126.net',   // 网易云音乐
-      'ntes.com',        // 网易
-      'qq.com',          // QQ 音乐
-      'qqmusic.',        // QQ 音乐
-      'kugou.com',       // 酷狗
-      'kgmusic.',        // 酷狗
-      'kuwo.cn',         // 酷我
-      'kuwo.com',        // 酷我
-      'migu.cn',         // 咪咕
-      'miguvideo.',      // 咪咕
+      'music.126.net', // 网易云音乐
+      'ntes.com', // 网易
+      'qq.com', // QQ 音乐
+      'qqmusic.', // QQ 音乐
+      'kugou.com', // 酷狗
+      'kgmusic.', // 酷狗
+      'migu.cn', // 咪咕
+      'miguvideo.', // 咪咕
     ];
 
     if (httpsOnlyDomains.any((d) => lowerUrl.contains(d))) {
@@ -418,5 +427,28 @@ class AudioProxyServer {
     }
 
     return headers;
+  }
+
+  Future<Response<dynamic>> _requestStream(
+    String url,
+    Map<String, String> headers,
+  ) {
+    return _dio.get(
+      url,
+      options: Options(
+        responseType: ResponseType.stream,
+        followRedirects: true,
+        maxRedirects: 5,
+        headers: headers,
+        validateStatus: (status) => status! < 500,
+      ),
+    );
+  }
+
+  bool _isTlsHostnameMismatch(Object error) {
+    final msg = error.toString().toLowerCase();
+    return msg.contains('certificate_verify_failed') ||
+        msg.contains('hostname mismatch') ||
+        msg.contains('handshakeexception');
   }
 }
