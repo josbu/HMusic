@@ -324,19 +324,14 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final seed = const Color(0xFF21B0A5);
+    final seed = const Color(0xFFff3366);
     final appBarToolbarHeight = Platform.isIOS ? 44.0 : kToolbarHeight;
 
-    final lightScheme = ColorScheme.fromSeed(
-      seedColor: seed,
-      brightness: Brightness.light,
-      primary: seed,
-      surface: Colors.white, // 纯白背景
-    );
     final darkScheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.dark,
       primary: seed,
+      surface: const Color(0xFF1e1e2c),
     );
 
     // 在应用构建阶段预热JS代理（读取provider以触发初始化和自动加载）
@@ -344,59 +339,11 @@ class MyApp extends ConsumerWidget {
 
     return MaterialApp.router(
       title: 'HMusic',
-      themeMode: ThemeMode.light,
+      themeMode: ThemeMode.dark,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: lightScheme,
-        scaffoldBackgroundColor: Colors.white, // 使用白色背景，与启动屏一致
-        appBarTheme: AppBarTheme(
-          backgroundColor: Colors.transparent,
-          foregroundColor: Colors.black,
-          elevation: 0,
-          centerTitle: true,
-          toolbarHeight: appBarToolbarHeight,
-          scrolledUnderElevation: 0,
-          systemOverlayStyle: const SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.dark,
-            statusBarBrightness: Brightness.light,
-            systemNavigationBarColor: Colors.transparent,
-            systemNavigationBarIconBrightness: Brightness.dark,
-            systemNavigationBarContrastEnforced: false,
-          ),
-        ),
-        snackBarTheme: SnackBarThemeData(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: const Color(0xFF1C1C1E),
-          contentTextStyle: const TextStyle(color: Colors.white),
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          elevation: 8,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        bottomSheetTheme: BottomSheetThemeData(
-          backgroundColor: lightScheme.surface,
-          surfaceTintColor: Colors.transparent,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          showDragHandle: true,
-          dragHandleColor: lightScheme.onSurface.withOpacity(0.2),
-          dragHandleSize: const Size(40, 5),
-        ),
-        dialogTheme: DialogThemeData(
-          backgroundColor: lightScheme.surface,
-          surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-        ),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
         colorScheme: darkScheme,
-        scaffoldBackgroundColor: darkScheme.surface,
+        scaffoldBackgroundColor: const Color(0xFF0b0b14),
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.transparent,
           foregroundColor: Colors.white,
@@ -404,10 +351,18 @@ class MyApp extends ConsumerWidget {
           centerTitle: true,
           toolbarHeight: appBarToolbarHeight,
           scrolledUnderElevation: 0,
+          systemOverlayStyle: const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.light,
+            systemNavigationBarContrastEnforced: false,
+          ),
         ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
-          backgroundColor: const Color(0xFF1C1C1E),
+          backgroundColor: const Color(0xFF1e1e2c),
           contentTextStyle: const TextStyle(color: Colors.white),
           insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           elevation: 8,
@@ -422,7 +377,55 @@ class MyApp extends ConsumerWidget {
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
           showDragHandle: true,
-          dragHandleColor: darkScheme.onSurface.withOpacity(0.2),
+          dragHandleColor: Colors.white.withOpacity(0.2),
+          dragHandleSize: const Size(40, 5),
+        ),
+        dialogTheme: DialogThemeData(
+          backgroundColor: darkScheme.surface,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorScheme: darkScheme,
+        scaffoldBackgroundColor: const Color(0xFF0b0b14),
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          toolbarHeight: appBarToolbarHeight,
+          scrolledUnderElevation: 0,
+          systemOverlayStyle: const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.light,
+            systemNavigationBarContrastEnforced: false,
+          ),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF1e1e2c),
+          contentTextStyle: const TextStyle(color: Colors.white),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          elevation: 8,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        bottomSheetTheme: BottomSheetThemeData(
+          backgroundColor: darkScheme.surface,
+          surfaceTintColor: Colors.transparent,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          showDragHandle: true,
+          dragHandleColor: Colors.white.withOpacity(0.2),
           dragHandleSize: const Size(40, 5),
         ),
         dialogTheme: DialogThemeData(
