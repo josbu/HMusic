@@ -18,7 +18,8 @@ import '../providers/ssh_settings_provider.dart';
 import '../providers/playlist_provider.dart';
 import '../providers/playback_provider.dart';
 import '../providers/usage_stats_provider.dart';
-import '../providers/direct_mode_provider.dart'; // 🎯 新增：播放模式
+import '../providers/direct_mode_provider.dart';
+import '../providers/device_provider.dart'; // 🎯 新增：播放模式
 import '../providers/local_playlist_provider.dart'; // 🎯 新增：直连模式歌单
 import '../providers/navigation_provider.dart'; // 🎯 新增：Tab 索引管理
 import '../widgets/sponsor_prompt_dialog.dart';
@@ -263,16 +264,16 @@ class _MainPageState extends ConsumerState<MainPage>
     final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
       child: SizedBox(
         height: 56.0, // Standard AppBar height
         child: Row(
           children: [
             Transform.translate(
-              offset: const Offset(0, 8),
+              offset: const Offset(0, 5),
               child: SvgPicture.asset(
                 'assets/hmusic-logo.svg',
-                width: 120,
+                width: 92,
                 fit: BoxFit.fitWidth,
               ),
             ),
@@ -286,7 +287,7 @@ class _MainPageState extends ConsumerState<MainPage>
                   icon: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: onSurface.withOpacity(0.08),
+                      color: onSurface.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
@@ -308,7 +309,7 @@ class _MainPageState extends ConsumerState<MainPage>
                   icon: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: onSurface.withOpacity(0.08),
+                      color: onSurface.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
@@ -322,12 +323,32 @@ class _MainPageState extends ConsumerState<MainPage>
                 ),
               ),
             ),
+            // Device Selection button
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              child: IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: onSurface.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.cast_connected_rounded,
+                    color: onSurface,
+                    size: 20,
+                  ),
+                ),
+                onPressed: () => _showDeviceSelectionDialog(context),
+                tooltip: '选择播放设备',
+              ),
+            ),
             IconButton(
               onPressed: () => context.push('/settings'),
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: onSurface.withOpacity(0.08),
+                  color: onSurface.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(Icons.settings_rounded, color: onSurface, size: 20),
@@ -337,6 +358,165 @@ class _MainPageState extends ConsumerState<MainPage>
         ),
       ),
     );
+  }
+
+  Future<void> _showDeviceSelectionDialog(BuildContext context) async {
+    final playbackMode = ref.read(playbackModeProvider);
+    List<dynamic> devices = [];
+    String? currentDeviceId;
+
+    if (playbackMode == PlaybackMode.miIoTDirect) {
+      final directState = ref.read(directModeProvider);
+      if (directState is DirectModeAuthenticated) {
+        devices = directState.devices;
+        currentDeviceId = directState.playbackDeviceType;
+      }
+    } else {
+      final deviceState = ref.read(deviceProvider);
+      devices = deviceState.devices;
+      currentDeviceId = deviceState.selectedDeviceId;
+    }
+
+    if (playbackMode != PlaybackMode.miIoTDirect && devices.isEmpty) {
+      AppSnackBar.showInfo(context, '没有可用的播放设备');
+      return;
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final onSurface = colorScheme.onSurface;
+    final selectedDeviceId = await showDialog<String>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: colorScheme.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Text(
+              '选择播放设备',
+              style: TextStyle(
+                color: onSurface,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360, maxHeight: 420),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  if (playbackMode == PlaybackMode.miIoTDirect)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        Icons.smartphone_rounded,
+                        color:
+                            currentDeviceId == 'local'
+                                ? colorScheme.primary
+                                : onSurface.withValues(alpha: 0.78),
+                      ),
+                      title: Text(
+                        '本机播放',
+                        style: TextStyle(
+                          color:
+                              currentDeviceId == 'local'
+                                  ? colorScheme.primary
+                                  : onSurface,
+                          fontWeight:
+                              currentDeviceId == 'local'
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '在当前设备上播放',
+                        style: TextStyle(
+                          color: onSurface.withValues(alpha: 0.6),
+                          fontSize: 12,
+                        ),
+                      ),
+                      trailing:
+                          currentDeviceId == 'local'
+                              ? Icon(
+                                Icons.check_circle_rounded,
+                                color: colorScheme.primary,
+                              )
+                              : null,
+                      onTap: () => Navigator.of(context).pop('local'),
+                    ),
+                  if (playbackMode == PlaybackMode.miIoTDirect &&
+                      devices.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(0, 8, 0, 6),
+                      child: Text(
+                        '音箱设备',
+                        style: TextStyle(
+                          color: onSurface.withValues(alpha: 0.55),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ...devices.map((device) {
+                    final isMiDevice = playbackMode == PlaybackMode.miIoTDirect;
+                    final id = isMiDevice ? device.deviceId : device.id;
+                    final name = device.name;
+                    final isOnline =
+                        isMiDevice ? true : (device.isOnline ?? false);
+                    final isSelected = id == currentDeviceId;
+
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        isMiDevice
+                            ? Icons.speaker_rounded
+                            : Icons.speaker_group_rounded,
+                        color:
+                            isOnline
+                                ? (isSelected
+                                    ? colorScheme.primary
+                                    : Colors.green)
+                                : onSurface.withValues(alpha: 0.35),
+                      ),
+                      title: Text(
+                        name,
+                        style: TextStyle(
+                          color: isSelected ? colorScheme.primary : onSurface,
+                          fontWeight:
+                              isSelected ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                      subtitle: Text(
+                        isOnline ? '在线' : '离线',
+                        style: TextStyle(
+                          color: onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                      trailing:
+                          isSelected
+                              ? Icon(
+                                Icons.check_circle_rounded,
+                                color: colorScheme.primary,
+                              )
+                              : null,
+                      onTap: () => Navigator.of(context).pop(id),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+    );
+
+    if (selectedDeviceId != null && selectedDeviceId != currentDeviceId) {
+      if (playbackMode == PlaybackMode.miIoTDirect) {
+        await ref
+            .read(directModeProvider.notifier)
+            .selectPlaybackDevice(selectedDeviceId);
+      } else {
+        ref.read(deviceProvider.notifier).selectDevice(selectedDeviceId);
+      }
+    }
   }
 
   Widget _buildSecondarySection() {
@@ -360,17 +540,17 @@ class _MainPageState extends ConsumerState<MainPage>
             style: TextStyle(color: onSurface),
             decoration: InputDecoration(
               hintText: '在线搜索歌曲...',
-              hintStyle: TextStyle(color: onSurface.withOpacity(0.5)),
+              hintStyle: TextStyle(color: onSurface.withValues(alpha: 0.5)),
               prefixIcon: Icon(
                 Icons.search_rounded,
-                color: onSurface.withOpacity(0.6),
+                color: onSurface.withValues(alpha: 0.6),
               ),
               suffixIcon:
                   value.text.isNotEmpty
                       ? IconButton(
                         icon: Icon(
                           Icons.clear_rounded,
-                          color: onSurface.withOpacity(0.6),
+                          color: onSurface.withValues(alpha: 0.6),
                         ),
                         onPressed: () {
                           _searchController.clear();
@@ -379,7 +559,7 @@ class _MainPageState extends ConsumerState<MainPage>
                       )
                       : null,
               filled: true,
-              fillColor: onSurface.withOpacity(0.05),
+              fillColor: onSurface.withValues(alpha: 0.05),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16.0),
                 borderSide: BorderSide.none,
@@ -400,22 +580,22 @@ class _MainPageState extends ConsumerState<MainPage>
 
     return Container(
       margin: EdgeInsets.only(
-        left: 20,
-        right: 20,
+        left: 24,
+        right: 24,
         bottom: bottomMargin,
         top: 10,
       ),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
-          color: Colors.black.withValues(alpha: 0.06),
+          color: Colors.white.withValues(alpha: 0.08),
           width: 1,
-        ), // 更淡的边框
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04), // 更淡的阴影
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 28,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -426,7 +606,7 @@ class _MainPageState extends ConsumerState<MainPage>
           child: Container(
             height: 68,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.20), // 更透明
+              color: const Color(0xFF4A4D59).withValues(alpha: 0.86),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -528,6 +708,10 @@ class _MainPageState extends ConsumerState<MainPage>
         allowMultiple: true,
         withData: false, // We only need paths for uploads
       );
+
+      if (!mounted) {
+        return;
+      }
 
       if (result != null && result.files.isNotEmpty) {
         // Show upload confirmation dialog
