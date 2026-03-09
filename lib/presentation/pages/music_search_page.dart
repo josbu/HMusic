@@ -1093,7 +1093,12 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
   /// 📋 添加到本地歌单（元音乐）
   Future<void> _addToPlaylist(OnlineMusicResult item) async {
     try {
-      final playlists = ref.read(localPlaylistProvider).playlists;
+      final playbackMode = ref.read(playbackModeProvider);
+      final modeScope =
+          playbackMode == PlaybackMode.miIoTDirect ? 'direct' : 'xiaomusic';
+      final playlists = ref
+          .read(localPlaylistProvider.notifier)
+          .getVisiblePlaylists(playbackMode);
 
       if (playlists.isEmpty) {
         // 没有歌单，直接在这里创建并添加歌曲
@@ -1106,7 +1111,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
 
             await ref
                 .read(localPlaylistProvider.notifier)
-                .createPlaylist(newPlaylistName);
+                .createPlaylist(newPlaylistName, modeScope: modeScope);
 
             final song = LocalPlaylistSong.fromOnlineMusic(
               title: item.title,

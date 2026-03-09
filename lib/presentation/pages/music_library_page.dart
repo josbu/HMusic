@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/utils/platform_id.dart';
+import '../../data/models/local_playlist.dart';
+import '../../data/services/song_resolver_service.dart';
 import '../widgets/app_snackbar.dart';
 import '../widgets/app_bottom_sheet.dart';
 import '../providers/music_library_provider.dart';
@@ -56,7 +59,8 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
 
       // 🔧 监听模式切换，确保切换到 xiaomusic 模式时刷新数据
       ref.listenManual(playbackModeProvider, (previous, next) {
-        if (previous == PlaybackMode.miIoTDirect && next == PlaybackMode.xiaomusic) {
+        if (previous == PlaybackMode.miIoTDirect &&
+            next == PlaybackMode.xiaomusic) {
           debugPrint('🎯 [MusicLibrary] 从直连模式切换到 xiaomusic 模式，刷新音乐库');
           _refreshXiaomusicLibraryIfNeeded();
         }
@@ -71,7 +75,9 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
       debugPrint('🎯 [MusicLibrary] xiaomusic 模式：手动触发音乐库加载');
       ref.read(musicLibraryProvider.notifier).refreshLibrary();
     } else {
-      debugPrint('🎯 [MusicLibrary] xiaomusic 模式：音乐库已加载 ${libraryState.musicList.length} 首');
+      debugPrint(
+        '🎯 [MusicLibrary] xiaomusic 模式：音乐库已加载 ${libraryState.musicList.length} 首',
+      );
     }
   }
 
@@ -97,43 +103,175 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
     setState(() {});
   }
 
-  void _playMusic(String musicName) async {
-    final selectedDid = ref.read(deviceProvider).selectedDeviceId;
-    if (selectedDid == null) {
-      if (mounted) {
-        AppSnackBar.showWarning(context, '请先在设置中配置 NAS 服务器');
+  _DirectModeSongRef? _findDirectModeSongRef(Music music) {
+    final visiblePlaylists = ref
+        .read(localPlaylistProvider.notifier)
+        .getVisiblePlaylists(PlaybackMode.miIoTDirect);
+
+    for (final playlist in visiblePlaylists) {
+      for (var index = 0; index < playlist.songs.length; index++) {
+        final song = playlist.songs[index];
+        final isSameDisplayName = song.displayName == music.name;
+        final isSameSong =
+            (music.title?.isNotEmpty == true
+                ? song.title == music.title
+                : true) &&
+            (music.artist?.isNotEmpty == true
+                ? song.artist == music.artist
+                : true);
+        if (isSameDisplayName || isSameSong) {
+          return _DirectModeSongRef(
+            playlistName: playlist.name,
+            songIndex: index,
+            song: song,
+          );
+        }
       }
-      return;
     }
 
-    try {
-      // 🎵 获取当前的音乐列表（用于本地播放的上一曲/下一曲功能）
-      final libraryState = ref.read(musicLibraryProvider);
-      final playlist = libraryState.searchQuery.isEmpty
-          ? libraryState.musicList
-          : libraryState.filteredMusicList;
+    return null;
+  }
 
-      await ref.read(playbackProvider.notifier).playMusic(
-            deviceId: selectedDid,
-            musicName: musicName,
-            playlist: playlist, // 🎵 传递播放列表
-            playlistName: libraryState.searchQuery.isNotEmpty
-                ? '搜索: ${libraryState.searchQuery}'
-                : '曲库',
-          );
+  Future<({String? url, int? duration})> _resolveDirectModeSongUrl(
+    _DirectModeSongRef songRef,
+  ) async {
+    final song = songRef.song;
+
+    if (song.localPath != null && song.localPath!.isNotEmpty) {
+      return (url: song.localPath, duration: song.duration);
+    }
+
+    if (song.isCacheValid) {
+      return (url: song.cachedUrl, duration: song.duration);
+    }
+
+    final platform = PlatformId.normalize(song.platform ?? PlatformId.tx);
+    final songId = song.songId ?? '';
+    if (songId.isEmpty) {
+      return (url: null, duration: song.duration);
+    }
+
+    final resolver = ref.read(songResolverServiceProvider);
+    final resolved = await resolver.resolveSong(
+      SongResolveRequest(
+        title: song.title,
+        artist: song.artist,
+        coverUrl: song.coverUrl,
+        duration: song.duration,
+        originalPlatform: platform,
+        originalSongId: songId,
+        knownPlatformSongIds: song.platformSongIds ?? const {},
+        quality: '320k',
+      ),
+    );
+
+    if (resolved == null) {
+      return (url: null, duration: song.duration);
+    }
+
+    await ref
+        .read(localPlaylistProvider.notifier)
+        .updateSongFields(
+          playlistName: songRef.playlistName,
+          songIndex: songRef.songIndex,
+          cachedUrl: resolved.url,
+          duration: resolved.duration ?? song.duration,
+          platformSongIds: resolved.platformSongIds,
+        );
+
+    return (url: resolved.url, duration: resolved.duration ?? song.duration);
+  }
+
+  Future<void> _playMusic(Music music, MusicLibraryState libraryState) async {
+    final playbackMode = ref.read(playbackModeProvider);
+    final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
+
+    try {
+      if (isDirectMode) {
+        final directState = ref.read(directModeProvider);
+        if (directState is! DirectModeAuthenticated) {
+          if (mounted) {
+            AppSnackBar.showWarning(context, '请先登录直连模式');
+          }
+          return;
+        }
+        if (directState.playbackDeviceType.isEmpty) {
+          if (mounted) {
+            AppSnackBar.showWarning(context, '请先在控制页选择播放设备');
+          }
+          return;
+        }
+
+        final songRef = _findDirectModeSongRef(music);
+        if (songRef == null) {
+          if (mounted) {
+            AppSnackBar.showError(context, '未找到可播放的直连歌曲信息');
+          }
+          return;
+        }
+
+        final resolved = await _resolveDirectModeSongUrl(songRef);
+        final playUrl = resolved.url;
+        if (playUrl == null || playUrl.isEmpty) {
+          if (mounted) {
+            AppSnackBar.showError(context, '无法解析播放链接: ${music.name}');
+          }
+          return;
+        }
+
+        final playlist = libraryState.filteredMusicList.cast<Music>();
+        final startIndex = playlist.indexWhere(
+          (item) => item.name == music.name,
+        );
+
+        await ref
+            .read(playbackProvider.notifier)
+            .playMusic(
+              deviceId: directState.playbackDeviceType,
+              musicName: music.name,
+              url: playUrl,
+              albumCoverUrl: songRef.song.coverUrl,
+              playlist: playlist,
+              startIndex: startIndex >= 0 ? startIndex : null,
+              playlistName:
+                  libraryState.searchQuery.isNotEmpty
+                      ? '搜索: ${libraryState.searchQuery}'
+                      : '曲库',
+              duration: resolved.duration,
+            );
+      } else {
+        final selectedDid = ref.read(deviceProvider).selectedDeviceId;
+        if (selectedDid == null) {
+          if (mounted) {
+            AppSnackBar.showWarning(context, '请先在设置中配置 NAS 服务器');
+          }
+          return;
+        }
+
+        final playlist =
+            libraryState.searchQuery.isEmpty
+                ? libraryState.musicList
+                : libraryState.filteredMusicList;
+
+        await ref
+            .read(playbackProvider.notifier)
+            .playMusic(
+              deviceId: selectedDid,
+              musicName: music.name,
+              playlist: playlist,
+              playlistName:
+                  libraryState.searchQuery.isNotEmpty
+                      ? '搜索: ${libraryState.searchQuery}'
+                      : '曲库',
+            );
+      }
 
       if (mounted) {
-        AppSnackBar.showSuccess(
-          context,
-          '正在播放: $musicName',
-        );
+        AppSnackBar.showSuccess(context, '正在播放: ${music.name}');
       }
     } catch (e) {
       if (mounted) {
-        AppSnackBar.showError(
-          context,
-          '播放失败: $e',
-        );
+        AppSnackBar.showError(context, '播放失败: $e');
       }
     }
   }
@@ -143,27 +281,30 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
   void _deleteMusic(String musicName) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除音乐'),
-        content: const Text('确定要删除该音乐吗？此操作不可撤销。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('删除音乐'),
+            content: const Text('确定要删除该音乐吗？此操作不可撤销。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  ref
+                      .read(musicLibraryProvider.notifier)
+                      .deleteMusic(musicName);
+                  Navigator.pop(context);
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                  foregroundColor: Theme.of(context).colorScheme.onError,
+                ),
+                child: const Text('删除'),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () {
-              ref.read(musicLibraryProvider.notifier).deleteMusic(musicName);
-              Navigator.pop(context);
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -174,9 +315,10 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
     final isDirectMode = playbackMode == PlaybackMode.miIoTDirect;
 
     // 🎯 根据模式选择数据源
-    final libraryState = isDirectMode
-        ? _buildDirectModeLibraryState() // 直连模式：从本地歌单收集
-        : ref.watch(musicLibraryProvider); // xiaomusic 模式：从服务器读取
+    final libraryState =
+        isDirectMode
+            ? _buildDirectModeLibraryState() // 直连模式：从本地歌单收集
+            : ref.watch(musicLibraryProvider); // xiaomusic 模式：从服务器读取
 
     final onSurface = Theme.of(context).colorScheme.onSurface;
 
@@ -238,12 +380,14 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
         final key = '${song.title}_${song.artist}';
         if (!seenSongs.contains(key)) {
           seenSongs.add(key);
-          allSongs.add(Music(
-            name: song.displayName, // 显示名称（标题 - 歌手）
-            title: song.title,
-            artist: song.artist,
-            picture: song.coverUrl,
-          ));
+          allSongs.add(
+            Music(
+              name: song.displayName, // 显示名称（标题 - 歌手）
+              title: song.title,
+              artist: song.artist,
+              picture: song.coverUrl,
+            ),
+          );
         }
       }
     }
@@ -686,14 +830,14 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
                         .read(musicLibraryProvider.notifier)
                         .toggleMusicSelection(music.name);
                   } else {
-                    _playMusic(music.name);
+                    _playMusic(music, libraryState);
                   }
                 },
-                onPlay: () => _playMusic(music.name),
+                onPlay: () => _playMusic(music, libraryState),
                 trailing:
                     libraryState.isSelectionMode
                         ? _buildSelectionCheckbox(music, libraryState)
-                        : _buildMusicItemMenu(music),
+                        : _buildMusicItemMenu(music, libraryState),
               ),
             ),
           );
@@ -702,7 +846,7 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
     );
   }
 
-  Widget _buildMusicItemMenu(dynamic music) {
+  Widget _buildMusicItemMenu(dynamic music, MusicLibraryState libraryState) {
     return PopupMenuButton<String>(
       icon: Container(
         padding: const EdgeInsets.all(8),
@@ -720,7 +864,7 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
       onSelected: (value) {
         switch (value) {
           case 'play':
-            _playMusic(music.name);
+            _playMusic(music, libraryState);
             break;
           case 'add':
             _showAddToPlaylistDialog(music.name);
@@ -729,7 +873,7 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
             _deleteMusic(music.name);
             break;
           case 'info':
-            _showMusicInfo(music);
+            _showMusicInfo(music, libraryState);
             break;
         }
       },
@@ -813,48 +957,44 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
   void _showBatchDeleteDialog(MusicLibraryState libraryState) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('批量删除音乐'),
-        content: Text(
-          '确定要删除选中的 ${libraryState.selectedMusicNames.length} 首音乐吗？\n\n此操作不可撤销。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await ref.read(musicLibraryProvider.notifier).deleteSelectedMusic();
-              if (mounted) {
-                AppSnackBar.showSuccess(
-                  context,
-                  '已删除 ${libraryState.selectedMusicNames.length} 首音乐',
-                );
-              }
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('批量删除音乐'),
+            content: Text(
+              '确定要删除选中的 ${libraryState.selectedMusicNames.length} 首音乐吗？\n\n此操作不可撤销。',
             ),
-            child: const Text('删除'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await ref
+                      .read(musicLibraryProvider.notifier)
+                      .deleteSelectedMusic();
+                  if (mounted) {
+                    AppSnackBar.showSuccess(
+                      context,
+                      '已删除 ${libraryState.selectedMusicNames.length} 首音乐',
+                    );
+                  }
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                  foregroundColor: Theme.of(context).colorScheme.onError,
+                ),
+                child: const Text('删除'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   /// 检查是否为虚拟播放列表
   bool _isVirtualPlaylist(String playlistName) {
-    const virtualPlaylists = [
-      '下载',
-      '所有歌曲',
-      '全部',
-      '临时搜索列表',
-      '在线播放',
-      '最近新增',
-    ];
+    const virtualPlaylists = ['下载', '所有歌曲', '全部', '临时搜索列表', '在线播放', '最近新增'];
     return virtualPlaylists.contains(playlistName);
   }
 
@@ -866,9 +1006,8 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
     final allPlaylists = playlistState.playlists;
 
     // 过滤掉虚拟歌单(虚拟列表不能作为目标)
-    final availablePlaylists = allPlaylists
-        .where((p) => !_isVirtualPlaylist(p.name))
-        .toList();
+    final availablePlaylists =
+        allPlaylists.where((p) => !_isVirtualPlaylist(p.name)).toList();
 
     if (availablePlaylists.isEmpty) {
       if (mounted) {
@@ -895,9 +1034,10 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
                     return ListTile(
                       leading: const Icon(Icons.playlist_play_rounded),
                       title: Text(playlist.name),
-                      subtitle: playlist.count != null
-                          ? Text('${playlist.count} 首歌曲')
-                          : null,
+                      subtitle:
+                          playlist.count != null
+                              ? Text('${playlist.count} 首歌曲')
+                              : null,
                       onTap: () => Navigator.pop(context, playlist.name),
                     );
                   },
@@ -914,15 +1054,14 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
 
     // 添加到歌单
     try {
-      await ref.read(playlistProvider.notifier).addMusicToPlaylist(
+      await ref
+          .read(playlistProvider.notifier)
+          .addMusicToPlaylist(
             musicNames: [musicName],
             playlistName: selectedPlaylist,
           );
       if (mounted) {
-        AppSnackBar.showSuccess(
-          context,
-          '已添加到 $selectedPlaylist',
-        );
+        AppSnackBar.showSuccess(context, '已添加到 $selectedPlaylist');
       }
     } catch (e) {
       if (mounted) {
@@ -932,7 +1071,10 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
   }
 
   /// 获取包含指定歌曲的歌单(从当前已加载的歌单数据中查找)
-  List<String> _getPlaylistsContainingMusic(String musicName, PlaylistState playlistState) {
+  List<String> _getPlaylistsContainingMusic(
+    String musicName,
+    PlaylistState playlistState,
+  ) {
     final containingPlaylists = <String>[];
 
     for (final playlist in playlistState.playlists) {
@@ -942,7 +1084,8 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
       }
 
       // 检查歌单的歌曲列表中是否包含此歌曲
-      if (playlist.musicList != null && playlist.musicList!.contains(musicName)) {
+      if (playlist.musicList != null &&
+          playlist.musicList!.contains(musicName)) {
         containingPlaylists.add(playlist.name);
       }
     }
@@ -950,167 +1093,207 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
     return containingPlaylists;
   }
 
-  void _showMusicInfo(music) {
+  void _showMusicInfo(music, MusicLibraryState libraryState) {
     final primary = Theme.of(context).colorScheme.primary;
     final colorScheme = Theme.of(context).colorScheme;
     final ext = music.name.contains('.') ? music.name.split('.').last : '未知';
 
     // 获取包含此歌曲的歌单
     final playlistState = ref.read(playlistProvider);
-    final containingPlaylists = _getPlaylistsContainingMusic(music.name, playlistState);
+    final containingPlaylists = _getPlaylistsContainingMusic(
+      music.name,
+      playlistState,
+    );
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          music.title ?? music.name,
-          style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (music.artist != null)
-                Row(
-                  children: [
-                    Icon(Icons.person_rounded, color: primary, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        music.artist!,
-                        style: TextStyle(color: colorScheme.onSurfaceVariant),
-                      ),
-                    ),
-                  ],
-                ),
-              if (music.artist != null) const SizedBox(height: 8),
-              if (music.album != null)
-                Row(
-                  children: [
-                    Icon(Icons.album_rounded, color: primary, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        music.album!,
-                        style: TextStyle(color: colorScheme.onSurfaceVariant),
-                      ),
-                    ),
-                  ],
-                ),
-              if (music.album != null) const SizedBox(height: 8),
-              if (music.duration != null)
-                Row(
-                  children: [
-                    Icon(Icons.access_time_rounded, color: primary, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        music.duration!,
-                        style: TextStyle(color: colorScheme.onSurfaceVariant),
-                      ),
-                    ),
-                  ],
-                ),
-              if (music.duration != null) const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.insert_drive_file_rounded, color: primary, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      music.name,
-                      style: TextStyle(color: colorScheme.onSurface),
-                    ),
-                  ),
-                ],
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              music.title ?? music.name,
+              style: TextStyle(
+                color: colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(height: 8),
-              Row(
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.tag_rounded, color: primary, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '后缀: $ext',
-                      style: TextStyle(color: colorScheme.onSurfaceVariant),
-                    ),
-                  ),
-                ],
-              ),
-              // 显示包含此歌曲的歌单
-              if (containingPlaylists.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                const Divider(),
-                const SizedBox(height: 8),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.playlist_play_rounded, color: primary, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '所属歌单:',
+                  if (music.artist != null)
+                    Row(
+                      children: [
+                        Icon(Icons.person_rounded, color: primary, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            music.artist!,
                             style: TextStyle(
-                              color: colorScheme.onSurface,
-                              fontWeight: FontWeight.w500,
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: containingPlaylists.map((playlistName) {
-                              return Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: primary.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: primary.withOpacity(0.3),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Text(
-                                  playlistName,
-                                  style: TextStyle(
-                                    color: primary,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              );
-                            }).toList(),
+                        ),
+                      ],
+                    ),
+                  if (music.artist != null) const SizedBox(height: 8),
+                  if (music.album != null)
+                    Row(
+                      children: [
+                        Icon(Icons.album_rounded, color: primary, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            music.album!,
+                            style: TextStyle(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                        ],
+                        ),
+                      ],
+                    ),
+                  if (music.album != null) const SizedBox(height: 8),
+                  if (music.duration != null)
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.access_time_rounded,
+                          color: primary,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            music.duration!,
+                            style: TextStyle(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  if (music.duration != null) const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.insert_drive_file_rounded,
+                        color: primary,
+                        size: 18,
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          music.name,
+                          style: TextStyle(color: colorScheme.onSurface),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.tag_rounded, color: primary, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '后缀: $ext',
+                          style: TextStyle(color: colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // 显示包含此歌曲的歌单
+                  if (containingPlaylists.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.playlist_play_rounded,
+                          color: primary,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '所属歌单:',
+                                style: TextStyle(
+                                  color: colorScheme.onSurface,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children:
+                                    containingPlaylists.map((playlistName) {
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: primary.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: primary.withOpacity(0.3),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          playlistName,
+                                          style: TextStyle(
+                                            color: primary,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
-                ),
-              ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('关闭'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _playMusic(music, libraryState);
+                },
+                child: const Text('播放'),
+              ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _playMusic(music.name);
-            },
-            child: const Text('播放'),
-          ),
-        ],
-      ),
     );
   }
+}
+
+class _DirectModeSongRef {
+  const _DirectModeSongRef({
+    required this.playlistName,
+    required this.songIndex,
+    required this.song,
+  });
+
+  final String playlistName;
+  final int songIndex;
+  final LocalPlaylistSong song;
 }
