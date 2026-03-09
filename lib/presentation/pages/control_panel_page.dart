@@ -245,8 +245,11 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
 
     final double topGap = 6.0 * scale;
     final double coverInfoGap = 20.0 * scale;
-    final double infoProgressGap = 32.0 * scale;
-    final double progressControlsGap = 32.0 * scale;
+
+    // Balance the gaps above and below the progress bar
+    // Decrease the top gap and increase the bottom gap to achieve visual symmetry.
+    final double infoProgressGap = 16.0 * scale;
+    final double progressControlsGap = 40.0 * scale;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -255,7 +258,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
         children: [
           SizedBox(height: topGap),
           // 1. 顶部大封面
-          _buildAlbumArtwork(currentMusic, isPlaying),
+          _buildAlbumArtwork(currentMusic, isPlaying, contentWidth),
 
           SizedBox(height: coverInfoGap),
 
@@ -710,19 +713,20 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     ).push(MaterialPageRoute(builder: (context) => const LyricsPage()));
   }
 
-  Widget _buildAlbumArtwork(dynamic currentMusic, bool isPlaying) {
+  Widget _buildAlbumArtwork(
+    dynamic currentMusic,
+    bool isPlaying,
+    double contentWidth,
+  ) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-    // 使用宽度和高度的较小值来约束，确保在短屏幕上不会过大
-    final containerSize =
-        (screenWidth - 48).clamp(220.0, screenHeight * 0.38).toDouble();
-    final coverSize = containerSize * 0.62;
-    final recordSize = coverSize * 0.9;
-    final frameInset = containerSize * 0.06;
+
+    // Use the exact contentWidth logic to perfectly align with the song info below.
+    final coverSize = contentWidth * 0.65;
+    // The record disc peeks out from the right.
+    final recordSize = coverSize * 0.95;
     final coverTop = 2.0;
     final recordTop = coverTop + (coverSize - recordSize) / 2;
-    final recordLeft = frameInset + coverSize * 0.56;
+
     // ✨ 获取封面图 URL
     final playbackState = ref.watch(playbackProvider);
     final coverUrl = playbackState.albumCoverUrl;
@@ -734,12 +738,12 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
         },
         behavior: HitTestBehavior.opaque,
         child: SizedBox(
-          width: containerSize,
+          width: contentWidth,
           height: coverSize + 14,
           child: Stack(
             children: [
               Positioned(
-                left: recordLeft,
+                right: 0,
                 top: recordTop,
                 child: RotationTransition(
                   turns: _albumAnimationController ?? kAlwaysCompleteAnimation,
@@ -824,7 +828,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                 ),
               ),
               Positioned(
-                left: frameInset,
+                left: 0,
                 top: coverTop,
                 child: Container(
                   width: coverSize,
@@ -1114,14 +1118,13 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
             trackHeight: 3.5,
-            trackShape: const RoundedRectSliderTrackShape(),
             activeTrackColor: accentColor,
             inactiveTrackColor: onSurface.withValues(alpha: 0.14),
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5.5),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
             thumbColor: Colors.white,
             overlayColor: accentColor.withValues(alpha: 0.16),
-            padding: const EdgeInsets.symmetric(horizontal: 4),
+            trackShape: const _CustomTrackShape(),
           ),
           child: Slider(
             value: progress,
@@ -1153,7 +1156,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
         ),
         const SizedBox(height: 4),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -1187,7 +1190,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5.5),
             thumbColor: onSurface.withValues(alpha: 0.28),
             overlayColor: Colors.transparent,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
+            trackShape: const _CustomTrackShape(),
           ),
           child: Slider(value: 0, min: 0, max: 1, onChanged: null),
         ),
@@ -1243,34 +1246,37 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     final enabled = hasSelectedDevice && !state.isLoading;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 0.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          SizedBox(
-            width: 44,
-            height: 44,
-            child: IconButton(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              icon: Icon(state.playMode.icon),
-              iconSize: 22,
-              color:
-                  enabled
-                      ? onSurface.withValues(alpha: 0.62)
-                      : onSurface.withValues(alpha: 0.3),
-              onPressed:
-                  enabled
-                      ? () {
-                        final currentMode = state.playMode;
-                        final nextMode =
-                            PlayMode.values[(currentMode.index + 1) %
-                                PlayMode.values.length];
-                        ref
-                            .read(playbackProvider.notifier)
-                            .switchPlayMode(nextMode);
-                      }
-                      : null,
-              tooltip: state.playMode.displayName,
+          Transform.translate(
+            offset: const Offset(-11, 0),
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                icon: Icon(state.playMode.icon),
+                iconSize: 22,
+                color:
+                    enabled
+                        ? onSurface.withValues(alpha: 0.62)
+                        : onSurface.withValues(alpha: 0.3),
+                onPressed:
+                    enabled
+                        ? () {
+                          final currentMode = state.playMode;
+                          final nextMode =
+                              PlayMode.values[(currentMode.index + 1) %
+                                  PlayMode.values.length];
+                          ref
+                              .read(playbackProvider.notifier)
+                              .switchPlayMode(nextMode);
+                        }
+                        : null,
+                tooltip: state.playMode.displayName,
+              ),
             ),
           ),
           _buildControlButton(
@@ -1292,63 +1298,66 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
             color: onSurface,
             onPressed: () => ref.read(playbackProvider.notifier).next(),
           ),
-          SizedBox(
-            width: 44,
-            height: 44,
-            child: GestureDetector(
-              onLongPress:
-                  enabled && state.timerMinutes > 0
-                      ? () {
-                        ref.read(playbackProvider.notifier).cancelTimer();
-                      }
-                      : null,
-              child: Stack(
-                alignment: Alignment.center,
-                clipBehavior: Clip.none,
-                children: [
-                  IconButton(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    icon: const Icon(Icons.timer_outlined),
-                    iconSize: 22,
-                    color:
-                        enabled
-                            ? (state.timerMinutes > 0
-                                ? Colors.orangeAccent
-                                : onSurface.withValues(alpha: 0.62))
-                            : onSurface.withValues(alpha: 0.3),
-                    onPressed:
-                        enabled
-                            ? () => _showTimerBottomSheet(context, state)
-                            : null,
-                  ),
-                  if (state.timerMinutes > 0)
-                    Positioned(
-                      top: -1,
-                      right: -2,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orangeAccent,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.surface,
-                            width: 1.5,
+          Transform.translate(
+            offset: const Offset(11, 0),
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: GestureDetector(
+                onLongPress:
+                    enabled && state.timerMinutes > 0
+                        ? () {
+                          ref.read(playbackProvider.notifier).cancelTimer();
+                        }
+                        : null,
+                child: Stack(
+                  alignment: Alignment.center,
+                  clipBehavior: Clip.none,
+                  children: [
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.timer_outlined),
+                      iconSize: 22,
+                      color:
+                          enabled
+                              ? (state.timerMinutes > 0
+                                  ? Colors.orangeAccent
+                                  : onSurface.withValues(alpha: 0.62))
+                              : onSurface.withValues(alpha: 0.3),
+                      onPressed:
+                          enabled
+                              ? () => _showTimerBottomSheet(context, state)
+                              : null,
+                    ),
+                    if (state.timerMinutes > 0)
+                      Positioned(
+                        top: -1,
+                        right: -2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 2,
                           ),
-                        ),
-                        child: Text(
-                          '$state.timerMinutes',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
+                          decoration: BoxDecoration(
+                            color: Colors.orangeAccent,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.surface,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Text(
+                            '$state.timerMinutes',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -1369,7 +1378,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
       width: 44,
       height: 44,
       child: IconButton(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: EdgeInsets.zero,
         icon: Icon(icon),
         iconSize: size,
         color: enabled ? color : onSurface.withValues(alpha: 0.35),
@@ -1903,5 +1912,24 @@ class _PlaybackModeBadge extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+class _CustomTrackShape extends RoundedRectSliderTrackShape {
+  const _CustomTrackShape();
+
+  @override
+  Rect getPreferredRect({
+    required RenderBox parentBox,
+    Offset offset = Offset.zero,
+    required SliderThemeData sliderTheme,
+    bool isEnabled = false,
+    bool isDiscrete = false,
+  }) {
+    final double trackHeight = sliderTheme.trackHeight ?? 2.0;
+    // Removed default horizontal padding (offset.dx)
+    final double trackTop =
+        offset.dy + (parentBox.size.height - trackHeight) / 2;
+    return Rect.fromLTWH(0.0, trackTop, parentBox.size.width, trackHeight);
   }
 }
