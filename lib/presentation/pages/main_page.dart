@@ -384,129 +384,95 @@ class _MainPageState extends ConsumerState<MainPage>
 
     final colorScheme = Theme.of(context).colorScheme;
     final onSurface = colorScheme.onSurface;
-    final selectedDeviceId = await showDialog<String>(
+    final selectedDeviceId = await showModalBottomSheet<String>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            backgroundColor: colorScheme.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: Text(
-              '选择播放设备',
-              style: TextStyle(
-                color: onSurface,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 360, maxHeight: 420),
-              child: ListView(
-                shrinkWrap: true,
+      backgroundColor: colorScheme.surface,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 460),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (playbackMode == PlaybackMode.miIoTDirect)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        Icons.smartphone_rounded,
-                        color:
-                            currentDeviceId == 'local'
-                                ? colorScheme.primary
-                                : onSurface.withValues(alpha: 0.78),
-                      ),
-                      title: Text(
-                        '本机播放',
-                        style: TextStyle(
-                          color:
-                              currentDeviceId == 'local'
-                                  ? colorScheme.primary
-                                  : onSurface,
-                          fontWeight:
-                              currentDeviceId == 'local'
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                        ),
-                      ),
-                      subtitle: Text(
-                        '在当前设备上播放',
-                        style: TextStyle(
-                          color: onSurface.withValues(alpha: 0.6),
-                          fontSize: 12,
-                        ),
-                      ),
-                      trailing:
-                          currentDeviceId == 'local'
-                              ? Icon(
-                                Icons.check_circle_rounded,
-                                color: colorScheme.primary,
-                              )
-                              : null,
-                      onTap: () => Navigator.of(context).pop('local'),
+                  Text(
+                    '选择播放设备',
+                    style: TextStyle(
+                      color: onSurface,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
                     ),
-                  if (playbackMode == PlaybackMode.miIoTDirect &&
-                      devices.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(0, 8, 0, 6),
-                      child: Text(
-                        '音箱设备',
-                        style: TextStyle(
-                          color: onSurface.withValues(alpha: 0.55),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ...devices.map((device) {
-                    final isMiDevice = playbackMode == PlaybackMode.miIoTDirect;
-                    final id = isMiDevice ? device.deviceId : device.id;
-                    final name = device.name;
-                    final isOnline =
-                        isMiDevice ? true : (device.isOnline ?? false);
-                    final isSelected = id == currentDeviceId;
+                  ),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        if (playbackMode == PlaybackMode.miIoTDirect)
+                          _buildDeviceSheetItem(
+                            context: sheetContext,
+                            icon: Icons.smartphone_rounded,
+                            title: '本机播放',
+                            subtitle: '在当前设备上播放',
+                            value: 'local',
+                            currentDeviceId: currentDeviceId,
+                            activeColor: colorScheme.primary,
+                            defaultColor: onSurface,
+                          ),
+                        if (playbackMode == PlaybackMode.miIoTDirect &&
+                            devices.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),
+                            child: Text(
+                              '音箱设备',
+                              style: TextStyle(
+                                color: onSurface.withValues(alpha: 0.55),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ...devices.map((device) {
+                          final isMiDevice =
+                              playbackMode == PlaybackMode.miIoTDirect;
+                          final id = isMiDevice ? device.deviceId : device.id;
+                          final name = device.name;
+                          final isOnline =
+                              isMiDevice ? true : (device.isOnline ?? false);
 
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        isMiDevice
-                            ? Icons.speaker_rounded
-                            : Icons.speaker_group_rounded,
-                        color:
-                            isOnline
-                                ? (isSelected
-                                    ? colorScheme.primary
-                                    : Colors.green)
-                                : onSurface.withValues(alpha: 0.35),
-                      ),
-                      title: Text(
-                        name,
-                        style: TextStyle(
-                          color: isSelected ? colorScheme.primary : onSurface,
-                          fontWeight:
-                              isSelected ? FontWeight.w700 : FontWeight.w500,
-                        ),
-                      ),
-                      subtitle: Text(
-                        isOnline ? '在线' : '离线',
-                        style: TextStyle(
-                          color: onSurface.withValues(alpha: 0.6),
-                        ),
-                      ),
-                      trailing:
-                          isSelected
-                              ? Icon(
-                                Icons.check_circle_rounded,
-                                color: colorScheme.primary,
-                              )
-                              : null,
-                      onTap: () => Navigator.of(context).pop(id),
-                    );
-                  }),
+                          return _buildDeviceSheetItem(
+                            context: sheetContext,
+                            icon:
+                                isMiDevice
+                                    ? Icons.speaker_rounded
+                                    : Icons.speaker_group_rounded,
+                            title: name,
+                            subtitle: isOnline ? '在线' : '离线',
+                            value: id,
+                            currentDeviceId: currentDeviceId,
+                            activeColor: colorScheme.primary,
+                            defaultColor: onSurface,
+                            enabledColor: isOnline ? Colors.green : null,
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
+        );
+      },
     );
+
+    if (!mounted) {
+      return;
+    }
 
     if (selectedDeviceId != null && selectedDeviceId != currentDeviceId) {
       if (playbackMode == PlaybackMode.miIoTDirect) {
@@ -517,6 +483,82 @@ class _MainPageState extends ConsumerState<MainPage>
         ref.read(deviceProvider.notifier).selectDevice(selectedDeviceId);
       }
     }
+  }
+
+  Widget _buildDeviceSheetItem({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String value,
+    required String? currentDeviceId,
+    required Color activeColor,
+    required Color defaultColor,
+    Color? enabledColor,
+  }) {
+    final isSelected = value == currentDeviceId;
+    final leadingColor =
+        isSelected
+            ? activeColor
+            : (enabledColor ?? defaultColor.withValues(alpha: 0.76));
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => Navigator.of(context).pop(value),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            decoration: BoxDecoration(
+              color:
+                  isSelected
+                      ? activeColor.withValues(alpha: 0.12)
+                      : Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color:
+                    isSelected
+                        ? activeColor.withValues(alpha: 0.8)
+                        : Colors.white.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: leadingColor),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: isSelected ? activeColor : defaultColor,
+                          fontWeight:
+                              isSelected ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: defaultColor.withValues(alpha: 0.6),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isSelected)
+                  Icon(Icons.check_circle_rounded, color: activeColor),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildSecondarySection() {
