@@ -240,18 +240,24 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
 
     // 获取屏幕高度以决定是否需要自适应间距
     final screenHeight = MediaQuery.of(context).size.height;
-    final isShortScreen = screenHeight < 700;
+    // Smooth proportional scaling
+    final double scale = (screenHeight / 700.0).clamp(0.9, 1.3);
+
+    final double topGap = 6.0 * scale;
+    final double coverInfoGap = 20.0 * scale;
+    final double infoProgressGap = 32.0 * scale;
+    final double progressControlsGap = 32.0 * scale;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          if (!isShortScreen) const SizedBox(height: 20),
+          SizedBox(height: topGap),
           // 1. 顶部大封面
           _buildAlbumArtwork(currentMusic, isPlaying),
 
-          SizedBox(height: isShortScreen ? 20 : 30),
+          SizedBox(height: coverInfoGap),
 
           // 2. 歌曲信息 (音量和收藏整合在这里)
           SizedBox(
@@ -262,7 +268,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
             ),
           ),
 
-          SizedBox(height: isShortScreen ? 20 : 30),
+          SizedBox(height: infoProgressGap),
 
           // 3. 进度条
           SizedBox(
@@ -273,7 +279,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                     : _buildProgressBar(currentMusic),
           ),
 
-          SizedBox(height: isShortScreen ? 24 : 40),
+          SizedBox(height: progressControlsGap),
 
           // 4. 播放控制 (包含模式和定时)
           SizedBox(
@@ -710,21 +716,16 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     final screenHeight = MediaQuery.of(context).size.height;
     // 使用宽度和高度的较小值来约束，确保在短屏幕上不会过大
     final containerSize =
-        (screenWidth - 48).clamp(240.0, screenHeight * 0.45).toDouble();
+        (screenWidth - 48).clamp(220.0, screenHeight * 0.38).toDouble();
     final coverSize = containerSize * 0.62;
     final recordSize = coverSize * 0.9;
     final frameInset = containerSize * 0.06;
-    final coverTop = (containerSize - coverSize) / 2;
-    final recordTop = (containerSize - recordSize) / 2;
+    final coverTop = 2.0;
+    final recordTop = coverTop + (coverSize - recordSize) / 2;
     final recordLeft = frameInset + coverSize * 0.56;
-    final frameColor = const Color(0xFFC5C5C2);
-
     // ✨ 获取封面图 URL
     final playbackState = ref.watch(playbackProvider);
     final coverUrl = playbackState.albumCoverUrl;
-
-    // 🎨 使用提取的主色调或默认主题色
-    final glowColor = _dominantColor ?? Theme.of(context).colorScheme.primary;
 
     return Center(
       child: GestureDetector(
@@ -734,7 +735,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
         behavior: HitTestBehavior.opaque,
         child: SizedBox(
           width: containerSize,
-          height: containerSize,
+          height: coverSize + 14,
           child: Stack(
             children: [
               Positioned(
@@ -913,6 +914,26 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     );
   }
 
+  ({String title, String artist}) _splitSongDisplayName(String? rawName) {
+    final displayName = rawName?.trim() ?? '';
+    if (displayName.isEmpty) {
+      return (title: '暂无播放', artist: '');
+    }
+
+    final separatorIndex = displayName.lastIndexOf(' - ');
+    if (separatorIndex <= 0 || separatorIndex >= displayName.length - 3) {
+      return (title: displayName, artist: '');
+    }
+
+    final title = displayName.substring(0, separatorIndex).trim();
+    final artist = displayName.substring(separatorIndex + 3).trim();
+    if (title.isEmpty || artist.isEmpty) {
+      return (title: displayName, artist: '');
+    }
+
+    return (title: title, artist: artist);
+  }
+
   Widget _buildSongInfo(PlaybackState state, bool hasLoaded) {
     final currentMusic = state.currentMusic;
     final onSurface = Theme.of(context).colorScheme.onSurface;
@@ -929,10 +950,20 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     }
     final enabled = hasSelectedDevice;
     final favoriteEnabled = enabled && currentMusic != null;
-    final subtitle =
+    final sourceText =
         currentMusic != null && currentMusic.curPlaylist.isNotEmpty
             ? currentMusic.curPlaylist
             : (hasLoaded ? '本地播放' : '正在同步');
+
+    final mediaQuery = MediaQuery.of(context);
+    final isCompactWidth = mediaQuery.size.width < 380;
+    final isTightHeight = mediaQuery.size.height < 760;
+    final useThreeLineLayout = !isCompactWidth && !isTightHeight;
+    final songInfo = _splitSongDisplayName(currentMusic?.curMusic);
+    final titleText = songInfo.title;
+    final artistText = songInfo.artist;
+    final compactSecondLine =
+        artistText.isNotEmpty ? '$artistText · $sourceText' : sourceText;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -940,11 +971,12 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                currentMusic != null ? currentMusic.curMusic : '暂无播放',
+                titleText,
                 style: TextStyle(
-                  fontSize: MediaQuery.of(context).size.width < 380 ? 18 : 22,
+                  fontSize: useThreeLineLayout ? 20 : 17,
                   fontWeight: FontWeight.w800,
                   color: onSurface.withValues(alpha: 0.94),
                   height: 1.08,
@@ -953,26 +985,65 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: onSurface.withValues(alpha: 0.52),
-                        height: 1.1,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+              if (useThreeLineLayout) ...[
+                const SizedBox(height: 6),
+                Text(
+                  artistText,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: onSurface.withValues(alpha: 0.82),
+                    height: 1.0,
                   ),
-                  const SizedBox(width: 6),
-                  const _PlaybackModeBadge(),
-                ],
-              ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 7),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        sourceText,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: onSurface.withValues(alpha: 0.52),
+                          height: 1.0,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 1),
+                      child: _PlaybackModeBadge(),
+                    ),
+                  ],
+                ),
+              ] else ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        compactSecondLine,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: onSurface.withValues(alpha: 0.52),
+                          height: 1.1,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const _PlaybackModeBadge(),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -1080,19 +1151,22 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                     : null,
           ),
         ),
-        const SizedBox(height: 1),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _buildProgressTimeText(
-              totalTime > 0 ? _formatDuration(displayTime) : '--:--',
-              onSurface,
-            ),
-            _buildProgressTimeText(
-              totalTime > 0 ? _formatDuration(totalTime) : '--:--',
-              onSurface,
-            ),
-          ],
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildProgressTimeText(
+                totalTime > 0 ? _formatDuration(displayTime) : '--:--',
+                onSurface,
+              ),
+              _buildProgressTimeText(
+                totalTime > 0 ? _formatDuration(totalTime) : '--:--',
+                onSurface,
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -1117,13 +1191,16 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
           ),
           child: Slider(value: 0, min: 0, max: 1, onChanged: null),
         ),
-        const SizedBox(height: 1),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _buildProgressTimeText('0:00', onSurface),
-            _buildProgressTimeText('0:00', onSurface),
-          ],
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildProgressTimeText('0:00', onSurface),
+              _buildProgressTimeText('0:00', onSurface),
+            ],
+          ),
         ),
       ],
     );
@@ -1134,7 +1211,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
       text,
       style: TextStyle(
         color: onSurface.withValues(alpha: 0.58),
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: FontWeight.w700,
         height: 1,
       ),
@@ -1804,7 +1881,7 @@ class _PlaybackModeBadge extends ConsumerWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(8),
@@ -1820,7 +1897,7 @@ class _PlaybackModeBadge extends ConsumerWidget {
               fontSize: 10,
               fontWeight: FontWeight.w600,
               color: fgColor,
-              height: 1.2,
+              height: 1.0,
             ),
           ),
         ],
