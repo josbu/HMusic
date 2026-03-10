@@ -265,7 +265,13 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
   Future<void> next() async {
     debugPrint('🎵 [LocalPlayback] 播放下一首');
     if (_playlist.isEmpty) {
-      debugPrint('⚠️ [LocalPlayback] 播放列表为空');
+      // 🎯 内部播放列表为空时，委托给外部回调（PlaybackProvider 的 APP 队列）
+      if (onNext != null) {
+        debugPrint('🎵 [LocalPlayback] 内部列表为空，委托给 onNext 回调（APP队列）');
+        onNext!();
+        return;
+      }
+      debugPrint('⚠️ [LocalPlayback] 播放列表为空且无回调');
       return;
     }
 
@@ -278,7 +284,13 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
   Future<void> previous() async {
     debugPrint('🎵 [LocalPlayback] 播放上一首');
     if (_playlist.isEmpty) {
-      debugPrint('⚠️ [LocalPlayback] 播放列表为空');
+      // 🎯 内部播放列表为空时，委托给外部回调（PlaybackProvider 的 APP 队列）
+      if (onPrevious != null) {
+        debugPrint('🎵 [LocalPlayback] 内部列表为空，委托给 onPrevious 回调（APP队列）');
+        onPrevious!();
+        return;
+      }
+      debugPrint('⚠️ [LocalPlayback] 播放列表为空且无回调');
       return;
     }
 

@@ -13,6 +13,8 @@ import '../widgets/app_snackbar.dart';
 import '../widgets/app_bottom_sheet.dart';
 import 'lyrics_page.dart';
 import '../providers/direct_mode_provider.dart';
+import '../providers/playback_queue_provider.dart';
+import '../../data/models/playlist_queue.dart';
 
 class ControlPanelPage extends ConsumerStatefulWidget {
   final bool showAppBar;
@@ -954,10 +956,22 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     }
     final enabled = hasSelectedDevice;
     final favoriteEnabled = enabled && currentMusic != null;
-    final sourceText =
-        currentMusic != null && currentMusic.curPlaylist.isNotEmpty
-            ? currentMusic.curPlaylist
-            : (hasLoaded ? '本地播放' : '正在同步');
+    // Determine source text logic. Check queue source type directly.
+    String sourceText;
+    if (currentMusic != null) {
+      // 🎯 优先通过队列的 source 类型判断是否为搜索播放
+      final queueState = ref.read(playbackQueueProvider);
+      final isSearchSource = queueState.queue?.source == PlaylistSource.searchResult;
+      if (isSearchSource) {
+        sourceText = '🔍 搜索播放';
+      } else if (currentMusic.curPlaylist.isNotEmpty) {
+        sourceText = currentMusic.curPlaylist;
+      } else {
+        sourceText = '本地播放';
+      }
+    } else {
+      sourceText = hasLoaded ? '本地播放' : '正在同步';
+    }
 
     final mediaQuery = MediaQuery.of(context);
     final isCompactWidth = mediaQuery.size.width < 380;
@@ -980,7 +994,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
               Text(
                 titleText,
                 style: TextStyle(
-                  fontSize: useThreeLineLayout ? 20 : 17,
+                  fontSize: useThreeLineLayout ? 24 : 20,
                   fontWeight: FontWeight.w800,
                   color: onSurface.withValues(alpha: 0.94),
                   height: 1.08,
@@ -994,7 +1008,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                 Text(
                   artistText,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 17,
                     fontWeight: FontWeight.w600,
                     color: onSurface.withValues(alpha: 0.82),
                     height: 1.0,
