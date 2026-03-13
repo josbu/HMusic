@@ -5,199 +5,289 @@ import '../providers/direct_mode_provider.dart';
 
 /// 播放模式选择页面
 /// 首次启动或切换模式时展示，让用户选择使用场景
-class PlaybackModeSelectionPage extends ConsumerWidget {
+class PlaybackModeSelectionPage extends ConsumerStatefulWidget {
   const PlaybackModeSelectionPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final topSpace = MediaQuery.of(context).size.height * 0.13;
+  ConsumerState<PlaybackModeSelectionPage> createState() => _PlaybackModeSelectionPageState();
+}
+
+class _PlaybackModeSelectionPageState extends ConsumerState<PlaybackModeSelectionPage> with TickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 4),
+      vsync: this,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return PopScope(
       canPop: false,
       child: Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
+        body: Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1A1B22) : Colors.white,
+          ),
+          child: Stack(
             children: [
-              SizedBox(height: topSpace),
-
-              // Logo + 欢迎语
-              SvgPicture.asset(
-                'assets/hmusic-logo.svg',
-                width: 120,
-              ),
-              const SizedBox(height: 20),
-              Text(
-                '欢迎使用 HMusic',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
+              // 🎨 背景装饰光晕 (带动画)
+              if (isDark) ...[
+                AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) {
+                    return Positioned(
+                      top: -100 + (20 * _controller.value),
+                      right: -100 + (10 * (1 - _controller.value)),
+                      child: child!,
+                    );
+                  },
+                  child: Container(
+                    width: 300,
+                    height: 300,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF2196F3).withValues(alpha: 0.15),
                     ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '选择你的使用方式',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) {
+                    return Positioned(
+                      bottom: -100 + (15 * (1 - _controller.value)),
+                      left: -100 + (25 * _controller.value),
+                      child: child!,
+                    );
+                  },
+                  child: Container(
+                    width: 300,
+                    height: 300,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFFFF4081).withValues(alpha: 0.15),
                     ),
+                  ),
+                ),
+              ],
+
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 🏠 App Bar / Logo 区域
+                      Container(
+                        height: 120,
+                        alignment: Alignment.centerLeft,
+                        child: SvgPicture.asset(
+                          'assets/hmusic-logo.svg',
+                          width: 140,
+                          colorFilter: const ColorFilter.mode(
+                            Color(0xFF21B0A5), // 强制使用品牌 Teal 颜色
+                            BlendMode.srcIn,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // 🏷️ 标题区域
+                      Text(
+                        '选择连接方式',
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w800,
+                          color: isDark ? Colors.white : const Color(0xFF1A1B22),
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '选择最适合你的方式来控制小米音箱',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.6)
+                              : Colors.black54,
+                          height: 1.5,
+                        ),
+                      ),
+
+                      const SizedBox(height: 48),
+
+                      // 🗂️ 选项列表
+                      _ModeCard(
+                        icon: Icons.cloud_queue_rounded,
+                        title: 'xiaomusic 登录',
+                        subtitle: '通过 xiaomusic 服务端远程控制',
+                        iconColor: const Color(0xFFFF4081),
+                        isSelected: false,
+                        onTap: () {
+                          ref
+                              .read(playbackModeProvider.notifier)
+                              .setMode(PlaybackMode.xiaomusic);
+                        },
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      _ModeCard(
+                        icon: Icons.bolt_rounded,
+                        title: '直连模式',
+                        subtitle: '局域网直接控制 (无须服务器)',
+                        iconColor: const Color(0xFF2196F3),
+                        isSelected: true,
+                        onTap: () {
+                          ref
+                              .read(playbackModeProvider.notifier)
+                              .setMode(PlaybackMode.miIoTDirect);
+                        },
+                      ),
+
+                      const Spacer(),
+
+                      // 💡 底部提示
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 40),
+                          child: RichText(
+                            text: TextSpan(
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.5)
+                                    : Colors.black45,
+                              ),
+                              children: [
+                                const TextSpan(text: '第一次使用 HMusic? '),
+                                TextSpan(
+                                  text: '查看设置指南',
+                                  style: const TextStyle(
+                                    color: Color(0xFFFF4081),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-
-              const Spacer(flex: 1),
-              _ModeCard(
-                icon: Icons.dns_rounded,
-                title: 'xiaomusic 模式',
-                subtitle: '需要部署 xiaomusic 服务端',
-                tags: const ['功能完整', '歌单管理', '音乐下载'],
-                onTap: () {
-                  ref
-                      .read(playbackModeProvider.notifier)
-                      .setMode(PlaybackMode.xiaomusic);
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              _ModeCard(
-                icon: Icons.phone_android_rounded,
-                title: '直连模式',
-                subtitle: '只需小米账号，开箱即用',
-                tags: const ['无需服务器', '配置简单', '轻量级'],
-                isPrimary: true,
-                onTap: () {
-                  ref
-                      .read(playbackModeProvider.notifier)
-                      .setMode(PlaybackMode.miIoTDirect);
-                },
-              ),
-
-              const Spacer(flex: 3),
-
-              // 底部提示
-              Text(
-                '可在设置中随时切换模式',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                    ),
-              ),
-              const SizedBox(height: 24),
             ],
           ),
         ),
       ),
-    ),
     );
   }
 }
 
 class _ModeCard extends StatelessWidget {
-  final IconData icon;
+  final IconData icon; // 改为 IconData
   final String title;
   final String subtitle;
-  final List<String> tags;
-  final bool isPrimary;
+  final Color iconColor;
+  final bool isSelected;
   final VoidCallback onTap;
 
   const _ModeCard({
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.tags,
-    this.isPrimary = false,
+    required this.iconColor,
+    required this.isSelected,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: isPrimary
-              ? colorScheme.primary.withValues(alpha: 0.5)
-              : colorScheme.outlineVariant,
-        ),
-      ),
-      color: isPrimary
-          ? colorScheme.primary.withValues(alpha: 0.05)
-          : colorScheme.surface,
+    return Material(
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: isDark
+                ? const Color(0xFF4A4D59).withValues(alpha: 0.6)
+                : Colors.grey.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : Colors.black.withValues(alpha: 0.05),
+              width: 1,
+            ),
+          ),
           child: Row(
             children: [
+              // 🧊 图标容器
               Container(
-                padding: const EdgeInsets.all(12),
+                width: 56,
+                height: 56,
                 decoration: BoxDecoration(
-                  color: isPrimary
-                      ? colorScheme.primary.withValues(alpha: 0.12)
-                      : colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
+                  color: iconColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
                 ),
+                alignment: Alignment.center,
                 child: Icon(
                   icon,
-                  color: isPrimary
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
+                  color: iconColor,
                   size: 28,
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 20),
+              // 📝 文字内容
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colorScheme.onSurface,
-                          ),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : const Color(0xFF1A1B22),
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: tags.map((tag) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.7),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            tag,
-                            style:
-                                Theme.of(context).textTheme.labelSmall?.copyWith(
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
-                          ),
-                        );
-                      }).toList(),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.5)
+                            : Colors.black54,
+                      ),
                     ),
                   ],
                 ),
               ),
+              // ➡️ 箭头
               Icon(
                 Icons.chevron_right_rounded,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                color: isDark ? Colors.white24 : Colors.black26,
               ),
             ],
           ),

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -76,76 +78,141 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
     return Scaffold(
       appBar: AppBar(title: const Text('正在播放'), centerTitle: true),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              _buildAlbumCover(coverUrl, onSurface, isPlaying),
-              const SizedBox(height: 20),
-              Text(
-                current?.curMusic ?? '暂无播放',
-                style: TextStyle(
-                  color: onSurface,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 8),
-              Text(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final contentWidth = math.max(constraints.maxWidth - 32, 0.0);
+            final contentHeight = math.max(constraints.maxHeight - 32, 0.0);
+            final compactLayout =
+                constraints.maxHeight < 700 || constraints.maxWidth < 380;
+            final titleText = current?.curMusic ?? '暂无播放';
+            final playlistText =
                 current != null && current.curPlaylist.isNotEmpty
                     ? current.curPlaylist
-                    : '未知歌单', // ✅ 提供默认文本
-                style: TextStyle(
-                  color: onSurface.withValues(
-                    alpha:
-                        current != null && current.curPlaylist.isNotEmpty
-                            ? 0.7
-                            : 0.4, // ✅ 未知歌单显示更淡
+                    : '未知歌单';
+            final titleFontSize = _resolveTitleFontSize(
+              titleText,
+              availableWidth: constraints.maxWidth,
+              compactLayout: compactLayout,
+            );
+            final titleMaxLines = compactLayout ? 1 : 2;
+            const topSpacing = 0.0;
+            final coverBottomSpacing = compactLayout ? 10.0 : 14.0;
+            final blockSpacing = compactLayout ? 12.0 : 16.0;
+            final subtitleSpacing = compactLayout ? 6.0 : 8.0;
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+              child: Column(
+                children: [
+                  SizedBox(height: topSpacing),
+                  _buildAlbumCover(
+                    coverUrl,
+                    onSurface,
+                    isPlaying,
+                    compactLayout: compactLayout,
+                    availableWidth: contentWidth,
+                    availableHeight: contentHeight,
                   ),
-                  fontSize: 14,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                  SizedBox(height: coverBottomSpacing),
+                  Text(
+                    titleText,
+                    style: TextStyle(
+                      color: onSurface,
+                      fontSize: titleFontSize,
+                      fontWeight: FontWeight.w700,
+                      height: 1.18,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: titleMaxLines,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: subtitleSpacing),
+                  Text(
+                    playlistText,
+                    style: TextStyle(
+                      color: onSurface.withValues(
+                        alpha:
+                            current != null && current.curPlaylist.isNotEmpty
+                                ? 0.7
+                                : 0.4,
+                      ),
+                      fontSize: compactLayout ? 13 : 14,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: blockSpacing),
+                  if (current != null)
+                    _ProgressBar(
+                      currentTime: current.offset,
+                      totalTime: current.duration,
+                      disabled:
+                          current.curMusic.isEmpty || !playback.seekEnabled,
+                      isLocalMode: playback.isLocalMode,
+                    )
+                  else
+                    const _ProgressBar(
+                      currentTime: 0,
+                      totalTime: 0,
+                      disabled: true,
+                      isLocalMode: false,
+                    ),
+                  SizedBox(height: blockSpacing),
+                  _Controls(),
+                  SizedBox(height: blockSpacing),
+                  _Volume(),
+                ],
               ),
-              const SizedBox(height: 16),
-              if (current != null)
-                _ProgressBar(
-                  currentTime: current.offset,
-                  totalTime: current.duration,
-                  // 🔧 只有当歌曲名为空时或设备不支持 seek 时才禁用进度条
-                  disabled: current.curMusic.isEmpty || !playback.seekEnabled,
-                  isLocalMode: playback.isLocalMode, // 🎵 传递播放模式信息
-                )
-              else
-                const _ProgressBar(
-                  currentTime: 0,
-                  totalTime: 0,
-                  disabled: true,
-                  isLocalMode: false, // 🎵 默认远程模式
-                ),
-              const SizedBox(height: 16),
-              _Controls(),
-              const SizedBox(height: 16),
-              _Volume(),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildAlbumCover(String? coverUrl, Color onSurface, bool isPlaying) {
+  double _resolveTitleFontSize(
+    String title, {
+    required double availableWidth,
+    required bool compactLayout,
+  }) {
+    var fontSize = compactLayout ? 21.0 : 22.0;
+    final titleLength = title.trim().length;
+
+    if (availableWidth < 390) {
+      fontSize -= 1;
+    }
+    if (titleLength > 16) {
+      fontSize -= 1;
+    }
+    if (titleLength > 24) {
+      fontSize -= 2;
+    }
+    if (compactLayout && titleLength > 14) {
+      fontSize -= 1;
+    }
+
+    return fontSize.clamp(compactLayout ? 17.0 : 18.0, 22.0).toDouble();
+  }
+
+  Widget _buildAlbumCover(
+    String? coverUrl,
+    Color onSurface,
+    bool isPlaying, {
+    required bool compactLayout,
+    required double availableWidth,
+    required double availableHeight,
+  }) {
     final glowColor = _dominantColor ?? Theme.of(context).colorScheme.primary;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final containerSize = (screenWidth - 32).clamp(220.0, 360.0).toDouble();
-    final artworkSize = containerSize * 0.60;
+    final widthBasedSize = math.max(availableWidth, 0.0);
+    final heightBasedSize = availableHeight * (compactLayout ? 0.32 : 0.38);
+    final targetSize = math.min(widthBasedSize, heightBasedSize);
+    final containerSize =
+        targetSize.clamp(compactLayout ? 188.0 : 220.0, 360.0).toDouble();
+    final artworkSize = containerSize * (compactLayout ? 0.58 : 0.60);
     final frameInset = containerSize * 0.05;
-    final coverTop = (containerSize - artworkSize) / 2;
+    final coverTop = compactLayout ? 0.0 : 2.0;
+    final layoutHeight = artworkSize + (compactLayout ? 10.0 : 14.0);
     final recordLeft = frameInset + artworkSize * 0.5;
     debugPrint('🎨 当前光圈颜色: $glowColor (提取的颜色: $_dominantColor)');
 
@@ -157,7 +224,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
       behavior: HitTestBehavior.opaque, // 🔧 确保整个区域都可点击
       child: SizedBox(
         width: containerSize,
-        height: containerSize,
+        height: layoutHeight,
         child: Stack(
           children: [
             Positioned(

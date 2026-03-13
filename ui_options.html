@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>方案对比</title>
+    <style>
+        body {
+            background: #1e1e2c;
+            color: white;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            gap: 40px;
+            margin: 0;
+        }
+        h2 { text-align: center; margin-bottom: 10px; color: #ff3366; }
+        p.desc { text-align: center; color: #aaa; font-size: 14px; margin-top: 0; max-width: 300px; }
+        
+        .phone {
+            width: 300px;
+            height: 380px;
+            border: 2px solid #333;
+            border-radius: 30px;
+            padding: 20px;
+            background: #0b0b14;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+        }
+
+        /* 现在的样子：带外框的封套 */
+        .current-style {
+            width: 260px;
+            height: 260px;
+            background: #e0e0e0;
+            border-radius: 12px;
+            position: relative;
+            margin-top: 40px;
+        }
+        .current-cover {
+            width: 160px;
+            height: 160px;
+            background: url('https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=300&auto=format&fit=crop') center/cover;
+            position: absolute;
+            top: 50px;
+            left: 15px;
+            border-radius: 4px;
+            z-index: 2;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+        }
+        .current-record {
+            width: 150px;
+            height: 150px;
+            background: #111;
+            border-radius: 50%;
+            position: absolute;
+            top: 55px;
+            left: 100px; /* 抽出来一半 */
+            z-index: 1;
+            border: 2px solid #333;
+        }
+
+        /* 选项 A：纯黑胶圆盘 */
+        .option-a-record {
+            width: 260px;
+            height: 260px;
+            background: #111;
+            border-radius: 50%;
+            margin-top: 40px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 1px solid #333;
+        }
+        /* 黑胶纹理模拟 */
+        .record-ring-1 { width: 230px; height: 230px; border: 1px solid #222; border-radius: 50%; position: absolute; }
+        .record-ring-2 { width: 190px; height: 190px; border: 1px solid #222; border-radius: 50%; position: absolute; }
+        .option-a-cover {
+            width: 130px;
+            height: 130px;
+            background: url('https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=300&auto=format&fit=crop') center/cover;
+            border-radius: 50%;
+            z-index: 2;
+            box-shadow: 0 0 10px rgba(0,0,0,0.8);
+        }
+
+        /* 选项 B：大方图 + 边缘黑胶 */
+        .option-b-container {
+            width: 260px;
+            height: 260px;
+            position: relative;
+            margin-top: 40px;
+        }
+        .option-b-record {
+            width: 240px;
+            height: 240px;
+            background: #111;
+            border-radius: 50%;
+            position: absolute;
+            top: 10px;
+            right: -20px; /* 只从右边露出来一点点 */
+            z-index: 1;
+            border: 1px solid #333;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        .option-b-cover {
+            width: 240px;
+            height: 240px;
+            background: url('https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=300&auto=format&fit=crop') center/cover;
+            border-radius: 20px;
+            position: absolute;
+            top: 10px;
+            left: 0;
+            z-index: 2;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        
+        .mock-text {
+            width: 200px;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            margin-top: 30px;
+        }
+
+    </style>
+</head>
+<body>
+    <h1>手机端播放器封面演进</h1>
+
+    <div>
+        <h2>1. 现在的样子 (带外框)</h2>
+        <p class="desc">为了塞下灰色的外框和抽出的唱片，真正的封面图(The Weeknd)被迫变得很小，两侧留白过多。</p>
+        <div class="phone">
+            <div class="current-style">
+                <div class="current-record"></div>
+                <div class="current-cover"></div>
+            </div>
+            <div class="mock-text"></div>
+        </div>
+    </div>
+
+    <div>
+        <h2>2. 选项 A (纯黑胶旋转)</h2>
+        <p class="desc">网易云风格：去掉方框。黑胶唱片放到最大，中间贴圆形的封面图。整个圆盘旋转。</p>
+        <div class="phone">
+            <div class="option-a-record">
+                <div class="record-ring-1"></div>
+                <div class="record-ring-2"></div>
+                <div class="option-a-cover"></div>
+            </div>
+            <div class="mock-text"></div>
+        </div>
+    </div>
+
+    <div>
+        <h2>3. 选项 B (大方图为主 + 黑胶点缀)</h2>
+        <p class="desc">结合了你觉得舒服的“大方图”。在右边或上方悄悄露出一点转动的黑胶边缘，既有冲击力又有质感。</p>
+        <div class="phone">
+            <div class="option-b-container">
+                <div class="option-b-record"></div>
+                <div class="option-b-cover"></div>
+            </div>
+            <div class="mock-text"></div>
+        </div>
+    </div>
+</body>
+</html>

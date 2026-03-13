@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HMusic Login UI Design</title>
+    <style>
+        :root {
+            --bg-color: #1a1b22;
+            --surface-color: rgba(255, 255, 255, 0.05);
+            --surface-accent: rgba(74, 77, 89, 0.6);
+            --primary-pink: #ff4081;
+            --primary-blue: #2196F3;
+            --text-main: #ffffff;
+            --text-dim: rgba(255, 255, 255, 0.6);
+            --glass-blur: blur(24px);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: #0f1014;
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 40px 0;
+            gap: 40px;
+            overflow-x: auto;
+        }
+
+        /* Mock mobile screen */
+        .device-simulator {
+            width: 390px;
+            height: 844px;
+            background-color: var(--bg-color);
+            border-radius: 44px;
+            box-shadow: 0 0 0 10px #000, 0 30px 60px rgba(0,0,0,0.8);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .screen-label {
+            position: absolute;
+            top: -30px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* App Bar Space */
+        .app-bar {
+            height: 110px;
+            display: flex;
+            align-items: center;
+            padding: 60px 24px 20px;
+            z-index: 10;
+        }
+
+        .back-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--surface-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            margin-right: 16px;
+        }
+
+        /* Core Content Area */
+        .content {
+            flex: 1;
+            padding: 0 32px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1 {
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 16px;
+            color: var(--text-dim);
+            line-height: 1.5;
+            margin-bottom: 40px;
+        }
+
+        /* 
+         * 🎯 SELECTION PAGE STYLES 
+         */
+        .option-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .option-card {
+            background: var(--surface-accent);
+            backdrop-filter: var(--glass-blur);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 24px;
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            transition: transform 0.2s, background 0.2s;
+            cursor: pointer;
+        }
+
+        .option-card:active {
+            transform: scale(0.98);
+            background: rgba(255,255,255,0.1);
+        }
+
+        .option-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.05);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 28px;
+            margin-right: 20px;
+        }
+
+        .option-info h3 {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .option-info p {
+            font-size: 13px;
+            color: var(--text-dim);
+        }
+
+        /* 
+         * 🎯 LOGIN FORM STYLES 
+         */
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-dim);
+            margin-bottom: 10px;
+            margin-left: 4px;
+        }
+
+        .input-wrapper {
+            position: relative;
+            background: rgba(255,255,255,0.05);
+            border: 1.5px solid rgba(255,255,255,0.1);
+            border-radius: 18px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .input-wrapper:focus-within {
+            border-color: var(--primary-pink);
+            box-shadow: 0 0 0 4px rgba(255, 64, 129, 0.15);
+        }
+
+        .input-wrapper input {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 16px;
+            width: 100%;
+            outline: none;
+        }
+
+        .input-wrapper input::placeholder {
+            color: rgba(255,255,255,0.3);
+        }
+
+        .login-btn {
+            height: 64px;
+            background: var(--primary-pink);
+            border: none;
+            border-radius: 20px;
+            color: #fff;
+            font-size: 18px;
+            font-weight: 700;
+            margin-top: 20px;
+            box-shadow: 0 12px 24px rgba(255, 64, 129, 0.35);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .helper-links {
+            margin-top: 32px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            font-size: 13px;
+            color: var(--primary-blue);
+            font-weight: 600;
+        }
+
+        .token-guide {
+            background: rgba(33, 150, 243, 0.1);
+            border-radius: 16px;
+            padding: 16px;
+            margin-top: 40px;
+            border: 1px dashed rgba(33, 150, 243, 0.3);
+        }
+
+        .token-guide p {
+            font-size: 13px;
+            color: var(--primary-blue);
+            line-height: 1.6;
+        }
+
+        /* 
+         * 🎯 DECORATIVE ELEMENTS 
+         */
+        .blob {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            background: var(--primary-pink);
+            filter: blur(80px);
+            opacity: 0.15;
+            border-radius: 50%;
+            z-index: 1;
+        }
+
+        .blob-1 { top: -100px; right: -100px; background: var(--primary-blue); }
+        .blob-2 { bottom: -100px; left: -100px; background: var(--primary-pink); }
+
+    </style>
+</head>
+<body>
+
+<!-- 1. SELECTION SCREEN -->
+<div class="device-simulator">
+    <div class="screen-label">Selection</div>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    
+    <div class="app-bar" style="flex-direction: column; height: 180px; padding-top: 60px; justify-content: flex-start;">
+        <img src="assets/hmusic-logo.svg" alt="HMusic Logo" style="width: 140px; margin-bottom: 20px;">
+    </div>
+
+    <div class="content">
+        <h1>Connect device</h1>
+        <p class="subtitle">Choose your preferred way to connect to your Mi speakers.</p>
+
+        <div class="option-list">
+            <div class="option-card">
+                <div class="option-icon" style="color: #ff4081; background: rgba(255, 64, 129, 0.1);">🛰️</div>
+                <div class="option-info">
+                    <h3>xiaomusic 登录</h3>
+                    <p>Remote control via xiaomusic server</p>
+                </div>
+            </div>
+
+            <div class="option-card">
+                <div class="option-icon" style="color: #2196F3; background: rgba(33, 150, 243, 0.1);">📶</div>
+                <div class="option-info">
+                    <h3>直连模式</h3>
+                    <p>Direct LAN control (No server needed)</p>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: auto; margin-bottom: 60px; text-align: center; color: var(--text-dim); font-size: 13px;">
+            <p>New to HMusic? <span style="color: var(--primary-pink); font-weight: 600;">Check Setup Guide</span></p>
+        </div>
+    </div>
+</div>
+
+<!-- 2. XIAOMUSIC LOGIN SCREEN -->
+<div class="device-simulator">
+    <div class="screen-label">xiaomusic Login</div>
+    <div class="blob blob-1"></div>
+    
+    <div class="app-bar">
+        <div class="back-btn">←</div>
+        <img src="assets/hmusic-logo.svg" alt="Logo" style="width: 80px; opacity: 0.8;">
+    </div>
+
+    <div class="content">
+        <h1>xiaomusic</h1>
+        <p class="subtitle">Connect to your personal music server.</p>
+
+        <div class="form-group">
+            <label class="form-label">Server Address</label>
+            <div class="input-wrapper">
+                <input type="text" placeholder="http://192.168.1.100:8090">
+            </div>
+            <p style="font-size: 11px; color: var(--primary-blue); margin-top: 8px; margin-left: 4px;">🎯 Detect local servers...</p>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Account (Optional)</label>
+            <div class="input-wrapper">
+                <input type="text" placeholder="Username">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Password</label>
+            <div class="input-wrapper">
+                <input type="password" placeholder="••••••••">
+            </div>
+        </div>
+
+        <button class="login-btn">Connect Server</button>
+
+        <div class="helper-links">
+            <span>Server Settings</span>
+            <span>Help Center</span>
+        </div>
+    </div>
+</div>
+
+<!-- 3. DIRECT MODE LOGIN SCREEN -->
+<div class="device-simulator">
+    <div class="screen-label">Direct Mode</div>
+    <div class="blob blob-2"></div>
+    
+    <div class="app-bar">
+        <div class="back-btn">←</div>
+        <img src="assets/hmusic-logo.svg" alt="Logo" style="width: 80px; opacity: 0.8;">
+    </div>
+
+    <div class="content">
+        <h1>Mi Home</h1>
+        <p class="subtitle">Login to Mi Account to discover speakers on your network.</p>
+
+        <div class="form-group">
+            <label class="form-label">Mi Account / Email / Phone</label>
+            <div class="input-wrapper">
+                <input type="text" placeholder="Xiaomi Account ID">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Password</label>
+            <div class="input-wrapper">
+                <input type="password" placeholder="••••••••">
+            </div>
+        </div>
+
+        <button class="login-btn" style="background: var(--primary-blue); box-shadow: 0 12px 24px rgba(33, 150, 243, 0.3);">Discover Devices</button>
+
+        <div class="helper-links" style="color: var(--text-dim);">
+            <span>Login via <b>Token</b> instead</span>
+        </div>
+
+        <div style="background: rgba(255,255,255,0.03); border-radius: 20px; padding: 20px; margin-top: 40px; border: 1px solid rgba(255,255,255,0.05);">
+            <p style="font-size: 12px; line-height: 1.6; color: var(--text-dim);">
+                🔒 Your credentials are only used to fetch device list and tokens from Xiaomi's API. We do not store your password.
+            </p>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

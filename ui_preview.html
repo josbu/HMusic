@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HMusic UI Preview</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            /* Mocking the dark mode surface color */
+            background-color: #1a1b22; 
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* Mock mobile screen */
+        .device-simulator {
+            width: 390px;
+            height: 844px; /* iPhone Pro size roughly */
+            background-color: #1a1b22;
+            border-radius: 40px;
+            box-shadow: 0 0 0 10px #000, 0 30px 60px rgba(0,0,0,0.5);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* App Bar Space */
+        .app-bar {
+            height: 100px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 24px;
+            padding-top: 40px; /* Safe area */
+            font-weight: 600;
+        }
+
+        /* Core Content Area */
+        .content {
+            flex: 1;
+            padding: 0 24px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 
+         * 🎯 ALBUM ARTWORK ROW 
+         */
+        .artwork-container {
+            position: relative;
+            width: 100%;
+            /* Let the height be dictated by the width to maintain aspect ratio */
+            margin-top: 20px;
+            display: flex;
+            align-items: center;
+        }
+
+        /* The Album Cover */
+        .album-cover {
+            width: 65%; /* 65% of screen width */
+            aspect-ratio: 1 / 1;
+            border-radius: 16px;
+            background-color: #333;
+            background-image: url('https://picsum.photos/400/400?1');
+            background-size: cover;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+            z-index: 2; /* Sits on top of the record */
+            position: relative;
+        }
+
+        /* The Vinyl Record */
+        .vinyl-record {
+            /* The record should visually take up the remaining space up to the right edge */
+            /* It is tucked UNDER the album cover */
+            width: 55%; 
+            aspect-ratio: 1 / 1;
+            border-radius: 50%;
+            background-color: #0a0a0a;
+            position: absolute;
+            right: 0;
+            z-index: 1;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            /* Creating the vinyl grooves visually */
+            background-image: 
+                radial-gradient(circle at center, transparent 30%, rgba(255,255,255,0.05) 31%, transparent 32%),
+                radial-gradient(circle at center, transparent 40%, rgba(255,255,255,0.05) 41%, transparent 42%),
+                radial-gradient(circle at center, transparent 50%, rgba(255,255,255,0.05) 51%, transparent 52%),
+                radial-gradient(circle at center, transparent 60%, rgba(255,255,255,0.05) 61%, transparent 62%),
+                radial-gradient(circle at center, transparent 70%, rgba(255,255,255,0.05) 71%, transparent 72%),
+                radial-gradient(circle at center, transparent 80%, rgba(255,255,255,0.05) 81%, transparent 82%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* The center label of the vinyl */
+        .vinyl-center {
+            width: 33%;
+            aspect-ratio: 1 / 1;
+            border-radius: 50%;
+            background-image: url('https://picsum.photos/200/200?1'); /* Matches album cover */
+            background-size: cover;
+            border: 4px solid #1a1b22;
+        }
+
+        /* Center hole */
+        .vinyl-hole {
+            width: 15%;
+            aspect-ratio: 1 / 1;
+            border-radius: 50%;
+            background-color: #1a1b22;
+            position: absolute;
+        }
+
+
+        /* 
+         * 🎯 SONG INFO ROW 
+         */
+        .song-info {
+            margin-top: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .text-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .text-info h2 {
+            font-size: 20px;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+
+        .text-info p {
+            font-size: 16px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.82);
+        }
+
+        .source-badge-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 2px;
+        }
+        
+        .source-text {
+            font-size: 12px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.52);
+        }
+
+        .badge {
+            background-color: rgba(33, 150, 243, 0.2);
+            color: #2196F3;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 10px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .icon-mock {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: rgba(255,255,255,0.62);
+            font-size: 24px;
+        }
+
+        .heart-icon {
+            color: #ff4081; /* Pink accent */
+        }
+
+        /* Other Player Placeholders */
+        .progress-bar-container {
+            margin-top: 28px;
+        }
+
+        .progress-bar {
+            height: 3.5px;
+            background-color: rgba(255,255,255,0.14);
+            border-radius: 2px;
+            width: 100%;
+            position: relative;
+        }
+        .progress-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 30%;
+            background-color: #2196F3; /* Primary Accent */
+            border-radius: 2px;
+        }
+        .progress-handle {
+            position: absolute;
+            left: 30%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 11px;
+            height: 11px;
+            background-color: #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.16);
+        }
+
+        .play-controls {
+            margin-top: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .play-btn {
+            width: 68px;
+            height: 68px;
+            background-color: #ff4081; /* Primary accent */
+            border-radius: 50%;
+            box-shadow: 0 8px 20px rgba(255, 64, 129, 0.4);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 32px;
+        }
+
+        /* Bottom Nav */
+        .bottom-nav {
+            position: absolute;
+            bottom: 16px;
+            left: 24px;
+            right: 24px;
+            height: 68px;
+            background-color: rgba(74, 77, 89, 0.86);
+            backdrop-filter: blur(24px);
+            border-radius: 28px;
+            border: 1px solid rgba(255,255,255,0.08);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 0 10px;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: rgba(255,255,255,0.7);
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .nav-item.active {
+            color: #2196F3;
+            font-weight: bold;
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="device-simulator">
+    <div class="app-bar">
+        <span></span>
+        <span>小米音乐</span>
+        <span>⏭ ↻</span>
+    </div>
+
+    <div class="content">
+        <!-- THE RECORD AND ALBUM SECTION -->
+        <div class="artwork-container">
+            <!-- Left aligned album -->
+            <div class="album-cover"></div>
+            <!-- Right aligned record -->
+            <div class="vinyl-record">
+                <div class="vinyl-center"></div>
+                <div class="vinyl-hole"></div>
+            </div>
+        </div>
+
+        <!-- THE INFO SECTION -->
+        <div class="song-info">
+            <div class="text-info">
+                <h2>Always Online</h2>
+                <p>林俊杰</p>
+                <div class="source-badge-row">
+                    <span class="source-text">曲库</span>
+                    <span class="badge">🖧 xiaomusic</span>
+                </div>
+            </div>
+            <div class="actions">
+                <div class="icon-mock">🔊</div>
+                <!-- This rightmost icon aligns with the right edge of the vinyl mathematically in the container -->
+                <div class="icon-mock heart-icon">❤</div> 
+            </div>
+        </div>
+
+        <div class="progress-bar-container">
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+                <div class="progress-handle"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: rgba(255,255,255,0.58); font-weight: 700;">
+                <span>1:36</span>
+                <span>3:52</span>
+            </div>
+        </div>
+
+        <div class="play-controls">
+            <div class="icon-mock">🔁</div>
+            <div class="icon-mock">⏮</div>
+            <div class="play-btn">▶</div>
+            <div class="icon-mock">⏭</div>
+            <div class="icon-mock">⏱</div>
+        </div>
+    </div>
+    
+    <div class="bottom-nav">
+        <div class="nav-item active">
+            <span>▶</span>
+            <span>播放</span>
+        </div>
+        <div class="nav-item">
+            <span>🔍</span>
+            <span>搜索</span>
+        </div>
+        <div class="nav-item">
+            <span>☰</span>
+            <span>列表</span>
+        </div>
+        <div class="nav-item">
+            <span>🎵</span>
+            <span>曲库</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Placeholder prototype.
+</script>
+</body>
+</html>
