@@ -41,7 +41,7 @@ class _PlaybackModeSelectionPageState extends ConsumerState<PlaybackModeSelectio
           width: double.infinity,
           height: double.infinity,
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1A1B22) : Colors.white,
+            color: isDark ? const Color(0xFF0B0B14) : Colors.white,
           ),
           child: Stack(
             children: [
@@ -51,17 +51,17 @@ class _PlaybackModeSelectionPageState extends ConsumerState<PlaybackModeSelectio
                   animation: _controller,
                   builder: (context, child) {
                     return Positioned(
-                      top: -100 + (20 * _controller.value),
-                      right: -100 + (10 * (1 - _controller.value)),
+                      top: -150 + (30 * _controller.value),
+                      right: -150 + (20 * (1 - _controller.value)),
                       child: child!,
                     );
                   },
                   child: Container(
-                    width: 300,
-                    height: 300,
+                    width: 450,
+                    height: 450,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: const Color(0xFF2196F3).withValues(alpha: 0.15),
+                      color: const Color(0xFF2196F3).withValues(alpha: 0.08),
                     ),
                   ),
                 ),
@@ -69,17 +69,17 @@ class _PlaybackModeSelectionPageState extends ConsumerState<PlaybackModeSelectio
                   animation: _controller,
                   builder: (context, child) {
                     return Positioned(
-                      bottom: -100 + (15 * (1 - _controller.value)),
-                      left: -100 + (25 * _controller.value),
+                      bottom: -150 + (25 * (1 - _controller.value)),
+                      left: -150 + (40 * _controller.value),
                       child: child!,
                     );
                   },
                   child: Container(
-                    width: 300,
-                    height: 300,
+                    width: 450,
+                    height: 450,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: const Color(0xFFFF4081).withValues(alpha: 0.15),
+                      color: const Color(0xFFFF4081).withValues(alpha: 0.08),
                     ),
                   ),
                 ),
@@ -230,14 +230,14 @@ class _ModeCard extends StatelessWidget {
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             color: isDark
-                ? const Color(0xFF4A4D59).withValues(alpha: 0.6)
+                ? const Color(0xFF1E1E2C).withValues(alpha: 0.4)
                 : Colors.grey.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: isDark
-                  ? Colors.white.withValues(alpha: 0.1)
+                  ? Colors.white.withValues(alpha: 0.08)
                   : Colors.black.withValues(alpha: 0.05),
-              width: 1,
+              width: 0.5,
             ),
           ),
           child: Row(

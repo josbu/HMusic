@@ -213,7 +213,7 @@ class _MainPageState extends ConsumerState<MainPage>
       // Keep bottom navigation fixed when keyboard shows
       resizeToAvoidBottomInset: false,
       // 统一背景色为 surface，移除页面级渐变，避免顶部随滚动色彩变化
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: const Color(0xFF0B0B14),
       extendBody: false,
       extendBodyBehindAppBar: false,
       body: Stack(
@@ -330,8 +330,9 @@ class _MainPageState extends ConsumerState<MainPage>
                 icon: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: onSurface.withValues(alpha: 0.08),
+                    color: onSurface.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: onSurface.withValues(alpha: 0.03), width: 0.5),
                   ),
                   child: Icon(
                     Icons.cast_connected_rounded,
@@ -348,8 +349,9 @@ class _MainPageState extends ConsumerState<MainPage>
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: onSurface.withValues(alpha: 0.08),
+                  color: onSurface.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: onSurface.withValues(alpha: 0.03), width: 0.5),
                 ),
                 child: Icon(Icons.settings_rounded, color: onSurface, size: 20),
               ),
@@ -630,8 +632,8 @@ class _MainPageState extends ConsumerState<MainPage>
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-          width: 1,
+          color: Colors.white.withValues(alpha: 0.06), // 极致轮廓光
+          width: 0.5,
         ),
         boxShadow: [
           BoxShadow(
@@ -644,11 +646,11 @@ class _MainPageState extends ConsumerState<MainPage>
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24), // 增强模糊
+          filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40), // 提升到极致朦胧感 (Dreamy)
           child: Container(
             height: 68,
             decoration: BoxDecoration(
-              color: const Color(0xFF4A4D59).withValues(alpha: 0.86),
+              color: const Color(0xFF1E1E2C).withValues(alpha: 0.6), // 对齐设计系统配色
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,

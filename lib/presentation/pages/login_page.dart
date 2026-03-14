@@ -71,7 +71,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
         }
       },
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF1A1B22) : Colors.white,
+        backgroundColor: isDark ? const Color(0xFF0B0B14) : Colors.white,
         body: Stack(
           children: [
             // 🎨 背景装饰光晕
@@ -80,17 +80,17 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
                 animation: _animationController,
                 builder: (context, child) {
                   return Positioned(
-                    top: -150 + (30 * _animationController.value),
-                    right: -100 + (20 * (1 - _animationController.value)),
+                    top: -200 + (40 * _animationController.value),
+                    right: -150 + (30 * (1 - _animationController.value)),
                     child: child!,
                   );
                 },
                 child: Container(
-                  width: 400,
-                  height: 400,
+                  width: 500,
+                  height: 500,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFF2196F3).withValues(alpha: 0.12),
+                    color: const Color(0xFF2196F3).withValues(alpha: 0.08),
                   ),
                 ),
               ),
@@ -330,11 +330,11 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
             contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.05), width: 0.5),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.05), width: 0.5),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),

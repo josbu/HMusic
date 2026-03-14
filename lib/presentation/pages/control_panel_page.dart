@@ -29,6 +29,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     with TickerProviderStateMixin {
   AnimationController? _albumAnimationController;
   AnimationController? _buttonAnimationController;
+  AnimationController? _bgAnimationController; // 🔧 背景动效控制器
   Color? _dominantColor; // 封面主色调
   String? _lastCoverUrl; // 上一次的封面 URL
   String? _colorExtractedUrl; // 🔧 已提取颜色的封面 URL（防止重复提取）
@@ -47,6 +48,11 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
       duration: const Duration(milliseconds: 200),
       vsync: this,
     );
+
+    _bgAnimationController = AnimationController(
+      duration: const Duration(seconds: 4),
+      vsync: this,
+    )..repeat(reverse: true);
 
     // 🎯 优化：立即开始加载，避免延迟造成的割裂感
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -112,6 +118,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
   void dispose() {
     _albumAnimationController?.dispose();
     _buttonAnimationController?.dispose();
+    _bgAnimationController?.dispose();
     super.dispose();
   }
 
@@ -151,36 +158,78 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     });
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: const Color(0xFF0B0B14), // 极致深黑背景
       appBar: widget.showAppBar ? _buildAppBar(context) : null,
-      body: SafeArea(
-        bottom: true,
-        child: CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-              sliver: SliverList.list(
-                children: [
-                  if (widget.showAppBar) const SizedBox(height: 0),
-                  _buildIntegratedPlayerCard(
-                    playbackState,
-                    deviceState,
-                    authState,
-                    playbackMode,
+      body: Stack(
+        children: [
+          // 🎨 背景装饰光晕 (Dreamy Minimalism 核心)
+          AnimatedBuilder(
+            animation: _bgAnimationController!,
+            builder: (context, child) {
+              return Positioned(
+                top: -200 + (50 * _bgAnimationController!.value),
+                right: -200 + (30 * (1 - _bgAnimationController!.value)),
+                child: child!,
+              );
+            },
+            child: Container(
+              width: 500,
+              height: 500,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF2196F3).withValues(alpha: 0.05), // 极淡的蓝色
+              ),
+            ),
+          ),
+          AnimatedBuilder(
+            animation: _bgAnimationController!,
+            builder: (context, child) {
+              return Positioned(
+                bottom: -150 + (40 * (1 - _bgAnimationController!.value)),
+                left: -200 + (60 * _bgAnimationController!.value),
+                child: child!,
+              );
+            },
+            child: Container(
+              width: 600,
+              height: 600,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFFF3366).withValues(alpha: 0.04), // 极淡的粉色
+              ),
+            ),
+          ),
+          
+          SafeArea(
+            bottom: true,
+            child: CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                  sliver: SliverList.list(
+                    children: [
+                      if (widget.showAppBar) const SizedBox(height: 0),
+                      _buildIntegratedPlayerCard(
+                        playbackState,
+                        deviceState,
+                        authState,
+                        playbackMode,
+                      ),
+                      if (playbackState.error != null)
+                        _buildErrorMessage(playbackState),
+                    ],
                   ),
-                  if (playbackState.error != null)
-                    _buildErrorMessage(playbackState),
-                ],
-              ),
+                ),
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: SizedBox(
+                    height: AppLayout.bottomOverlayHeight(context) + 8,
+                  ),
+                ),
+              ],
             ),
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: SizedBox(
-                height: AppLayout.bottomOverlayHeight(context) + 8,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -758,11 +807,16 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                       border: Border.all(
                         color: Colors.white.withValues(alpha: 0.06),
                       ),
-                      boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          blurRadius: 14,
-                          offset: const Offset(0, 8),
+                          color: Colors.black.withValues(alpha: 0.5),
+                          blurRadius: 30,
+                          offset: const Offset(0, 15),
+                        ),
+                        // 🎯 梦幻补光：外围微弱光晕
+                        BoxShadow(
+                          color: (_dominantColor ?? Colors.black).withValues(alpha: 0.08),
+                          blurRadius: 50,
+                          spreadRadius: 10,
                         ),
                       ],
                     ),
@@ -997,8 +1051,8 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                   fontSize: useThreeLineLayout ? 24 : 20,
                   fontWeight: FontWeight.w800,
                   color: onSurface.withValues(alpha: 0.94),
-                  height: 1.08,
-                  letterSpacing: 0.0,
+                  height: 1.15,
+                  letterSpacing: 0.4, // 微笑增加字距，提升高级感
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -1024,10 +1078,11 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                       child: Text(
                         sourceText,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: onSurface.withValues(alpha: 0.52),
+                          color: onSurface.withValues(alpha: 0.4), // 降低不重要信息的亮度
                           height: 1.0,
+                          letterSpacing: 0.5,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
