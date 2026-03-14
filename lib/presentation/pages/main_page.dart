@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:ui';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -216,8 +217,14 @@ class _MainPageState extends ConsumerState<MainPage>
       backgroundColor: const Color(0xFF0B0B14),
       extendBody: false,
       extendBodyBehindAppBar: false,
-      body: Stack(
-        children: [
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+        ),
+        child: Stack(
+          children: [
           // Content column
           SafeArea(
             top: true,
@@ -225,16 +232,10 @@ class _MainPageState extends ConsumerState<MainPage>
             child: Column(
               children: [
                 // Part 1: Header (Title, Refresh, User Info)
-                Material(
-                  color: Theme.of(context).colorScheme.surface,
-                  child: _buildHeader(context),
-                ),
+                _buildHeader(context),
 
                 // Part 2: Device Selector or Search Bar
-                Material(
-                  color: Theme.of(context).colorScheme.surface,
-                  child: _buildSecondarySection(),
-                ),
+                _buildSecondarySection(),
 
                 // Part 3: Main Content (Player, Lists)
                 Expanded(
@@ -257,14 +258,15 @@ class _MainPageState extends ConsumerState<MainPage>
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildHeader(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+      padding: const EdgeInsets.only(left: 24.0, right: 24.0, top: 16.0, bottom: 8.0),
       child: SizedBox(
         height: 56.0, // Standard AppBar height
         child: Row(

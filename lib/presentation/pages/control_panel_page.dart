@@ -1507,8 +1507,9 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
               enabled
                   ? LinearGradient(
                     colors: [
-                      accentColor,
-                      Color.lerp(accentColor, Colors.orangeAccent, 0.35)!,
+                      accentColor.withValues(alpha: 0.9),
+                      Color.lerp(accentColor, Colors.orangeAccent, 0.25)!
+                          .withValues(alpha: 0.8),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -1525,9 +1526,16 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
               enabled
                   ? [
                     BoxShadow(
-                      color: accentColor.withValues(alpha: 0.34),
-                      blurRadius: 22,
-                      offset: const Offset(0, 8),
+                      color: accentColor.withValues(alpha: 0.35),
+                      blurRadius: 32,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 4),
+                    ),
+                    BoxShadow(
+                      color: accentColor.withValues(alpha: 0.15),
+                      blurRadius: 12,
+                      spreadRadius: -2,
+                      offset: const Offset(0, 0),
                     ),
                   ]
                   : [],
@@ -1951,12 +1959,12 @@ class _PlaybackModeBadge extends ConsumerWidget {
     final String label;
 
     if (isXiaomusic) {
-      bgColor = Colors.blue.withValues(alpha: 0.15);
+      bgColor = Colors.blue.withValues(alpha: 0.08);
       fgColor = Colors.blue;
       icon = Icons.dns_rounded;
       label = 'xiaomusic';
     } else {
-      bgColor = Colors.orange.withValues(alpha: 0.15);
+      bgColor = Colors.orange.withValues(alpha: 0.08);
       fgColor = Colors.orange;
       icon = Icons.wifi_tethering_rounded;
       label = '直连';
@@ -1966,7 +1974,11 @@ class _PlaybackModeBadge extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: fgColor.withValues(alpha: 0.15),
+          width: 0.5,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

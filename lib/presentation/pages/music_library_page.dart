@@ -325,7 +325,7 @@ class _MusicLibraryPageState extends ConsumerState<MusicLibraryPage>
     return Scaffold(
       key: const ValueKey('music_library_scaffold'),
       resizeToAvoidBottomInset: false,
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: Colors.transparent,
       floatingActionButton:
           libraryState.isSelectionMode &&
                   libraryState.selectedMusicNames.isNotEmpty

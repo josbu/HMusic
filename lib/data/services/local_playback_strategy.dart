@@ -180,9 +180,12 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
       // 状态变化时立即更新UI
       _emitCurrentStatus();
 
-      // 自动播放下一首
-      if (state.processingState == ProcessingState.completed) {
-        debugPrint('🎵 [LocalPlayback] 当前歌曲播放完成，尝试播放下一首');
+      // 🎯 自动播放下一首（仅在 AudioHandler 未连接时生效）
+      // 当 AudioHandler 已连接时，由 AudioHandler._processingStateSubscription
+      // 通过 skipToNext() → onNext 回调触发下一首，此处不再重复触发。
+      // 如果两边都触发，会导致「双重触发」：同时解析两首歌，快速累加熔断器。
+      if (state.processingState == ProcessingState.completed && _audioHandler == null) {
+        debugPrint('🎵 [LocalPlayback] 歌曲播放完成（无AudioHandler），本地触发下一首');
         next();
       }
     });

@@ -30,6 +30,7 @@ import '../providers/local_playlist_provider.dart'; // 🎯 本地播放列表Pr
 import '../../data/models/local_playlist.dart'; // 🎯 本地播放列表模型
 import '../../data/utils/lx_music_info_builder.dart';
 import '../../core/utils/platform_id.dart';
+import '../../data/services/song_resolver_service.dart'; // 🎯 熔断器通知
 
 class MusicSearchPage extends ConsumerStatefulWidget {
   const MusicSearchPage({super.key});
@@ -123,7 +124,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
     return Scaffold(
       key: const ValueKey('music_search_scaffold'),
       resizeToAvoidBottomInset: false,
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: Colors.transparent,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Stack(
@@ -919,7 +920,14 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
             quality: quality,
             musicInfo: musicInfo,
           );
-          if (url != null && url.isNotEmpty) return url;
+          if (url != null && url.isNotEmpty) {
+            // 🎯 通知熔断器：该平台解析成功，清除历史失败记录
+            // 避免队列自动下一曲时因历史失败而误降级
+            try {
+              ref.read(songResolverServiceProvider).notifyExternalPlaySuccess(mapped);
+            } catch (_) {}
+            return url;
+          }
         }
       } catch (_) {}
 

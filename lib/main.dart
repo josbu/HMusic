@@ -331,7 +331,7 @@ class MyApp extends ConsumerWidget {
       seedColor: seed,
       brightness: Brightness.dark,
       primary: seed,
-      surface: const Color(0xFF1e1e2c),
+      surface: const Color(0xFF0B0B14),
     );
 
     // 在应用构建阶段预热JS代理（读取provider以触发初始化和自动加载）
@@ -343,7 +343,7 @@ class MyApp extends ConsumerWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: darkScheme,
-        scaffoldBackgroundColor: const Color(0xFF0b0b14),
+        scaffoldBackgroundColor: const Color(0xFF0B0B14),
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.transparent,
           foregroundColor: Colors.white,
@@ -362,7 +362,7 @@ class MyApp extends ConsumerWidget {
         ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
-          backgroundColor: const Color(0xFF1e1e2c),
+          backgroundColor: const Color(0xFF161622),
           contentTextStyle: const TextStyle(color: Colors.white),
           insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           elevation: 8,
@@ -391,7 +391,7 @@ class MyApp extends ConsumerWidget {
       darkTheme: ThemeData(
         useMaterial3: true,
         colorScheme: darkScheme,
-        scaffoldBackgroundColor: const Color(0xFF0b0b14),
+        scaffoldBackgroundColor: const Color(0xFF0B0B14),
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.transparent,
           foregroundColor: Colors.white,
@@ -410,7 +410,7 @@ class MyApp extends ConsumerWidget {
         ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
-          backgroundColor: const Color(0xFF1e1e2c),
+          backgroundColor: const Color(0xFF161622),
           contentTextStyle: const TextStyle(color: Colors.white),
           insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           elevation: 8,
