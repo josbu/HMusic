@@ -807,6 +807,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                       border: Border.all(
                         color: Colors.white.withValues(alpha: 0.06),
                       ),
+                      boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.5),
                           blurRadius: 30,
@@ -814,7 +815,10 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                         ),
                         // 🎯 梦幻补光：外围微弱光晕
                         BoxShadow(
-                          color: (_dominantColor ?? Colors.black).withValues(alpha: 0.08),
+                          color:
+                              (_dominantColor ?? Colors.black).withValues(
+                                alpha: 0.08,
+                              ),
                           blurRadius: 50,
                           spreadRadius: 10,
                         ),

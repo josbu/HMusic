@@ -287,8 +287,12 @@ class _MainPageState extends ConsumerState<MainPage>
                   icon: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: onSurface.withValues(alpha: 0.08),
+                      color: onSurface.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: onSurface.withValues(alpha: 0.03),
+                        width: 0.5,
+                      ),
                     ),
                     child: Icon(
                       Icons.upload_rounded,
@@ -309,8 +313,12 @@ class _MainPageState extends ConsumerState<MainPage>
                   icon: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: onSurface.withValues(alpha: 0.08),
+                      color: onSurface.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: onSurface.withValues(alpha: 0.03),
+                        width: 0.5,
+                      ),
                     ),
                     child: Icon(
                       Icons.favorite_rounded,
