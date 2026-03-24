@@ -266,107 +266,95 @@ class _MainPageState extends ConsumerState<MainPage>
     final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Padding(
-      padding: const EdgeInsets.only(left: 24.0, right: 24.0, top: 16.0, bottom: 8.0),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
       child: SizedBox(
-        height: 56.0, // Standard AppBar height
+        height: 44.0, 
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Transform.translate(
-              offset: const Offset(0, 5),
-              child: SvgPicture.asset(
-                'assets/hmusic-logo.svg',
-                width: 92,
-                fit: BoxFit.fitWidth,
+            SizedBox(
+              height: 28, 
+              child: AspectRatio(
+                aspectRatio: 572 / 210, // 强制保持原始比例
+                child: SvgPicture.asset(
+                  'assets/hmusic-logo.svg',
+                  fit: BoxFit.contain,
+                  colorFilter: ColorFilter.mode(
+                    onSurface.withValues(alpha: 0.95),
+                    BlendMode.srcIn,
+                  ),
+                ),
               ),
             ),
             const Spacer(),
             // Upload button - only show on music library tab (index 3) in xiaomusic mode
             if (_selectedIndex == 3 &&
                 ref.watch(playbackModeProvider) == PlaybackMode.xiaomusic)
-              Container(
-                margin: const EdgeInsets.only(right: 8),
-                child: IconButton(
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: onSurface.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: onSurface.withValues(alpha: 0.03),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.upload_rounded,
-                      color: onSurface,
-                      size: 20,
-                    ),
-                  ),
-                  onPressed: _showUploadDialog,
-                  tooltip: '上传音乐文件',
-                ),
+              _buildHeaderIcon(
+                icon: Icons.upload_rounded,
+                onPressed: _showUploadDialog,
+                tooltip: '上传音乐文件',
+                onSurface: onSurface,
               ),
             // Sponsor button
-            Container(
-              margin: const EdgeInsets.only(right: 8),
-              child: ScaleTransition(
-                scale: _heartbeatAnimation,
-                child: IconButton(
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: onSurface.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: onSurface.withValues(alpha: 0.03),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.favorite_rounded,
-                      color: Colors.pink.shade400,
-                      size: 20,
-                    ),
-                  ),
-                  onPressed: () => context.push('/settings/sponsor'),
-                  tooltip: '赞赏支持',
-                ),
+            ScaleTransition(
+              scale: _heartbeatAnimation,
+              child: _buildHeaderIcon(
+                icon: Icons.favorite_rounded,
+                onPressed: () => context.push('/settings/sponsor'),
+                tooltip: '赞赏支持',
+                onSurface: onSurface,
+                iconColor: Colors.pink.shade400,
               ),
             ),
             // Device Selection button
-            Container(
-              margin: const EdgeInsets.only(right: 8),
-              child: IconButton(
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: onSurface.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: onSurface.withValues(alpha: 0.03), width: 0.5),
-                  ),
-                  child: Icon(
-                    Icons.cast_connected_rounded,
-                    color: onSurface,
-                    size: 20,
-                  ),
-                ),
-                onPressed: () => _showDeviceSelectionDialog(context),
-                tooltip: '选择播放设备',
-              ),
+            _buildHeaderIcon(
+              icon: Icons.cast_connected_rounded,
+              onPressed: () => _showDeviceSelectionDialog(context),
+              tooltip: '选择播放设备',
+              onSurface: onSurface,
             ),
-            IconButton(
+            _buildHeaderIcon(
+              icon: Icons.settings_rounded,
               onPressed: () => context.push('/settings'),
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: onSurface.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: onSurface.withValues(alpha: 0.03), width: 0.5),
-                ),
-                child: Icon(Icons.settings_rounded, color: onSurface, size: 20),
-              ),
+              tooltip: '设置',
+              onSurface: onSurface,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderIcon({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required String tooltip,
+    required Color onSurface,
+    Color? iconColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 10),
+      child: IconButton(
+        onPressed: onPressed,
+        tooltip: tooltip,
+        constraints: const BoxConstraints(),
+        padding: EdgeInsets.zero,
+        icon: Container(
+          padding: const EdgeInsets.all(9),
+          decoration: BoxDecoration(
+            color: onSurface.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: onSurface.withValues(alpha: 0.04),
+              width: 0.5,
+            ),
+          ),
+          child: Icon(
+            icon,
+            color: iconColor ?? onSurface.withValues(alpha: 0.85),
+            size: 20,
+          ),
         ),
       ),
     );
@@ -640,27 +628,27 @@ class _MainPageState extends ConsumerState<MainPage>
         top: 10,
       ),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(30),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.06), // 极致轮廓光
-          width: 0.5,
+          color: Colors.white.withValues(alpha: 0.08), 
+          width: 0.8,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 28,
-            offset: const Offset(0, 10),
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 32,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(30),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40), // 提升到极致朦胧感 (Dreamy)
+          filter: ImageFilter.blur(sigmaX: 45, sigmaY: 45), 
           child: Container(
-            height: 68,
+            height: 72,
             decoration: BoxDecoration(
-              color: const Color(0xFF1E1E2C).withValues(alpha: 0.6), // 对齐设计系统配色
+              color: const Color(0xFF1A1B22).withValues(alpha: 0.65), 
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,

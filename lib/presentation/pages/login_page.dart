@@ -74,7 +74,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
         backgroundColor: isDark ? const Color(0xFF0B0B14) : Colors.white,
         body: Stack(
           children: [
-            // 🎨 背景装饰光晕
+            // 🎨 背景装饰光晕 - 蓝
             if (isDark)
               AnimatedBuilder(
                 animation: _animationController,
@@ -90,7 +90,28 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
                   height: 500,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFF2196F3).withValues(alpha: 0.08),
+                    color: const Color(0xFF2196F3).withValues(alpha: 0.1),
+                  ),
+                ),
+              ),
+
+            // 🎨 背景装饰光晕 - 粉
+            if (isDark)
+              AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, child) {
+                  return Positioned(
+                    bottom: -150 + (50 * (1 - _animationController.value)),
+                    left: -120 + (40 * _animationController.value),
+                    child: child!,
+                  );
+                },
+                child: Container(
+                  width: 400,
+                  height: 400,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFFFF4081).withValues(alpha: 0.08),
                   ),
                 ),
               ),
@@ -114,12 +135,18 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
                               : () => ref.read(playbackModeProvider.notifier).clearMode(),
                         ),
                         const Spacer(),
-                        SvgPicture.asset(
-                          'assets/hmusic-logo.svg',
-                          width: 80,
-                          colorFilter: const ColorFilter.mode(
-                            Color(0xFF21B0A5), // 强制品牌色
-                            BlendMode.srcIn,
+                        SizedBox(
+                          height: 24, 
+                          child: AspectRatio(
+                            aspectRatio: 572 / 210,
+                            child: SvgPicture.asset(
+                              'assets/hmusic-logo.svg',
+                              fit: BoxFit.contain,
+                              colorFilter: ColorFilter.mode(
+                                isDark ? Colors.white.withValues(alpha: 0.9) : const Color(0xFF21B0A5),
+                                BlendMode.srcIn,
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 40), // 视觉平衡
@@ -135,27 +162,28 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const SizedBox(height: 40),
+                          const SizedBox(height: 32),
                           
                           // 🏷️ 标题区域
                           Text(
                             'xiaomusic',
                             style: TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w800,
+                              fontSize: 34,
+                              fontWeight: FontWeight.w900,
                               color: isDark ? Colors.white : const Color(0xFF1A1B22),
-                              letterSpacing: -0.5,
+                              letterSpacing: -0.8,
                             ),
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 10),
                           Text(
                             '连接到你的个人音乐服务端',
                             style: TextStyle(
                               fontSize: 16,
                               color: isDark
-                                  ? Colors.white.withValues(alpha: 0.6)
+                                  ? Colors.white.withValues(alpha: 0.55)
                                   : Colors.black54,
                               height: 1.5,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
 

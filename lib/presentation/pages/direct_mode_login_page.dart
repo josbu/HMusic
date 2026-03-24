@@ -192,12 +192,18 @@ class _DirectModeLoginPageState extends ConsumerState<DirectModeLoginPage> with 
                               : () => ref.read(playbackModeProvider.notifier).clearMode(),
                         ),
                         const Spacer(),
-                        SvgPicture.asset(
-                          'assets/hmusic-logo.svg',
-                          width: 80,
-                          colorFilter: const ColorFilter.mode(
-                            Color(0xFF21B0A5), // 品牌 Teal
-                            BlendMode.srcIn,
+                        SizedBox(
+                          height: 24,
+                          child: AspectRatio(
+                            aspectRatio: 572 / 210,
+                            child: SvgPicture.asset(
+                              'assets/hmusic-logo.svg',
+                              fit: BoxFit.contain,
+                              colorFilter: const ColorFilter.mode(
+                                Color(0xFF21B0A5), // 品牌 Teal
+                                BlendMode.srcIn,
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 40),

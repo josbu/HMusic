@@ -92,20 +92,25 @@ class _PlaybackModeSelectionPageState extends ConsumerState<PlaybackModeSelectio
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // 🏠 App Bar / Logo 区域
-                      Container(
-                        height: 120,
-                        alignment: Alignment.centerLeft,
-                        child: SvgPicture.asset(
-                          'assets/hmusic-logo.svg',
-                          width: 140,
-                          colorFilter: const ColorFilter.mode(
-                            Color(0xFF21B0A5), // 强制使用品牌 Teal 颜色
-                            BlendMode.srcIn,
+                      Padding(
+                        padding: const EdgeInsets.only(top: 40, bottom: 48),
+                        child: Center(
+                          child: SizedBox(
+                            height: 60, 
+                            child: AspectRatio(
+                              aspectRatio: 572 / 210,
+                              child: SvgPicture.asset(
+                                'assets/hmusic-logo.svg',
+                                fit: BoxFit.contain, 
+                                colorFilter: const ColorFilter.mode(
+                                  Color(0xFF21B0A5), 
+                                  BlendMode.srcIn,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-
-                      const SizedBox(height: 20),
 
                       // 🏷️ 标题区域
                       Text(
