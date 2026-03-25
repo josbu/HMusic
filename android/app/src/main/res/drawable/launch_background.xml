@@ -9,11 +9,8 @@
     </item>
 
     <item
-        android:width="240dp"
-        android:height="88dp"
-        android:gravity="center">
-        <inset
-            android:drawable="@drawable/app_logo_vector"
-            android:inset="10%" />
-    </item>
+        android:width="200dp"
+        android:height="200dp"
+        android:drawable="@drawable/app_logo_vector"
+        android:gravity="center" />
 </layer-list>

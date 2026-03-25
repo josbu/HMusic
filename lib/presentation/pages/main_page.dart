@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'dart:ui';
 import 'dart:async';
@@ -297,25 +298,22 @@ class _MainPageState extends ConsumerState<MainPage>
                 onSurface: onSurface,
               ),
             // Sponsor button
-            ScaleTransition(
-              scale: _heartbeatAnimation,
-              child: _buildHeaderIcon(
-                icon: Icons.favorite_rounded,
-                onPressed: () => context.push('/settings/sponsor'),
-                tooltip: '赞赏支持',
-                onSurface: onSurface,
-                iconColor: Colors.pink.shade400,
-              ),
+            _buildHeaderIcon(
+              icon: CupertinoIcons.heart,
+              onPressed: () => context.push('/settings/sponsor'),
+              tooltip: '赞赏支持',
+              onSurface: onSurface,
+              iconColor: const Color(0xFFFF4D8D).withValues(alpha: 0.9), // 优雅的粉红色
             ),
             // Device Selection button
             _buildHeaderIcon(
-              icon: Icons.cast_connected_rounded,
+              icon: CupertinoIcons.hifispeaker,
               onPressed: () => _showDeviceSelectionDialog(context),
               tooltip: '选择播放设备',
               onSurface: onSurface,
             ),
             _buildHeaderIcon(
-              icon: Icons.settings_rounded,
+              icon: CupertinoIcons.settings,
               onPressed: () => context.push('/settings'),
               tooltip: '设置',
               onSurface: onSurface,
@@ -334,17 +332,19 @@ class _MainPageState extends ConsumerState<MainPage>
     Color? iconColor,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(left: 10),
+      padding: const EdgeInsets.only(left: 12),
       child: IconButton(
         onPressed: onPressed,
         tooltip: tooltip,
         constraints: const BoxConstraints(),
         padding: EdgeInsets.zero,
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
         icon: Container(
-          padding: const EdgeInsets.all(9),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: onSurface.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(14),
+            color: onSurface.withValues(alpha: 0.05),
+            shape: BoxShape.circle, // 改为圆形，视觉更简洁
             border: Border.all(
               color: onSurface.withValues(alpha: 0.04),
               width: 0.5,
@@ -352,8 +352,8 @@ class _MainPageState extends ConsumerState<MainPage>
           ),
           child: Icon(
             icon,
-            color: iconColor ?? onSurface.withValues(alpha: 0.85),
-            size: 20,
+            color: iconColor ?? onSurface.withValues(alpha: 0.8),
+            size: 19, // 稍微缩小一点，更精致
           ),
         ),
       ),

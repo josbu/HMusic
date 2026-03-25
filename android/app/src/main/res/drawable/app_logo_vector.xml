@@ -1,14 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="240dp"
-    android:height="88dp"
-    android:viewportWidth="572"
-    android:viewportHeight="210">
+    android:height="240dp"
+    android:viewportWidth="1000"
+    android:viewportHeight="1000">
 
-    <!-- Group to handle SVG viewBox offset (223, 370) -->
+    <!-- Group to handle SVG viewBox offset to center the wide logo with enough padding for circular masks -->
+    <!-- Content Width: 572, Height: 210. Target: 1000x1000. -->
+    <!-- translateX = (1000-572)/2 - 223 = -9 -->
+    <!-- translateY = (1000-210)/2 - 370 = 25 -->
     <group
-        android:translateX="-223"
-        android:translateY="-370">
+        android:translateX="-9"
+        android:translateY="25">
         
         <path
             android:fillColor="#21B0A5"
