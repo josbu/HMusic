@@ -41,11 +41,11 @@ class AppBottomSheetContainer extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             color: isDark 
-                ? const Color(0xFF1A1B22).withValues(alpha: 0.8)
+                ? const Color(0xFF090E17).withValues(alpha: 0.8)
                 : Colors.white.withValues(alpha: 0.85),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
             border: Border.all(
-              color: Colors.white.withValues(alpha: isDark ? 0.08 : 0.4),
+              color: Colors.white.withValues(alpha: isDark ? 0.12 : 0.4),
               width: 0.5,
             ),
           ),

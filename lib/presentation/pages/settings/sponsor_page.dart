@@ -11,10 +11,7 @@ class SponsorPage extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('赞赏支持'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('赞赏支持'), centerTitle: true),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -23,24 +20,7 @@ class SponsorPage extends StatelessWidget {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    colorScheme.primaryContainer,
-                    colorScheme.secondaryContainer,
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: colorScheme.shadow.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
+
               child: Column(
                 children: [
                   Icon(
@@ -53,7 +33,7 @@ class SponsorPage extends StatelessWidget {
                     '感谢您的支持！',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: colorScheme.onPrimaryContainer,
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -61,7 +41,7 @@ class SponsorPage extends StatelessWidget {
                     'HMusic 是一个免费的音乐控制应用\n如果这个应用对您有帮助，欢迎赞赏支持开发者',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onPrimaryContainer.withOpacity(0.8),
+                      color: Colors.white70,
                       height: 1.5,
                     ),
                   ),
@@ -75,16 +55,7 @@ class SponsorPage extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: colorScheme.outline.withOpacity(0.2)),
-                boxShadow: [
-                  BoxShadow(
-                    color: colorScheme.shadow.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
               ),
               child: Column(
                 children: [
@@ -116,7 +87,7 @@ class SponsorPage extends StatelessWidget {
                       width: 200,
                       height: 200,
                       decoration: BoxDecoration(
-                        color: colorScheme.surfaceVariant,
+                        color: const Color(0xFF1E293B),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: colorScheme.outline.withOpacity(0.3),
@@ -148,7 +119,6 @@ class SponsorPage extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceVariant.withOpacity(0.3),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -200,16 +170,12 @@ class SponsorPage extends StatelessWidget {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: colorScheme.errorContainer.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: colorScheme.error.withOpacity(0.2)),
-              ),
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
               child: Row(
                 children: [
                   Icon(
                     Icons.info_outline_rounded,
-                    color: colorScheme.error,
+                    color: colorScheme.primary,
                     size: 20,
                   ),
                   const SizedBox(width: 12),
@@ -217,7 +183,7 @@ class SponsorPage extends StatelessWidget {
                     child: Text(
                       '赞赏纯属自愿，应用永远免费使用！\n您的每一份支持都是对开发者最大的鼓励 ❤️',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colorScheme.error,
+                        color: colorScheme.primary,
                         height: 1.4,
                       ),
                     ),
@@ -356,10 +322,7 @@ class SponsorPage extends StatelessWidget {
                   Navigator.of(context).pop();
                   // 复制公众号名称
                   Clipboard.setData(const ClipboardData(text: '老婆饼里没有饼'));
-                  AppSnackBar.showSuccess(
-                    context,
-                    '公众号名称已复制到剪贴板',
-                  );
+                  AppSnackBar.showSuccess(context, '公众号名称已复制到剪贴板');
                 },
                 child: const Text('复制公众号名称'),
               ),
@@ -389,13 +352,10 @@ class SponsorPage extends StatelessWidget {
                   Clipboard.setData(
                     const ClipboardData(
                       text:
-                          '推荐一个好用的音乐控制应用：HMusic！功能强大，完全免费 🎵\n\n想了解更多可以关注公众号"老婆饼里没有饼"'
+                          '推荐一个好用的音乐控制应用：HMusic！功能强大，完全免费 🎵\n\n想了解更多可以关注公众号"老婆饼里没有饼"',
                     ),
                   );
-                  AppSnackBar.showSuccess(
-                    context,
-                    '分享文案已复制到剪贴板',
-                  );
+                  AppSnackBar.showSuccess(context, '分享文案已复制到剪贴板');
                 },
                 child: const Text('复制分享文案'),
               ),
@@ -449,7 +409,6 @@ class SponsorPage extends StatelessWidget {
                   width: 100,
                   height: 100,
                   decoration: BoxDecoration(
-                    color: colorScheme.primary.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(

@@ -110,7 +110,8 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
   ) {
     return Card(
       elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+      color: Colors.transparent,
+      margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -238,13 +239,19 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
     bool isSelected,
     JsScriptManager scriptManager,
   ) {
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      elevation: isSelected ? 2 : 0,
-      color:
-          isSelected
-              ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
-              : Theme.of(context).colorScheme.surface,
+      decoration: BoxDecoration(
+        color:
+            isSelected
+                ? const Color(0xFF21B0A5).withOpacity(0.08)
+                : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        border:
+            isSelected
+                ? Border.all(color: const Color(0xFF21B0A5).withOpacity(0.3))
+                : Border.all(color: Colors.transparent),
+      ),
       child: ListTile(
         leading: Icon(
           script.source == JsScriptSource.builtin
@@ -302,14 +309,10 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
-        ),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
+          dropdownColor: const Color(0xFF090E17),
           value: _jsSearchStrategy,
           isExpanded: true,
           items: const [
@@ -523,7 +526,10 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
         // 全部成功
         AppSnackBar.show(
           context,
-          const SnackBar(content: Text('音源设置已保存'), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text('音源设置已保存'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
     } catch (e) {
@@ -539,14 +545,10 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
-        ),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
+          dropdownColor: const Color(0xFF090E17),
           value: _playlistResolveStrategy,
           isExpanded: true,
           items: const [
@@ -570,7 +572,8 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
 
     return Card(
       elevation: 0,
-      color: colorScheme.surfaceVariant.withOpacity(0.3),
+      color: Colors.transparent,
+      margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -597,9 +600,7 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
                     children: [
                       Text(
                         '音频代理服务器',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
+                        style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 2),
@@ -683,7 +684,10 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
       if (mounted) {
         AppSnackBar.show(
           context,
-          const SnackBar(content: Text('请先输入代理地址'), backgroundColor: Colors.orange),
+          const SnackBar(
+            content: Text('请先输入代理地址'),
+            backgroundColor: Colors.orange,
+          ),
         );
       }
       return;
@@ -693,18 +697,24 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
     if (mounted) {
       AppSnackBar.show(
         context,
-        const SnackBar(content: Text('正在测试连接...'), duration: Duration(seconds: 2)),
+        const SnackBar(
+          content: Text('正在测试连接...'),
+          duration: Duration(seconds: 2),
+        ),
       );
     }
 
     try {
-      final dio = Dio(BaseOptions(
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
-      ));
+      final dio = Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
+        ),
+      );
 
       // 测试健康检查端点
-      final healthUrl = proxyUrl.endsWith('/') ? '${proxyUrl}health' : '$proxyUrl/health';
+      final healthUrl =
+          proxyUrl.endsWith('/') ? '${proxyUrl}health' : '$proxyUrl/health';
       final response = await dio.get(healthUrl);
 
       if (response.statusCode == 200) {
@@ -723,7 +733,10 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
           if (mounted) {
             AppSnackBar.show(
               context,
-              const SnackBar(content: Text('连接成功，但响应格式异常'), backgroundColor: Colors.orange),
+              const SnackBar(
+                content: Text('连接成功，但响应格式异常'),
+                backgroundColor: Colors.orange,
+              ),
             );
           }
         }
@@ -731,7 +744,10 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
         if (mounted) {
           AppSnackBar.show(
             context,
-            SnackBar(content: Text('连接失败: HTTP ${response.statusCode}'), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text('连接失败: HTTP ${response.statusCode}'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }
@@ -749,71 +765,64 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
   Future<void> _showProxyHelp(BuildContext context) async {
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.cloud_outlined),
-            SizedBox(width: 8),
-            Text('部署音频代理'),
-          ],
-        ),
-        content: const SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '为什么需要代理？',
-                style: TextStyle(fontWeight: FontWeight.bold),
+      builder:
+          (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.cloud_outlined),
+                SizedBox(width: 8),
+                Text('部署音频代理'),
+              ],
+            ),
+            content: const SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '为什么需要代理？',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    '小爱音箱直接访问音乐CDN可能被限制（User-Agent/Referer检查）。\n'
+                    '通过代理转发可以绕过这些限制。',
+                  ),
+                  SizedBox(height: 16),
+                  Text('部署步骤：', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 8),
+                  Text(
+                    '1. 注册 Cloudflare 账号\n'
+                    '2. 进入 Workers & Pages\n'
+                    '3. 创建新 Worker\n'
+                    '4. 粘贴项目提供的代码\n'
+                    '5. 部署后获取URL',
+                  ),
+                  SizedBox(height: 16),
+                  Text('免费额度：', style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 8),
+                  Text('每天 100,000 次请求，个人使用完全足够！'),
+                  SizedBox(height: 16),
+                  Text(
+                    '📁 代码位置：',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'cloudflare-worker/worker.js\n'
+                    'cloudflare-worker/README.md',
+                    style: TextStyle(fontFamily: 'monospace'),
+                  ),
+                ],
               ),
-              SizedBox(height: 8),
-              Text(
-                '小爱音箱直接访问音乐CDN可能被限制（User-Agent/Referer检查）。\n'
-                '通过代理转发可以绕过这些限制。',
-              ),
-              SizedBox(height: 16),
-              Text(
-                '部署步骤：',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 8),
-              Text(
-                '1. 注册 Cloudflare 账号\n'
-                '2. 进入 Workers & Pages\n'
-                '3. 创建新 Worker\n'
-                '4. 粘贴项目提供的代码\n'
-                '5. 部署后获取URL',
-              ),
-              SizedBox(height: 16),
-              Text(
-                '免费额度：',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 8),
-              Text(
-                '每天 100,000 次请求，个人使用完全足够！',
-              ),
-              SizedBox(height: 16),
-              Text(
-                '📁 代码位置：',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'cloudflare-worker/worker.js\n'
-                'cloudflare-worker/README.md',
-                style: TextStyle(fontFamily: 'monospace'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('知道了'),
               ),
             ],
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('知道了'),
-          ),
-        ],
-      ),
     );
   }
 }

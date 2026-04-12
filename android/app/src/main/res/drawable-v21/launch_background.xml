@@ -4,7 +4,7 @@
     <!-- 纯色背景 -->
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#0B0B14" />
+            <solid android:color="#090E17" />
         </shape>
     </item>
 

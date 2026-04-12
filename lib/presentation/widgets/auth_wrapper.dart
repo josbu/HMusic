@@ -219,7 +219,7 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
     if (!_updateChecked) {
       print('[AuthWrapper] ⏳ 显示加载指示器（等待更新检查）');
       return const Scaffold(
-        backgroundColor: Color(0xFF0B0B14),
+        backgroundColor: Color(0xFF090E17),
         body: Center(
           child: CircularProgressIndicator(),
         ),
@@ -246,7 +246,7 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
         });
       }
       return const Scaffold(
-        backgroundColor: Color(0xFF0B0B14),
+        backgroundColor: Color(0xFF090E17),
         body: Center(
           child: CircularProgressIndicator(),
         ),

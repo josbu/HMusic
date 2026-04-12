@@ -158,48 +158,10 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0B0B14), // 极致深黑背景
+      backgroundColor: const Color(0xFF090E17), // 极致深黑背景
       appBar: widget.showAppBar ? _buildAppBar(context) : null,
       body: Stack(
         children: [
-          // 🎨 背景装饰光晕 (Dreamy Minimalism 核心)
-          AnimatedBuilder(
-            animation: _bgAnimationController!,
-            builder: (context, child) {
-              return Positioned(
-                top: -200 + (50 * _bgAnimationController!.value),
-                right: -200 + (30 * (1 - _bgAnimationController!.value)),
-                child: child!,
-              );
-            },
-            child: Container(
-              width: 500,
-              height: 500,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF2196F3).withValues(alpha: 0.05), // 极淡的蓝色
-              ),
-            ),
-          ),
-          AnimatedBuilder(
-            animation: _bgAnimationController!,
-            builder: (context, child) {
-              return Positioned(
-                bottom: -150 + (40 * (1 - _bgAnimationController!.value)),
-                left: -200 + (60 * _bgAnimationController!.value),
-                child: child!,
-              );
-            },
-            child: Container(
-              width: 600,
-              height: 600,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFFF3366).withValues(alpha: 0.04), // 极淡的粉色
-              ),
-            ),
-          ),
-          
           SafeArea(
             bottom: true,
             child: CustomScrollView(

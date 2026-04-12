@@ -133,10 +133,10 @@ flutter:
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
-  image_path: "assets/hmusic-logo-square.svg"
+  image_path: "web/icons/Icon-512.png"
   # 自适应图标配置 (Android 8.0+)
-  adaptive_icon_background: "#0B0B14"
-  adaptive_icon_foreground: "assets/hmusic-logo-square.svg"
+  adaptive_icon_background: "#090E17"
+  adaptive_icon_foreground: "web/icons/Icon-512.png"
   # iOS配置
   remove_alpha_ios: true
   # 生成所有尺寸

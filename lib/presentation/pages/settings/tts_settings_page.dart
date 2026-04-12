@@ -33,7 +33,6 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('TTS 文字转语音'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -44,18 +43,13 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.blue.withOpacity(0.3),
-                  width: 1,
-                ),
               ),
               child: Row(
                 children: [
                   Icon(
                     Icons.info_outline_rounded,
-                    color: Colors.blue,
+                    color: const Color(0xFF21B0A5),
                     size: 24,
                   ),
                   const SizedBox(width: 12),
@@ -66,7 +60,7 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
                         Text(
                           'TTS 文字转语音功能',
                           style: TextStyle(
-                            color: Colors.blue,
+                            color: const Color(0xFF21B0A5),
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -75,7 +69,7 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
                         Text(
                           '可以将文字转换为语音播放到您的播放设备，支持中文等多种语言。',
                           style: TextStyle(
-                            color: Colors.blue.withOpacity(0.8),
+                            color: const Color(0xFF21B0A5).withOpacity(0.8),
                             fontSize: 14,
                           ),
                         ),
@@ -91,12 +85,7 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
-                  width: 1,
-                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,10 +145,7 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
   Future<void> _testTts() async {
     if (_ttsTestText.trim().isEmpty) {
       if (mounted) {
-        AppSnackBar.showWarning(
-          context,
-          '请输入要测试的文字',
-        );
+        AppSnackBar.showWarning(context, '请输入要测试的文字');
       }
       return;
     }
@@ -169,10 +155,7 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
       final deviceState = ref.read(deviceProvider);
       if (deviceState.devices.isEmpty) {
         if (mounted) {
-          AppSnackBar.showWarning(
-            context,
-            '未找到可用设备，请先在控制页检查设备连接',
-          );
+          AppSnackBar.showWarning(context, '未找到可用设备，请先在控制页检查设备连接');
         }
         return;
       }
@@ -190,20 +173,14 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
       final selectedDeviceId = deviceState.selectedDeviceId;
       if (selectedDeviceId == null) {
         if (mounted) {
-          AppSnackBar.showWarning(
-            context,
-            '请先选择播放设备',
-          );
+          AppSnackBar.showWarning(context, '请先选择播放设备');
         }
         return;
       }
 
       // 显示测试状态
       if (mounted) {
-        AppSnackBar.showInfo(
-          context,
-          '正在播放TTS: "$_ttsTestText"',
-        );
+        AppSnackBar.showInfo(context, '正在播放TTS: "$_ttsTestText"');
       }
 
       // 调用真正的TTS API
@@ -215,10 +192,7 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
         );
 
         if (mounted) {
-          AppSnackBar.showSuccess(
-            context,
-            'TTS播放成功: "$_ttsTestText"',
-          );
+          AppSnackBar.showSuccess(context, 'TTS播放成功: "$_ttsTestText"');
         }
 
         // 🎯 等待TTS播放完成后，自动恢复音乐播放
@@ -231,10 +205,7 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
           print('🎵 音乐播放已恢复');
 
           if (mounted) {
-            AppSnackBar.showInfo(
-              context,
-              'TTS播放完成，音乐已恢复播放',
-            );
+            AppSnackBar.showInfo(context, 'TTS播放完成，音乐已恢复播放');
           }
         } catch (e) {
           print('🎵 恢复音乐播放失败: $e');
@@ -247,7 +218,7 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
       if (mounted) {
         AppSnackBar.show(
           context,
-          SnackBar(content: Text('TTS播放失败: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('TTS播放失败: $e'), backgroundColor: const Color(0xFFEF4444)),
         );
       }
     }
@@ -271,7 +242,7 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
                     leading: Icon(
                       device.isOnline ?? false ? Icons.speaker : Icons.speaker,
                       color:
-                          device.isOnline ?? false ? Colors.green : Colors.grey,
+                          device.isOnline ?? false ? Colors.green : Colors.white54,
                     ),
                     title: Text(device.name),
                     subtitle: Text(
@@ -280,7 +251,7 @@ class _TtsSettingsPageState extends ConsumerState<TtsSettingsPage> {
                         color:
                             device.isOnline ?? false
                                 ? Colors.green
-                                : Colors.grey,
+                                : Colors.white54,
                       ),
                     ),
                     onTap: () => Navigator.of(context).pop(device),

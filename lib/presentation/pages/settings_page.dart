@@ -71,7 +71,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 subtitle: '支持开发者继续维护',
                 onTap: () => context.push('/settings/sponsor'),
                 onSurface: onSurface,
-                iconColor: Colors.red.withOpacity(0.8),
+                iconColor: const Color(0xFFEF4444).withOpacity(0.8),
               ),
               _buildSettingsItem(
                 context: context,
@@ -214,7 +214,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 subtitle: '注销当前账户',
                 onTap: () => _showLogoutDialog(context, ref),
                 onSurface: onSurface,
-                iconColor: Colors.red.withOpacity(0.8),
+                iconColor: const Color(0xFFEF4444).withOpacity(0.8),
               ),
               _buildSettingsItem(
                 context: context,
@@ -223,7 +223,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 subtitle: '切换到其他播放模式',
                 onTap: () => _showSwitchModeDialog(context, ref),
                 onSurface: onSurface,
-                iconColor: Colors.orange.withOpacity(0.8),
+                iconColor: const Color(0xFFF59E0B).withOpacity(0.8),
               ),
             ],
           ),
@@ -395,10 +395,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       modeText = '直连模式';
       if (directModeState is DirectModeAuthenticated) {
         statusText = '已登录 · ${directModeState.devices.length} 个设备';
-        iconColor = const Color(0xFF007AFF);
+        iconColor = const Color(0xFF21B0A5);
       } else {
         statusText = '未登录';
-        iconColor = Colors.grey;
+        iconColor = Colors.white54;
       }
       modeIcon = Icons.phone_android;
     }
@@ -462,7 +462,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   title: '直连模式',
                   subtitle: '直接控制，无需服务器',
                   icon: Icons.phone_android,
-                  color: const Color(0xFF007AFF),
+                  color: const Color(0xFF21B0A5),
                   isSelected: playbackMode == PlaybackMode.miIoTDirect,
                 ),
               ],
@@ -533,7 +533,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           border: Border.all(
-            color: isSelected ? color : Colors.grey.withOpacity(0.3),
+            color: isSelected ? color : Colors.white54.withOpacity(0.3),
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(12),
@@ -564,7 +564,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 12, color: Colors.white54),
                   ),
                 ],
               ),
@@ -751,7 +751,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   if (context.mounted) context.go('/');
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
+                  backgroundColor: const Color(0xFFEF4444),
                   foregroundColor: Colors.white,
                 ),
                 child: const Text('退出'),
@@ -800,7 +800,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   if (context.mounted) context.go('/');
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
+                  backgroundColor: const Color(0xFFF59E0B),
                   foregroundColor: Colors.white,
                 ),
                 child: const Text('切换'),
@@ -943,6 +943,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       trailing: Padding(
         padding: const EdgeInsets.only(right: 2),
         child: DropdownButton<String>(
+          dropdownColor: const Color(0xFF090E17),
           value: settings.defaultDownloadQuality,
           underline: const SizedBox.shrink(),
           isDense: true,

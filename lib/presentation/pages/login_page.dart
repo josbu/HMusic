@@ -71,50 +71,9 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
         }
       },
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF0B0B14) : Colors.white,
+        backgroundColor: isDark ? const Color(0xFF090E17) : Colors.white,
         body: Stack(
           children: [
-            // 🎨 背景装饰光晕 - 蓝
-            if (isDark)
-              AnimatedBuilder(
-                animation: _animationController,
-                builder: (context, child) {
-                  return Positioned(
-                    top: -200 + (40 * _animationController.value),
-                    right: -150 + (30 * (1 - _animationController.value)),
-                    child: child!,
-                  );
-                },
-                child: Container(
-                  width: 500,
-                  height: 500,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF2196F3).withValues(alpha: 0.1),
-                  ),
-                ),
-              ),
-
-            // 🎨 背景装饰光晕 - 粉
-            if (isDark)
-              AnimatedBuilder(
-                animation: _animationController,
-                builder: (context, child) {
-                  return Positioned(
-                    bottom: -150 + (50 * (1 - _animationController.value)),
-                    left: -120 + (40 * _animationController.value),
-                    child: child!,
-                  );
-                },
-                child: Container(
-                  width: 400,
-                  height: 400,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFFFF4081).withValues(alpha: 0.08),
-                  ),
-                ),
-              ),
 
             SafeArea(
               child: Column(
@@ -127,7 +86,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
                         IconButton(
                           icon: Icon(
                             Icons.arrow_back_ios_new_rounded,
-                            color: isDark ? Colors.white : const Color(0xFF1A1B22),
+                            color: isDark ? Colors.white : const Color(0xFF151E32),
                             size: 20,
                           ),
                           onPressed: isLoading
@@ -170,7 +129,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
                             style: TextStyle(
                               fontSize: 34,
                               fontWeight: FontWeight.w900,
-                              color: isDark ? Colors.white : const Color(0xFF1A1B22),
+                              color: isDark ? Colors.white : const Color(0xFF151E32),
                               letterSpacing: -0.8,
                             ),
                           ),

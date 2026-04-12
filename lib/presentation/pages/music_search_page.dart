@@ -1038,7 +1038,6 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -1640,7 +1639,6 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
       context: context,
       builder:
           (context) => AlertDialog(
-            backgroundColor: Theme.of(context).colorScheme.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -1717,7 +1715,6 @@ class _PlaylistSelectionDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Text(
         '选择歌单',

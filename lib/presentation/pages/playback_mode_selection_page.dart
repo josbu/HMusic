@@ -41,49 +41,10 @@ class _PlaybackModeSelectionPageState extends ConsumerState<PlaybackModeSelectio
           width: double.infinity,
           height: double.infinity,
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF0B0B14) : Colors.white,
+            color: isDark ? const Color(0xFF090E17) : Colors.white,
           ),
           child: Stack(
             children: [
-              // 🎨 背景装饰光晕 (带动画)
-              if (isDark) ...[
-                AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, child) {
-                    return Positioned(
-                      top: -150 + (30 * _controller.value),
-                      right: -150 + (20 * (1 - _controller.value)),
-                      child: child!,
-                    );
-                  },
-                  child: Container(
-                    width: 450,
-                    height: 450,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF2196F3).withValues(alpha: 0.08),
-                    ),
-                  ),
-                ),
-                AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, child) {
-                    return Positioned(
-                      bottom: -150 + (25 * (1 - _controller.value)),
-                      left: -150 + (40 * _controller.value),
-                      child: child!,
-                    );
-                  },
-                  child: Container(
-                    width: 450,
-                    height: 450,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFFFF4081).withValues(alpha: 0.08),
-                    ),
-                  ),
-                ),
-              ],
 
               SafeArea(
                 child: Padding(

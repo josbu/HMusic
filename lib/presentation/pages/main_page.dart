@@ -215,7 +215,7 @@ class _MainPageState extends ConsumerState<MainPage>
       // Keep bottom navigation fixed when keyboard shows
       resizeToAvoidBottomInset: false,
       // 统一背景色为 surface，移除页面级渐变，避免顶部随滚动色彩变化
-      backgroundColor: const Color(0xFF0B0B14),
+      backgroundColor: const Color(0xFF090E17),
       extendBody: false,
       extendBodyBehindAppBar: false,
       body: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -280,10 +280,6 @@ class _MainPageState extends ConsumerState<MainPage>
                 child: SvgPicture.asset(
                   'assets/hmusic-logo.svg',
                   fit: BoxFit.contain,
-                  colorFilter: ColorFilter.mode(
-                    onSurface.withValues(alpha: 0.95),
-                    BlendMode.srcIn,
-                  ),
                 ),
               ),
             ),
@@ -386,7 +382,6 @@ class _MainPageState extends ConsumerState<MainPage>
     final onSurface = colorScheme.onSurface;
     final selectedDeviceId = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: colorScheme.surface,
       showDragHandle: true,
       builder: (sheetContext) {
         return SafeArea(
@@ -648,7 +643,7 @@ class _MainPageState extends ConsumerState<MainPage>
           child: Container(
             height: 72,
             decoration: BoxDecoration(
-              color: const Color(0xFF1A1B22).withValues(alpha: 0.65), 
+              color: const Color(0xFF090E17).withValues(alpha: 0.65), 
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
