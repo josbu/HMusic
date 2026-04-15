@@ -1554,7 +1554,6 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
               duration: const Duration(seconds: 5),
               action: SnackBarAction(
                 label: '去选择',
-                textColor: Colors.white,
                 onPressed: () {
                   context.push('/settings/source');
                 },

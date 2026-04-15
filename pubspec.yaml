@@ -101,6 +101,7 @@ flutter:
   assets:
     - assets/images/
     - assets/hmusic-logo.svg
+    - assets/hmusic-logo-square.svg
     - assets/lx/
 
   # An image asset can refer to one or more resolution-specific "variants", see

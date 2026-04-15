@@ -14,6 +14,7 @@ import 'package:uuid/uuid.dart';
 import 'app_router.dart';
 import 'presentation/providers/js_proxy_provider.dart';
 import 'presentation/providers/usage_stats_provider.dart';
+import 'presentation/providers/theme_provider.dart';
 import 'presentation/providers/audio_proxy_provider.dart';
 import 'data/services/audio_proxy_server.dart';
 import 'core/utils/app_logger.dart';
@@ -119,6 +120,7 @@ void main() {
       runApp(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
             usageStatsProvider.overrideWith((ref) => UsageStatsNotifier(prefs)),
             // 🎯 提供全局代理服务器实例
             audioProxyServerProvider.overrideWithValue(_globalProxyServer),
@@ -324,8 +326,16 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
     final seed = const Color(0xFF21B0A5); // HMusic Cyan
     final appBarToolbarHeight = Platform.isIOS ? 44.0 : kToolbarHeight;
+
+    final lightScheme = ColorScheme.fromSeed(
+      seedColor: seed,
+      brightness: Brightness.light,
+      primary: seed,
+      surface: const Color(0xFFFFFFFF),
+    );
 
     final darkScheme = ColorScheme.fromSeed(
       seedColor: seed,
@@ -339,62 +349,62 @@ class MyApp extends ConsumerWidget {
 
     return MaterialApp.router(
       title: 'HMusic',
-      themeMode: ThemeMode.dark,
+      themeMode: themeMode,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: darkScheme,
-        scaffoldBackgroundColor: const Color(0xFF090E17),
+        colorScheme: lightScheme,
+        scaffoldBackgroundColor: const Color(0xFFF5F7F9),
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.transparent,
-          foregroundColor: Colors.white,
+          foregroundColor: const Color(0xFF1A1D20),
           elevation: 0,
           centerTitle: true,
           toolbarHeight: appBarToolbarHeight,
           scrolledUnderElevation: 0,
           systemOverlayStyle: const SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.light,
-            statusBarBrightness: Brightness.dark,
+            statusBarIconBrightness: Brightness.dark,
+            statusBarBrightness: Brightness.light,
             systemNavigationBarColor: Colors.transparent,
-            systemNavigationBarIconBrightness: Brightness.light,
+            systemNavigationBarIconBrightness: Brightness.dark,
             systemNavigationBarContrastEnforced: false,
           ),
         ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
-          backgroundColor: const Color(0xFF090E17),
-          contentTextStyle: const TextStyle(color: Colors.white),
+          backgroundColor: const Color(0xFFFFFFFF),
+          contentTextStyle: const TextStyle(color: Color(0xFF1A1D20)),
           insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           elevation: 8,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.white.withOpacity(0.12)),
+            side: BorderSide(color: Colors.black.withOpacity(0.08)),
           ),
         ),
         bottomSheetTheme: BottomSheetThemeData(
-          backgroundColor: const Color(0xFF090E17),
+          backgroundColor: const Color(0xFFFFFFFF),
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            side: BorderSide(color: Colors.white.withOpacity(0.12)),
+            side: BorderSide(color: Colors.black.withOpacity(0.08)),
           ),
           showDragHandle: true,
-          dragHandleColor: Colors.white.withOpacity(0.2),
+          dragHandleColor: Colors.black.withOpacity(0.2),
           dragHandleSize: const Size(40, 5),
         ),
         dialogTheme: DialogThemeData(
-          backgroundColor: const Color(0xFF090E17),
+          backgroundColor: const Color(0xFFFFFFFF),
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: Colors.white.withOpacity(0.12)),
+            side: BorderSide(color: Colors.black.withOpacity(0.08)),
           ),
         ),
         popupMenuTheme: PopupMenuThemeData(
-          color: const Color(0xFF090E17),
+          color: const Color(0xFFFFFFFF),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.white.withOpacity(0.12)),
+            side: BorderSide(color: Colors.black.withOpacity(0.08)),
           ),
         ),
       ),

@@ -312,7 +312,7 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          dropdownColor: const Color(0xFF090E17),
+          dropdownColor: Theme.of(context).scaffoldBackgroundColor,
           value: _jsSearchStrategy,
           isExpanded: true,
           items: const [
@@ -548,7 +548,7 @@ class _SourceSettingsPageState extends ConsumerState<SourceSettingsPage> {
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
-          dropdownColor: const Color(0xFF090E17),
+          dropdownColor: Theme.of(context).scaffoldBackgroundColor,
           value: _playlistResolveStrategy,
           isExpanded: true,
           items: const [

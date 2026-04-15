@@ -4,7 +4,7 @@
     <!-- 纯色背景 -->
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#090E17" />
+            <solid android:color="@color/splash_background" />
         </shape>
     </item>
 

@@ -11,6 +11,8 @@ import '../providers/lyric_provider.dart';
 import '../widgets/app_snackbar.dart';
 import 'lyrics_page.dart';
 
+import 'package:flutter_svg/flutter_svg.dart';
+
 class NowPlayingPage extends ConsumerStatefulWidget {
   const NowPlayingPage({super.key});
 
@@ -237,7 +239,9 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                   height: artworkSize,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFF111111),
+                    color: Theme.of(context).brightness == Brightness.dark 
+                        ? const Color(0xFF222222) // 深色模式下提亮一点，避免和黑背景融合
+                        : const Color(0xFF3D3D3D),
                     border: Border.all(
                       color: Colors.white.withValues(alpha: 0.06),
                     ),
@@ -259,8 +263,8 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.05),
-                              width: 0.8,
+                              color: Colors.white.withValues(alpha: 0.1),
+                              width: 1.0,
                             ),
                           ),
                         ),
@@ -270,6 +274,11 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: onSurface.withValues(alpha: 0.08),
+                          // 中间的黑线圈，与外侧音轨圈保持一致
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.06),
+                            width: 0.8,
+                          ),
                         ),
                         child: ClipOval(
                           child:
@@ -317,9 +326,15 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                   color: onSurface.withValues(alpha: 0.08),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.32),
-                      blurRadius: 20,
-                      offset: const Offset(12, 8),
+                      color: Colors.black.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.35 : 0.12),
+                      blurRadius: 24,
+                      offset: const Offset(8, 8),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.12 : 0.04),
+                      blurRadius: 12,
+                      spreadRadius: 1,
+                      offset: const Offset(0, 0),
                     ),
                   ],
                 ),
@@ -372,22 +387,15 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
   }
 
   Widget _buildDefaultArtwork(Color onSurface) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            onSurface.withValues(alpha: 0.02),
-            onSurface.withValues(alpha: 0.12),
-          ],
-        ),
-      ),
+      color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF0F0F0),
       child: Center(
-        child: Icon(
-          Icons.music_note_rounded,
-          size: 72,
-          color: onSurface.withValues(alpha: 0.75),
+        child: SvgPicture.asset(
+          'assets/hmusic-logo-square.svg',
+          width: 72,
+          height: 72,
         ),
       ),
     );

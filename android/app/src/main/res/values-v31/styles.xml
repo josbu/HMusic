@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Android 12 (API 31) 及以上版本的启动屏幕配置 -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <!-- 背景色 -->
-        <item name="android:windowSplashScreenBackground">#0B0B14</item>
+        <item name="android:windowSplashScreenBackground">#F5F7F9</item>
         <!-- 启动图标 - 使用修正后的正方形容器矢量图，防止拉伸 -->
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/app_logo_vector</item>
         <!-- 显示时长（可选，用于保持兼容性） -->
@@ -16,7 +16,7 @@
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 
-    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">#0B0B14</item>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">#F5F7F9</item>
     </style>
 </resources>

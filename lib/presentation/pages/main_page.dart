@@ -215,7 +215,7 @@ class _MainPageState extends ConsumerState<MainPage>
       // Keep bottom navigation fixed when keyboard shows
       resizeToAvoidBottomInset: false,
       // 统一背景色为 surface，移除页面级渐变，避免顶部随滚动色彩变化
-      backgroundColor: const Color(0xFF090E17),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       extendBody: false,
       extendBodyBehindAppBar: false,
       body: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -339,12 +339,8 @@ class _MainPageState extends ConsumerState<MainPage>
         icon: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: onSurface.withValues(alpha: 0.05),
+            color: Colors.transparent,
             shape: BoxShape.circle, // 改为圆形，视觉更简洁
-            border: Border.all(
-              color: onSurface.withValues(alpha: 0.04),
-              width: 0.5,
-            ),
           ),
           child: Icon(
             icon,
@@ -643,7 +639,7 @@ class _MainPageState extends ConsumerState<MainPage>
           child: Container(
             height: 72,
             decoration: BoxDecoration(
-              color: const Color(0xFF090E17).withValues(alpha: 0.65), 
+              color: Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.65), 
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,

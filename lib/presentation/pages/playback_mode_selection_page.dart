@@ -41,7 +41,7 @@ class _PlaybackModeSelectionPageState extends ConsumerState<PlaybackModeSelectio
           width: double.infinity,
           height: double.infinity,
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF090E17) : Colors.white,
+            color: Theme.of(context).scaffoldBackgroundColor,
           ),
           child: Stack(
             children: [
