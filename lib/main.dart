@@ -15,6 +15,7 @@ import 'app_router.dart';
 import 'presentation/providers/js_proxy_provider.dart';
 import 'presentation/providers/usage_stats_provider.dart';
 import 'presentation/providers/audio_proxy_provider.dart';
+import 'presentation/providers/theme_provider.dart';
 import 'data/services/audio_proxy_server.dart';
 import 'core/utils/app_logger.dart';
 import 'core/constants/app_constants.dart';
@@ -326,6 +327,7 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final seed = const Color(0xFF21B0A5); // HMusic Cyan
     final appBarToolbarHeight = Platform.isIOS ? 44.0 : kToolbarHeight;
+    final themeMode = ref.watch(themeModeProvider);
 
     final darkScheme = ColorScheme.fromSeed(
       seedColor: seed,
@@ -345,7 +347,7 @@ class MyApp extends ConsumerWidget {
 
     return MaterialApp.router(
       title: 'HMusic',
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: lightScheme,

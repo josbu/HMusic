@@ -12,6 +12,7 @@ import '../providers/playlist_provider.dart';
 import '../providers/source_settings_provider.dart';
 import '../widgets/app_snackbar.dart';
 import '../providers/direct_mode_provider.dart';
+import '../providers/theme_provider.dart';
 import '../../core/utils/app_logger.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -81,6 +82,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 onTap: () => _exportLogs(context),
                 onSurface: onSurface,
               ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // 外观分组
+          _buildSettingsGroup(
+            context,
+            title: '外观',
+            children: [
+              _buildThemeSelector(context, ref, onSurface),
             ],
           ),
 
@@ -231,6 +243,99 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 24),
         ],
       ),
+    );
+  }
+
+  /// 主题模式选择
+  Widget _buildThemeSelector(BuildContext context, WidgetRef ref, Color onSurface) {
+    final themeMode = ref.watch(themeModeProvider);
+
+    String modeText;
+    IconData modeIcon;
+    switch (themeMode) {
+      case ThemeMode.system:
+        modeText = '跟随系统';
+        modeIcon = Icons.brightness_auto_rounded;
+        break;
+      case ThemeMode.light:
+        modeText = '浅色模式';
+        modeIcon = Icons.light_mode_rounded;
+        break;
+      case ThemeMode.dark:
+        modeText = '深色模式';
+        modeIcon = Icons.dark_mode_rounded;
+        break;
+    }
+
+    return _buildSettingsItem(
+      context: context,
+      icon: modeIcon,
+      title: '外观模式',
+      subtitle: modeText,
+      onTap: () => _showThemeDialog(context, ref),
+      onSurface: onSurface,
+    );
+  }
+
+  void _showThemeDialog(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.read(themeModeProvider);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('外观模式'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildThemeOption(
+              context: context,
+              ref: ref,
+              icon: Icons.brightness_auto_rounded,
+              title: '跟随系统',
+              mode: ThemeMode.system,
+              groupValue: themeMode,
+            ),
+            _buildThemeOption(
+              context: context,
+              ref: ref,
+              icon: Icons.light_mode_rounded,
+              title: '浅色模式',
+              mode: ThemeMode.light,
+              groupValue: themeMode,
+            ),
+            _buildThemeOption(
+              context: context,
+              ref: ref,
+              icon: Icons.dark_mode_rounded,
+              title: '深色模式',
+              mode: ThemeMode.dark,
+              groupValue: themeMode,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThemeOption({
+    required BuildContext context,
+    required WidgetRef ref,
+    required IconData icon,
+    required String title,
+    required ThemeMode mode,
+    required ThemeMode groupValue,
+  }) {
+    return RadioListTile<ThemeMode>(
+      secondary: Icon(icon),
+      title: Text(title),
+      value: mode,
+      groupValue: groupValue,
+      onChanged: (value) {
+        if (value != null) {
+          ref.read(themeModeProvider.notifier).setThemeMode(value);
+          Navigator.of(context).pop();
+        }
+      },
     );
   }
 
