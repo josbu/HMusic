@@ -768,18 +768,17 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                     height: recordSize,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      // 在浅色模式下使用更加明亮的深灰色，深色模式下使用略浅的黑灰色，避免与纯黑背景完全融合
-                      color: isDark ? const Color(0xFF222222) : const Color(0xFF3D3D3D),
+                      color: isDark ? const Color(0xFF222222) : const Color(0xFFE8ECEF),
                       border: Border.all(
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.06)
-                            : Colors.black.withValues(alpha: 0.1),
+                            : Colors.black.withValues(alpha: 0.08),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.15),
-                          blurRadius: 30,
-                          offset: const Offset(0, 15),
+                          color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.08),
+                          blurRadius: isDark ? 30 : 16,
+                          offset: Offset(0, isDark ? 15 : 6),
                         ),
                         // 🎯 梦幻补光：外围微弱光晕
                         BoxShadow(
@@ -804,7 +803,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                               border: Border.all(
                                 color: isDark
                                     ? Colors.white.withValues(alpha: 0.06)
-                                    : Colors.black.withValues(alpha: 0.1),
+                                    : Colors.black.withValues(alpha: 0.08),
                                 width: 0.8,
                               ),
                             ),
@@ -814,7 +813,9 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                           height: recordSize * 0.34,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: onSurface.withValues(alpha: 0.08),
+                            color: isDark
+                                ? onSurface.withValues(alpha: 0.08)
+                                : Colors.black.withValues(alpha: 0.05),
                             // 中间的黑线圈，与外侧音轨圈保持一致
                             border: Border.all(
                               color: isDark
@@ -853,11 +854,11 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                           height: recordSize * 0.06,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.black,
+                            color: isDark ? Colors.black : const Color(0xFFD0D5DA),
                             border: Border.all(
                               color: isDark
                                   ? Colors.white.withValues(alpha: 0.2)
-                                  : Colors.black.withValues(alpha: 0.2),
+                                  : Colors.black.withValues(alpha: 0.1),
                             ),
                           ),
                         ),
@@ -1526,18 +1527,18 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
         child: Center(
           child:
               state.isLoading
-                  ? SizedBox(
+                  ? const SizedBox(
                     width: 28,
                     height: 28,
                     child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation(onSurface),
+                      valueColor: AlwaysStoppedAnimation(Colors.white),
                       strokeWidth: 2.0,
                     ),
                   )
                   : Icon(
                     isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                     size: isPlaying ? 32 : 36,
-                    color: onSurface,
+                    color: Colors.white,
                   ),
         ),
       ),
