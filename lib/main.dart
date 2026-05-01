@@ -14,8 +14,8 @@ import 'package:uuid/uuid.dart';
 import 'app_router.dart';
 import 'presentation/providers/js_proxy_provider.dart';
 import 'presentation/providers/usage_stats_provider.dart';
-import 'presentation/providers/audio_proxy_provider.dart';
 import 'presentation/providers/theme_provider.dart';
+import 'presentation/providers/audio_proxy_provider.dart';
 import 'data/services/audio_proxy_server.dart';
 import 'core/utils/app_logger.dart';
 import 'core/constants/app_constants.dart';
@@ -120,6 +120,7 @@ void main() {
       runApp(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
             usageStatsProvider.overrideWith((ref) => UsageStatsNotifier(prefs)),
             // 🎯 提供全局代理服务器实例
             audioProxyServerProvider.overrideWithValue(_globalProxyServer),
@@ -329,17 +330,18 @@ class MyApp extends ConsumerWidget {
     final appBarToolbarHeight = Platform.isIOS ? 44.0 : kToolbarHeight;
     final themeMode = ref.watch(themeModeProvider);
 
+    final lightScheme = ColorScheme.fromSeed(
+      seedColor: seed,
+      brightness: Brightness.light,
+      primary: seed,
+      surface: const Color(0xFFFFFFFF),
+    );
+
     final darkScheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.dark,
       primary: seed,
       surface: const Color(0xFF090E17), // Deep Navy Blue background
-    );
-
-    final lightScheme = ColorScheme.fromSeed(
-      seedColor: seed,
-      brightness: Brightness.light,
-      primary: seed,
     );
 
     // 在应用构建阶段预热JS代理（读取provider以触发初始化和自动加载）
@@ -351,8 +353,10 @@ class MyApp extends ConsumerWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: lightScheme,
+        scaffoldBackgroundColor: const Color(0xFFF5F7F9),
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.transparent,
+          foregroundColor: const Color(0xFF1A1D20),
           elevation: 0,
           centerTitle: true,
           toolbarHeight: appBarToolbarHeight,
@@ -368,29 +372,39 @@ class MyApp extends ConsumerWidget {
         ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFFFFFFF),
+          contentTextStyle: const TextStyle(color: Color(0xFF1A1D20)),
           insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           elevation: 8,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.black.withOpacity(0.08)),
           ),
         ),
         bottomSheetTheme: BottomSheetThemeData(
+          backgroundColor: const Color(0xFFFFFFFF),
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            side: BorderSide(color: Colors.black.withOpacity(0.08)),
           ),
           showDragHandle: true,
+          dragHandleColor: Colors.black.withOpacity(0.2),
           dragHandleSize: const Size(40, 5),
         ),
         dialogTheme: DialogThemeData(
+          backgroundColor: const Color(0xFFFFFFFF),
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.black.withOpacity(0.08)),
           ),
         ),
         popupMenuTheme: PopupMenuThemeData(
+          color: const Color(0xFFFFFFFF),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.black.withOpacity(0.08)),
           ),
         ),
       ),

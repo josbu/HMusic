@@ -71,7 +71,7 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
         }
       },
       child: Scaffold(
-        backgroundColor: isDark ? const Color(0xFF090E17) : Colors.white,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: Stack(
           children: [
 
@@ -306,10 +306,10 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
           controller: controller,
           obscureText: obscureText,
           validator: validator,
-          style: const TextStyle(fontSize: 16, color: Colors.white),
+          style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87),
           decoration: InputDecoration(
             hintText: hintText,
-            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.2)),
+            hintStyle: TextStyle(color: isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black38),
             prefixIcon: Icon(prefixIcon, color: isDark ? Colors.white38 : Colors.black26, size: 22),
             suffixIcon: suffixIcon,
             filled: true,
@@ -317,11 +317,11 @@ class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateM
             contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.05), width: 0.5),
+              borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05), width: 0.5),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.05), width: 0.5),
+              borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05), width: 0.5),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(18),

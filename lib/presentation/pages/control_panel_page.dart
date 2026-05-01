@@ -16,6 +16,8 @@ import '../providers/direct_mode_provider.dart';
 import '../providers/playback_queue_provider.dart';
 import '../../data/models/playlist_queue.dart';
 
+import 'package:flutter_svg/flutter_svg.dart';
+
 class ControlPanelPage extends ConsumerStatefulWidget {
   final bool showAppBar;
 
@@ -158,7 +160,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFF090E17), // 极致深黑背景
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor, // 适配主题背景
       appBar: widget.showAppBar ? _buildAppBar(context) : null,
       body: Stack(
         children: [
@@ -743,6 +745,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     // ✨ 获取封面图 URL
     final playbackState = ref.watch(playbackProvider);
     final coverUrl = playbackState.albumCoverUrl;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Center(
       child: GestureDetector(
@@ -765,13 +768,16 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                     height: recordSize,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: const Color(0xFF111111),
+                      // 在浅色模式下使用更加明亮的深灰色，深色模式下使用略浅的黑灰色，避免与纯黑背景完全融合
+                      color: isDark ? const Color(0xFF222222) : const Color(0xFF3D3D3D),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.06),
+                        color: isDark 
+                            ? Colors.white.withValues(alpha: 0.06)
+                            : Colors.white.withValues(alpha: 0.1),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.5),
+                          color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.15),
                           blurRadius: 30,
                           offset: const Offset(0, 15),
                         ),
@@ -796,7 +802,9 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.05),
+                                color: isDark 
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : Colors.white.withValues(alpha: 0.1),
                                 width: 0.8,
                               ),
                             ),
@@ -807,6 +815,13 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: onSurface.withValues(alpha: 0.08),
+                            // 中间的黑线圈，与外侧音轨圈保持一致
+                            border: Border.all(
+                              color: isDark 
+                                  ? Colors.white.withValues(alpha: 0.06)
+                                  : Colors.white.withValues(alpha: 0.1),
+                              width: 0.8,
+                            ),
                           ),
                           child: ClipOval(
                             child:
@@ -822,12 +837,12 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                                           ),
                                       errorWidget:
                                           (context, url, error) =>
-                                              _buildDefaultArtwork(
+                                              _buildDefaultArtwork(context, 
                                                 recordSize,
                                                 onSurface,
                                               ),
                                     )
-                                    : _buildDefaultArtwork(
+                                    : _buildDefaultArtwork(context, 
                                       recordSize,
                                       onSurface,
                                     ),
@@ -859,10 +874,18 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                     borderRadius: BorderRadius.circular(12),
                     color: onSurface.withValues(alpha: 0.1),
                     boxShadow: [
+                      // 主要投影：稍微变淡，保持柔和
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.32),
-                        blurRadius: 20,
-                        offset: const Offset(12, 8),
+                        color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+                        blurRadius: 24,
+                        offset: const Offset(8, 8),
+                      ),
+                      // 辅助投影：轻微晕染
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.04),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 0),
                       ),
                     ],
                   ),
@@ -897,17 +920,17 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                                 );
                               },
                               placeholder:
-                                  (context, url) => _buildDefaultArtwork(
+                                  (context, url) => _buildDefaultArtwork(context, 
                                     coverSize,
                                     onSurface,
                                   ),
                               errorWidget:
-                                  (context, url, error) => _buildDefaultArtwork(
+                                  (context, url, error) => _buildDefaultArtwork(context, 
                                     coverSize,
                                     onSurface,
                                   ),
                             )
-                            : _buildDefaultArtwork(coverSize, onSurface),
+                            : _buildDefaultArtwork(context, coverSize, onSurface),
                   ),
                 ),
               ),
@@ -918,23 +941,18 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     );
   }
 
-  Widget _buildDefaultArtwork(double artworkSize, Color onSurface) {
+  Widget _buildDefaultArtwork(BuildContext context, double artworkSize, Color onSurface) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            onSurface.withValues(alpha: 0.02),
-            onSurface.withValues(alpha: 0.12),
-          ],
-        ),
-      ),
+      width: artworkSize,
+      height: artworkSize,
+      color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF0F0F0),
       child: Center(
-        child: Icon(
-          Icons.music_note_rounded,
-          size: artworkSize * 0.32,
-          color: onSurface.withValues(alpha: 0.8),
+        child: SvgPicture.asset(
+          'assets/hmusic-logo-square.svg',
+          width: artworkSize * 0.5,
+          height: artworkSize * 0.5,
         ),
       ),
     );

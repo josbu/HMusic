@@ -218,9 +218,9 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
     // 如果还在检查中，显示空白页面或加载指示器
     if (!_updateChecked) {
       print('[AuthWrapper] ⏳ 显示加载指示器（等待更新检查）');
-      return const Scaffold(
-        backgroundColor: Color(0xFF090E17),
-        body: Center(
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: const Center(
           child: CircularProgressIndicator(),
         ),
       );
@@ -245,9 +245,9 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
           if (mounted) _triggerPostUpdateInit();
         });
       }
-      return const Scaffold(
-        backgroundColor: Color(0xFF090E17),
-        body: Center(
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: const Center(
           child: CircularProgressIndicator(),
         ),
       );

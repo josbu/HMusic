@@ -2,31 +2,51 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const _kThemeModeKey = 'theme_mode';
+/// SharedPreferences Key for ThemeMode
+const _themeModePrefKey = 'app_theme_mode';
 
-final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>(
-  (ref) => ThemeModeNotifier(),
-);
+/// Provide an instance of SharedPreferences.
+/// Typically overridden in `main.dart` after initialization.
+final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
+  throw UnimplementedError('sharedPreferencesProvider must be overridden in main.dart');
+});
 
-class ThemeModeNotifier extends StateNotifier<ThemeMode> {
-  ThemeModeNotifier() : super(ThemeMode.system) {
-    _load();
+/// Manage the App's ThemeMode
+class ThemeModeNotifier extends Notifier<ThemeMode> {
+  @override
+  ThemeMode build() {
+    return _loadThemeMode();
   }
 
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final value = prefs.getString(_kThemeModeKey);
-    if (value != null) {
-      state = ThemeMode.values.firstWhere(
-        (e) => e.name == value,
-        orElse: () => ThemeMode.system,
-      );
+  /// Load ThemeMode from SharedPreferences
+  ThemeMode _loadThemeMode() {
+    try {
+      final prefs = ref.read(sharedPreferencesProvider);
+      final index = prefs.getInt(_themeModePrefKey);
+      if (index != null && index >= 0 && index < ThemeMode.values.length) {
+        return ThemeMode.values[index];
+      }
+    } catch (e) {
+      debugPrint('Error loading theme mode: $e');
+    }
+    // Default to system
+    return ThemeMode.system;
+  }
+
+  /// Update ThemeMode and save to SharedPreferences
+  Future<void> setThemeMode(ThemeMode mode) async {
+    if (state == mode) return;
+
+    state = mode;
+    try {
+      final prefs = ref.read(sharedPreferencesProvider);
+      await prefs.setInt(_themeModePrefKey, mode.index);
+    } catch (e) {
+      debugPrint('Error saving theme mode: $e');
     }
   }
-
-  Future<void> setThemeMode(ThemeMode mode) async {
-    state = mode;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kThemeModeKey, mode.name);
-  }
 }
+
+final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(() {
+  return ThemeModeNotifier();
+});
