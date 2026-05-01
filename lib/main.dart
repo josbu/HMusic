@@ -332,9 +332,9 @@ class MyApp extends ConsumerWidget {
 
     final lightScheme = ColorScheme.fromSeed(
       seedColor: seed,
-      brightness: Brightness.light,
+      brightness: Brightness.dark,
       primary: seed,
-      surface: const Color(0xFFFFFFFF),
+      surface: const Color(0xFF090E17),
     );
 
     final darkScheme = ColorScheme.fromSeed(
@@ -353,58 +353,58 @@ class MyApp extends ConsumerWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: lightScheme,
-        scaffoldBackgroundColor: const Color(0xFFF5F7F9),
+        scaffoldBackgroundColor: const Color(0xFF090E17),
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.transparent,
-          foregroundColor: const Color(0xFF1A1D20),
+          foregroundColor: Colors.white,
           elevation: 0,
           centerTitle: true,
           toolbarHeight: appBarToolbarHeight,
           scrolledUnderElevation: 0,
-          systemOverlayStyle: SystemUiOverlayStyle(
+          systemOverlayStyle: const SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.dark,
-            statusBarBrightness: Brightness.light,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
             systemNavigationBarColor: Colors.transparent,
-            systemNavigationBarIconBrightness: Brightness.dark,
+            systemNavigationBarIconBrightness: Brightness.light,
             systemNavigationBarContrastEnforced: false,
           ),
         ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
-          backgroundColor: const Color(0xFFFFFFFF),
-          contentTextStyle: const TextStyle(color: Color(0xFF1A1D20)),
+          backgroundColor: const Color(0xFF090E17),
+          contentTextStyle: const TextStyle(color: Colors.white),
           insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           elevation: 8,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.black.withOpacity(0.08)),
+            side: BorderSide(color: Colors.white.withOpacity(0.12)),
           ),
         ),
         bottomSheetTheme: BottomSheetThemeData(
-          backgroundColor: const Color(0xFFFFFFFF),
+          backgroundColor: const Color(0xFF090E17),
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            side: BorderSide(color: Colors.black.withOpacity(0.08)),
+            side: BorderSide(color: Colors.white.withOpacity(0.12)),
           ),
           showDragHandle: true,
-          dragHandleColor: Colors.black.withOpacity(0.2),
+          dragHandleColor: Colors.white.withOpacity(0.2),
           dragHandleSize: const Size(40, 5),
         ),
         dialogTheme: DialogThemeData(
-          backgroundColor: const Color(0xFFFFFFFF),
+          backgroundColor: const Color(0xFF090E17),
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: Colors.black.withOpacity(0.08)),
+            side: BorderSide(color: Colors.white.withOpacity(0.12)),
           ),
         ),
         popupMenuTheme: PopupMenuThemeData(
-          color: const Color(0xFFFFFFFF),
+          color: const Color(0xFF090E17),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.black.withOpacity(0.08)),
+            side: BorderSide(color: Colors.white.withOpacity(0.12)),
           ),
         ),
       ),
