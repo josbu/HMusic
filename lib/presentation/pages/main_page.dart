@@ -219,10 +219,16 @@ class _MainPageState extends ConsumerState<MainPage>
       extendBody: false,
       extendBodyBehindAppBar: false,
       body: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: const SystemUiOverlayStyle(
+        value: SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.light,
-          statusBarBrightness: Brightness.dark,
+          statusBarIconBrightness:
+              Theme.of(context).brightness == Brightness.dark
+                  ? Brightness.light
+                  : Brightness.dark,
+          statusBarBrightness:
+              Theme.of(context).brightness == Brightness.dark
+                  ? Brightness.dark
+                  : Brightness.light,
         ),
         child: Stack(
           children: [
@@ -487,6 +493,7 @@ class _MainPageState extends ConsumerState<MainPage>
     required Color defaultColor,
     Color? enabledColor,
   }) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     final isSelected = value == currentDeviceId;
     final leadingColor =
         isSelected
@@ -506,13 +513,13 @@ class _MainPageState extends ConsumerState<MainPage>
               color:
                   isSelected
                       ? activeColor.withValues(alpha: 0.12)
-                      : Colors.white.withValues(alpha: 0.04),
+                      : onSurface.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color:
                     isSelected
                         ? activeColor.withValues(alpha: 0.8)
-                        : Colors.white.withValues(alpha: 0.08),
+                        : onSurface.withValues(alpha: 0.08),
               ),
             ),
             child: Row(
@@ -610,6 +617,7 @@ class _MainPageState extends ConsumerState<MainPage>
 
   Widget _buildModernBottomNav() {
     final bottomMargin = AppLayout.bottomOverlayBottomMargin(context);
+    final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Container(
       margin: EdgeInsets.only(
@@ -621,7 +629,7 @@ class _MainPageState extends ConsumerState<MainPage>
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(30),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08), 
+          color: onSurface.withValues(alpha: 0.08),
           width: 0.8,
         ),
         boxShadow: [

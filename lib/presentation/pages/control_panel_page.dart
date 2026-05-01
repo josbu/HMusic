@@ -771,9 +771,9 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                       // 在浅色模式下使用更加明亮的深灰色，深色模式下使用略浅的黑灰色，避免与纯黑背景完全融合
                       color: isDark ? const Color(0xFF222222) : const Color(0xFF3D3D3D),
                       border: Border.all(
-                        color: isDark 
+                        color: isDark
                             ? Colors.white.withValues(alpha: 0.06)
-                            : Colors.white.withValues(alpha: 0.1),
+                            : Colors.black.withValues(alpha: 0.1),
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -802,9 +802,9 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: isDark 
+                                color: isDark
                                     ? Colors.white.withValues(alpha: 0.06)
-                                    : Colors.white.withValues(alpha: 0.1),
+                                    : Colors.black.withValues(alpha: 0.1),
                                 width: 0.8,
                               ),
                             ),
@@ -817,9 +817,9 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                             color: onSurface.withValues(alpha: 0.08),
                             // 中间的黑线圈，与外侧音轨圈保持一致
                             border: Border.all(
-                              color: isDark 
+                              color: isDark
                                   ? Colors.white.withValues(alpha: 0.06)
-                                  : Colors.white.withValues(alpha: 0.1),
+                                  : Colors.black.withValues(alpha: 0.1),
                               width: 0.8,
                             ),
                           ),
@@ -855,7 +855,9 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                             shape: BoxShape.circle,
                             color: Colors.black,
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.2),
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.2)
+                                  : Colors.black.withValues(alpha: 0.2),
                             ),
                           ),
                         ),
@@ -1175,7 +1177,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
             inactiveTrackColor: onSurface.withValues(alpha: 0.14),
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5.5),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-            thumbColor: Colors.white,
+            thumbColor: onSurface,
             overlayColor: accentColor.withValues(alpha: 0.16),
             trackShape: const _CustomTrackShape(),
           ),
@@ -1401,8 +1403,8 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                           ),
                           child: Text(
                             '$state.timerMinutes',
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: onSurface,
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
                             ),
@@ -1456,6 +1458,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     });
 
     final accentColor = Theme.of(context).colorScheme.primary;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return GestureDetector(
       onTap:
@@ -1523,18 +1526,18 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
         child: Center(
           child:
               state.isLoading
-                  ? const SizedBox(
+                  ? SizedBox(
                     width: 28,
                     height: 28,
                     child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation(Colors.white),
+                      valueColor: AlwaysStoppedAnimation(onSurface),
                       strokeWidth: 2.0,
                     ),
                   )
                   : Icon(
                     isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                     size: isPlaying ? 32 : 36,
-                    color: Colors.white,
+                    color: onSurface,
                   ),
         ),
       ),

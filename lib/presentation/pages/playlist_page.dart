@@ -93,7 +93,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
           onPressed: () => _showPlaylistActionSheet(),
           tooltip: '新建歌单',
           backgroundColor: Theme.of(context).colorScheme.primary,
-          foregroundColor: Colors.white,
+          foregroundColor: Theme.of(context).colorScheme.onPrimary,
           child: const Icon(Icons.add_rounded),
         ),
       ),

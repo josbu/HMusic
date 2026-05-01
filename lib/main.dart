@@ -332,9 +332,8 @@ class MyApp extends ConsumerWidget {
 
     final lightScheme = ColorScheme.fromSeed(
       seedColor: seed,
-      brightness: Brightness.dark,
+      brightness: Brightness.light,
       primary: seed,
-      surface: const Color(0xFF090E17),
     );
 
     final darkScheme = ColorScheme.fromSeed(
@@ -353,58 +352,47 @@ class MyApp extends ConsumerWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: lightScheme,
-        scaffoldBackgroundColor: const Color(0xFF090E17),
+        scaffoldBackgroundColor: const Color(0xFFF5F7F9),
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.transparent,
-          foregroundColor: Colors.white,
           elevation: 0,
           centerTitle: true,
           toolbarHeight: appBarToolbarHeight,
           scrolledUnderElevation: 0,
-          systemOverlayStyle: const SystemUiOverlayStyle(
+          systemOverlayStyle: SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.light,
-            statusBarBrightness: Brightness.dark,
+            statusBarIconBrightness: Brightness.dark,
+            statusBarBrightness: Brightness.light,
             systemNavigationBarColor: Colors.transparent,
-            systemNavigationBarIconBrightness: Brightness.light,
+            systemNavigationBarIconBrightness: Brightness.dark,
             systemNavigationBarContrastEnforced: false,
           ),
         ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
-          backgroundColor: const Color(0xFF090E17),
-          contentTextStyle: const TextStyle(color: Colors.white),
           insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           elevation: 8,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.white.withOpacity(0.12)),
           ),
         ),
         bottomSheetTheme: BottomSheetThemeData(
-          backgroundColor: const Color(0xFF090E17),
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            side: BorderSide(color: Colors.white.withOpacity(0.12)),
           ),
           showDragHandle: true,
-          dragHandleColor: Colors.white.withOpacity(0.2),
           dragHandleSize: const Size(40, 5),
         ),
         dialogTheme: DialogThemeData(
-          backgroundColor: const Color(0xFF090E17),
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: Colors.white.withOpacity(0.12)),
           ),
         ),
         popupMenuTheme: PopupMenuThemeData(
-          color: const Color(0xFF090E17),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.white.withOpacity(0.12)),
           ),
         ),
       ),

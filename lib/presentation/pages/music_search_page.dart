@@ -1538,7 +1538,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
               duration: const Duration(seconds: 5),
               action: SnackBarAction(
                 label: '去导入',
-                textColor: Colors.white,
+                textColor: Theme.of(context).colorScheme.onSurface,
                 onPressed: () {
                   context.push('/settings/source');
                 },
