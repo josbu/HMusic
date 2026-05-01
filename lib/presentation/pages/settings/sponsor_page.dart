@@ -33,7 +33,7 @@ class SponsorPage extends StatelessWidget {
                     '感谢您的支持！',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -41,7 +41,7 @@ class SponsorPage extends StatelessWidget {
                     'HMusic 是一个免费的音乐控制应用\n如果这个应用对您有帮助，欢迎赞赏支持开发者',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white70,
+                      color: colorScheme.onSurface.withOpacity(0.7),
                       height: 1.5,
                     ),
                   ),
@@ -137,14 +137,6 @@ class SponsorPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _buildSupportItem(
-                    context,
-                    Icons.article_rounded,
-                    '关注公众号',
-                    '获取最新动态和教程',
-                    () => _showWechatOfficialDialog(context),
-                  ),
-                  const SizedBox(height: 8),
                   _buildSupportItem(
                     context,
                     Icons.share_rounded,
@@ -246,95 +238,6 @@ class SponsorPage extends StatelessWidget {
     );
   }
 
-  void _showWechatOfficialDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text('关注公众号'),
-            content: SizedBox(
-              width: 300,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    '感谢您的关注！\n\n扫描下方二维码关注我们的微信公众号：',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 16),
-                  // 公众号二维码
-                  Container(
-                    width: 180,
-                    height: 180,
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.outline.withOpacity(0.3),
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.asset(
-                        'assets/images/wxgzh.jpg',
-                        width: 180,
-                        height: 180,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            width: 180,
-                            height: 180,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.article_rounded,
-                                  size: 60,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.primary.withOpacity(0.7),
-                                ),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  '公众号二维码',
-                                  style: TextStyle(fontSize: 14),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    '公众号名称：老婆饼里没有饼\n\n获取应用教程、最新功能介绍等内容',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  // 复制公众号名称
-                  Clipboard.setData(const ClipboardData(text: '老婆饼里没有饼'));
-                  AppSnackBar.showSuccess(context, '公众号名称已复制到剪贴板');
-                },
-                child: const Text('复制公众号名称'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('好的'),
-              ),
-            ],
-          ),
-    );
-  }
-
   void _showShareDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -342,17 +245,15 @@ class SponsorPage extends StatelessWidget {
           (context) => AlertDialog(
             title: const Text('分享应用'),
             content: const Text(
-              '感谢您愿意推荐 HMusic！\n\n您可以将应用分享给朋友，或在社交媒体上推荐。每一次分享都是对开发者的支持！\n\n也欢迎关注我们的公众号"老婆饼里没有饼"获取更多内容！',
+              '感谢您愿意推荐 HMusic！\n\n您可以将应用分享给朋友，或在社交媒体上推荐。每一次分享都是对开发者的支持！',
             ),
             actions: [
               TextButton(
                 onPressed: () {
                   Navigator.of(context).pop();
-                  // 复制分享文本
                   Clipboard.setData(
                     const ClipboardData(
-                      text:
-                          '推荐一个好用的音乐控制应用：HMusic！功能强大，完全免费 🎵\n\n想了解更多可以关注公众号"老婆饼里没有饼"',
+                      text: '推荐一个好用的音乐控制应用：HMusic！功能强大，完全免费 🎵',
                     ),
                   );
                   AppSnackBar.showSuccess(context, '分享文案已复制到剪贴板');
@@ -375,7 +276,7 @@ class SponsorPage extends StatelessWidget {
           (context) => AlertDialog(
             title: const Text('反馈建议'),
             content: const Text(
-              '您的意见和建议对我们非常重要！\n\n如果您在使用过程中遇到问题或有改进建议，欢迎通过以下方式联系：\n\n• 微信公众号留言\n• 邮件反馈\n• QQ群交流',
+              '您的意见和建议对我们非常重要！\n\n如果您在使用过程中遇到问题或有改进建议，欢迎通过以下方式联系：\n\n• 邮件反馈\n• GitHub Issues\n• QQ群交流',
             ),
             actions: [
               TextButton(
