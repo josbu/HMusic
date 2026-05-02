@@ -772,7 +772,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                       border: Border.all(
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.06)
-                            : const Color(0xFF3A3A3A).withValues(alpha: 0.15),
+                            : const Color(0xFF2C2C2C).withValues(alpha: 0.25),
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -803,7 +803,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                               border: Border.all(
                                 color: isDark
                                     ? Colors.white.withValues(alpha: 0.06)
-                                    : const Color(0xFF3A3A3A).withValues(alpha: 0.12),
+                                    : const Color(0xFF2C2C2C).withValues(alpha: 0.2),
                                 width: 0.8,
                               ),
                             ),
@@ -815,11 +815,11 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                             shape: BoxShape.circle,
                             color: isDark
                                 ? onSurface.withValues(alpha: 0.08)
-                                : const Color(0xFF3A3A3A).withValues(alpha: 0.06),
+                                : const Color(0xFF2C2C2C).withValues(alpha: 0.1),
                             border: Border.all(
                               color: isDark
                                   ? Colors.white.withValues(alpha: 0.06)
-                                  : const Color(0xFF3A3A3A).withValues(alpha: 0.12),
+                                  : const Color(0xFF2C2C2C).withValues(alpha: 0.18),
                               width: 0.8,
                             ),
                           ),
@@ -853,11 +853,11 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                           height: recordSize * 0.06,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: isDark ? Colors.black : const Color(0xFF3A3A3A),
+                            color: isDark ? Colors.black : const Color(0xFF2C2C2C),
                             border: Border.all(
                               color: isDark
                                   ? Colors.white.withValues(alpha: 0.2)
-                                  : const Color(0xFF3A3A3A).withValues(alpha: 0.2),
+                                  : const Color(0xFF2C2C2C).withValues(alpha: 0.3),
                             ),
                           ),
                         ),
