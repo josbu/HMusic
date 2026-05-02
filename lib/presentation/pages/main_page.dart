@@ -642,42 +642,39 @@ class _MainPageState extends ConsumerState<MainPage>
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(30),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 45, sigmaY: 45), 
-          child: Container(
-            height: 72,
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.65), 
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildTabItem(
-                  icon: Icons.play_circle_outline_rounded,
-                  activeIcon: Icons.play_circle_filled_rounded,
-                  label: '播放',
-                  index: 0,
-                ),
-                _buildTabItem(
-                  icon: Icons.search_rounded,
-                  activeIcon: Icons.search_rounded,
-                  label: '搜索',
-                  index: 1,
-                ),
-                _buildTabItem(
-                  icon: Icons.playlist_play_outlined,
-                  activeIcon: Icons.playlist_play_rounded,
-                  label: '列表',
-                  index: 2,
-                ),
-                _buildTabItem(
-                  icon: Icons.library_music_outlined,
-                  activeIcon: Icons.library_music_rounded,
-                  label: '曲库',
-                  index: 3,
-                ),
-              ],
-            ),
+        child: Container(
+          height: 72,
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildTabItem(
+                icon: Icons.play_circle_outline_rounded,
+                activeIcon: Icons.play_circle_filled_rounded,
+                label: '播放',
+                index: 0,
+              ),
+              _buildTabItem(
+                icon: Icons.search_rounded,
+                activeIcon: Icons.search_rounded,
+                label: '搜索',
+                index: 1,
+              ),
+              _buildTabItem(
+                icon: Icons.playlist_play_outlined,
+                activeIcon: Icons.playlist_play_rounded,
+                label: '列表',
+                index: 2,
+              ),
+              _buildTabItem(
+                icon: Icons.library_music_outlined,
+                activeIcon: Icons.library_music_rounded,
+                label: '曲库',
+                index: 3,
+              ),
+            ],
           ),
         ),
       ),
