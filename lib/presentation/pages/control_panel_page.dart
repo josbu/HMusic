@@ -768,17 +768,17 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                     height: recordSize,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: isDark ? const Color(0xFF222222) : const Color(0xFFE8ECEF),
+                      color: isDark ? const Color(0xFF222222) : const Color(0xFFD0D5DA),
                       border: Border.all(
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.06)
-                            : Colors.black.withValues(alpha: 0.08),
+                            : Colors.black.withValues(alpha: 0.12),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.08),
-                          blurRadius: isDark ? 30 : 16,
-                          offset: Offset(0, isDark ? 15 : 6),
+                          color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.15),
+                          blurRadius: isDark ? 30 : 20,
+                          offset: Offset(0, isDark ? 15 : 8),
                         ),
                         // 🎯 梦幻补光：外围微弱光晕
                         BoxShadow(
@@ -803,7 +803,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                               border: Border.all(
                                 color: isDark
                                     ? Colors.white.withValues(alpha: 0.06)
-                                    : Colors.black.withValues(alpha: 0.08),
+                                    : Colors.black.withValues(alpha: 0.15),
                                 width: 0.8,
                               ),
                             ),
@@ -815,7 +815,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                             shape: BoxShape.circle,
                             color: isDark
                                 ? onSurface.withValues(alpha: 0.08)
-                                : Colors.black.withValues(alpha: 0.05),
+                                : Colors.black.withValues(alpha: 0.08),
                             // 中间的黑线圈，与外侧音轨圈保持一致
                             border: Border.all(
                               color: isDark
@@ -854,11 +854,11 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                           height: recordSize * 0.06,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: isDark ? Colors.black : const Color(0xFFD0D5DA),
+                            color: isDark ? Colors.black : const Color(0xFFB8BEC4),
                             border: Border.all(
                               color: isDark
                                   ? Colors.white.withValues(alpha: 0.2)
-                                  : Colors.black.withValues(alpha: 0.1),
+                                  : Colors.black.withValues(alpha: 0.15),
                             ),
                           ),
                         ),
