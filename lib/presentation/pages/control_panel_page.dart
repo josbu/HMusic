@@ -768,7 +768,9 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                     height: recordSize,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: isDark ? const Color(0xFF222222) : Theme.of(context).scaffoldBackgroundColor,
+                      color: isDark
+                          ? const Color(0xFF222222)
+                          : _dominantColor ?? Theme.of(context).scaffoldBackgroundColor,
                       border: Border.all(
                         color: isDark
                             ? Colors.white.withValues(alpha: 0.06)
