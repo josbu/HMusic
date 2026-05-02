@@ -642,12 +642,14 @@ class _MainPageState extends ConsumerState<MainPage>
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(30),
-        child: Container(
-          height: 72,
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-          ),
-          child: Row(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 45, sigmaY: 45),
+          child: Container(
+            height: 72,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.65),
+            ),
+            child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _buildTabItem(
