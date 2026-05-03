@@ -15,8 +15,9 @@ class DirectModeLoginPage extends ConsumerStatefulWidget {
       _DirectModeLoginPageState();
 }
 
-class _DirectModeLoginPageState extends ConsumerState<DirectModeLoginPage> {
+class _DirectModeLoginPageState extends ConsumerState<DirectModeLoginPage> with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
+  late AnimationController _animationController;
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
@@ -24,6 +25,11 @@ class _DirectModeLoginPageState extends ConsumerState<DirectModeLoginPage> {
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(seconds: 4),
+      vsync: this,
+    )..repeat(reverse: true);
+
     void listener() {
       if (mounted) setState(() {});
     }
@@ -35,6 +41,7 @@ class _DirectModeLoginPageState extends ConsumerState<DirectModeLoginPage> {
   void dispose() {
     _accountController.dispose();
     _passwordController.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -130,230 +137,208 @@ class _DirectModeLoginPageState extends ConsumerState<DirectModeLoginPage> {
     });
 
     final isLoading = directModeState is DirectModeLoading;
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return PopScope(
       canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (!isLoading) {
+          ref.read(playbackModeProvider.notifier).clearMode();
+        }
+      },
       child: Scaffold(
-        body: SafeArea(
-        child: Stack(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Stack(
           children: [
-            // 主内容
-            SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.only(
-                left: 24.0,
-                right: 24.0,
-                bottom: keyboardHeight > 0 ? keyboardHeight + 20 : 20.0,
-              ),
+
+            SafeArea(
               child: Column(
                 children: [
-                  SizedBox(height: screenHeight * 0.13),
-
-                    // Logo和标题区域
-                  Column(
-                    children: [
-                      SvgPicture.asset(
-                        'assets/hmusic-logo.svg',
-                        width: 120,
-                        colorFilter: ColorFilter.mode(
-                          isLight
-                              ? const Color(0xFF21B0A5)
-                              : const Color(0xFF21B0A5).withValues(alpha: 0.9),
-                          BlendMode.srcIn,
+                  // 🏠 自定义导航栏
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: isDark ? Colors.white : const Color(0xFF151E32),
+                            size: 20,
+                          ),
+                          onPressed: isLoading
+                              ? null
+                              : () => ref.read(playbackModeProvider.notifier).clearMode(),
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        '直连模式',
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: isLight
-                              ? const Color(0xFF2D3748)
-                              : Colors.white,
-                          letterSpacing: 1.2,
+                        const Spacer(),
+                        SizedBox(
+                          height: 24,
+                          child: AspectRatio(
+                            aspectRatio: 572 / 210,
+                            child: SvgPicture.asset(
+                              'assets/hmusic-logo.svg',
+                              fit: BoxFit.contain,
+                              colorFilter: const ColorFilter.mode(
+                                Color(0xFF21B0A5), // 品牌 Teal
+                                BlendMode.srcIn,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '使用小米账号登录，直接控制小爱音箱',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: isLight
-                              ? const Color(0xFF4A5568)
-                              : Colors.white.withValues(alpha: 0.7),
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                    ],
+                        const SizedBox(width: 40),
+                        const Spacer(),
+                      ],
+                    ),
                   ),
 
-                  const SizedBox(height: 60),
-
-                  // 登录表单卡片
-                  Container(
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      color: isLight
-                          ? Colors.white
-                          : Colors.white.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: isLight
-                            ? Colors.black.withValues(alpha: 0.06)
-                            : Colors.white.withValues(alpha: 0.1),
-                        width: 1,
-                      ),
-                      boxShadow: isLight
-                          ? [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.04),
-                                blurRadius: 24,
-                                offset: const Offset(0, 8),
-                              ),
-                            ]
-                          : [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.1),
-                                blurRadius: 40,
-                                offset: const Offset(0, 16),
-                              ),
-                            ],
-                    ),
-                    child: Form(
-                      key: _formKey,
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // 小米账号输入框
-                          _buildModernTextField(
-                            controller: _accountController,
-                            labelText: '小米账号',
-                            hintText: '手机号/邮箱',
-                            prefixIcon: Icons.person_rounded,
-                            textInputAction: TextInputAction.next,
-                            keyboardType: TextInputType.emailAddress,
-                            enableClear: true,
-                            enabled: !isLoading,
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return '请输入小米账号';
-                              }
-                              return null;
-                            },
-                          ),
+                          const SizedBox(height: 40),
 
-                          const SizedBox(height: 20),
-
-                          // 密码输入框
-                          _buildModernTextField(
-                            controller: _passwordController,
-                            labelText: '密码',
-                            hintText: '小米账号密码',
-                            prefixIcon: Icons.lock_rounded,
-                            obscureText: _obscurePassword,
-                            textInputAction: TextInputAction.done,
-                            onSubmitted: (_) => _handleLogin(),
-                            enabled: !isLoading,
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_rounded
-                                    : Icons.visibility_off_rounded,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.6),
-                                size: 22,
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  _obscurePassword = !_obscurePassword;
-                                });
-                              },
+                          // 🏷️ 标题区域
+                          Text(
+                            '直连模式',
+                            style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w800,
+                              color: isDark ? Colors.white : const Color(0xFF151E32),
+                              letterSpacing: -0.5,
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return '请输入密码';
-                              }
-                              return null;
-                            },
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '登录小米账号以发现局域网内的设备',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.6)
+                                  : Colors.black54,
+                              height: 1.5,
+                            ),
                           ),
 
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 48),
 
-                          // 错误提示
-                          if (directModeState is DirectModeError)
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 20),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF6B6B)
-                                    .withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0xFFFF6B6B)
-                                      .withValues(alpha: 0.3),
+                          // 📝 登录表单
+                          Form(
+                            key: _formKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // 小米账号
+                                _buildModernTextField(
+                                  controller: _accountController,
+                                  labelText: '小米账号',
+                                  hintText: '手机号 / 邮箱 / 小米 ID',
+                                  prefixIcon: Icons.account_circle_rounded,
+                                  isDark: isDark,
+                                  enabled: !isLoading,
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return '请输入小米账号';
+                                    }
+                                    return null;
+                                  },
                                 ),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.error_outline_rounded,
-                                    color: Color(0xFFFF6B6B),
-                                    size: 22,
+
+                                const SizedBox(height: 24),
+
+                                // 密码
+                                _buildModernTextField(
+                                  controller: _passwordController,
+                                  labelText: '密码',
+                                  hintText: '••••••••',
+                                  prefixIcon: Icons.lock_rounded,
+                                  isDark: isDark,
+                                  obscureText: _obscurePassword,
+                                  enabled: !isLoading,
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _obscurePassword
+                                          ? Icons.visibility_rounded
+                                          : Icons.visibility_off_rounded,
+                                      color: isDark ? Colors.white38 : Colors.black26,
+                                      size: 20,
+                                    ),
+                                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      directModeState.message,
-                                      style: const TextStyle(
-                                        color: Color(0xFFFF6B6B),
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                      ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return '请输入密码';
+                                    }
+                                    return null;
+                                  },
+                                ),
+
+                                const SizedBox(height: 40),
+
+                                // 登录按钮
+                                _buildModernButton(
+                                  onPressed: isLoading ? null : _handleLogin,
+                                  isLoading: isLoading,
+                                  title: '发现设备',
+                                  isDark: isDark,
+                                ),
+
+                                const SizedBox(height: 40),
+
+                                // 🛡️ 隐私说明
+                                Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.03)
+                                        : Colors.grey.withValues(alpha: 0.05),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05),
                                     ),
                                   ),
-                                ],
-                              ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(Icons.security_rounded, size: 16, color: const Color(0xFF2196F3)),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '安全与隐私',
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: isDark ? Colors.white : Colors.black87,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        '你的账号信息仅用于向小米服务器获取设备 Token。HMusic 不会上传或保存你的密码。',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: isDark ? Colors.white38 : Colors.black54,
+                                          height: 1.6,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-
-                          // 登录按钮
-                          _buildModernButton(
-                            onPressed: isLoading ? null : _handleLogin,
-                            isLoading: isLoading,
                           ),
                         ],
                       ),
                     ),
                   ),
-
-                    const SizedBox(height: 40),
-                  ],
-                ),
+                ],
               ),
-              // 返回按钮
-              Positioned(
-                top: 4,
-                left: 0,
-                child: IconButton(
-                  icon: Icon(
-                    Icons.arrow_back,
-                    color: isLight ? const Color(0xFF2D3748) : Colors.white,
-                  ),
-                  onPressed: isLoading
-                      ? null
-                      : () => ref.read(playbackModeProvider.notifier).clearMode(),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -364,172 +349,96 @@ class _DirectModeLoginPageState extends ConsumerState<DirectModeLoginPage> {
     required String labelText,
     required String hintText,
     required IconData prefixIcon,
+    required bool isDark,
     bool obscureText = false,
     bool enabled = true,
     Widget? suffixIcon,
     String? Function(String?)? validator,
-    TextInputAction? textInputAction,
-    TextInputType? keyboardType,
-    void Function(String)? onSubmitted,
-    bool enableClear = false,
   }) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscureText,
-      enabled: enabled,
-      keyboardType: keyboardType,
-      style: TextStyle(
-        color: Theme.of(context).colorScheme.onSurface,
-        fontSize: 16,
-        fontWeight: FontWeight.w500,
-      ),
-      textInputAction: textInputAction,
-      onFieldSubmitted: onSubmitted,
-      decoration: InputDecoration(
-        labelText: labelText,
-        hintText: hintText,
-        prefixIcon: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Icon(
-            prefixIcon,
-            color:
-                Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-            size: 26,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            labelText,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white.withValues(alpha: 0.5) : Colors.black54,
+            ),
           ),
         ),
-        prefixIconConstraints: const BoxConstraints(
-          minWidth: 48,
-          minHeight: 48,
-        ),
-        suffixIcon: suffixIcon ??
-            (enableClear && controller.text.isNotEmpty
-                ? IconButton(
-                    icon: Icon(
-                      Icons.clear_rounded,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.6),
-                      size: 22,
-                    ),
-                    onPressed: () => controller.clear(),
-                  )
-                : null),
-        labelStyle: TextStyle(
-          color:
-              Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
-        hintStyle: TextStyle(
-          color:
-              Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-          fontSize: 14,
-        ),
-        filled: true,
-        fillColor: Theme.of(context).brightness == Brightness.light
-            ? Colors.black.withValues(alpha: 0.03)
-            : Colors.white.withValues(alpha: 0.05),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: Theme.of(context)
-                .colorScheme
-                .onSurface
-                .withValues(alpha: 0.1),
+        TextFormField(
+          controller: controller,
+          obscureText: obscureText,
+          enabled: enabled,
+          validator: validator,
+          style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87),
+          decoration: InputDecoration(
+            hintText: hintText,
+            hintStyle: TextStyle(color: isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black38),
+            prefixIcon: Icon(prefixIcon, color: isDark ? Colors.white38 : Colors.black26, size: 22),
+            suffixIcon: suffixIcon,
+            filled: true,
+            fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.withValues(alpha: 0.1),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05), width: 0.5),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05), width: 0.5),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: const BorderSide(color: Color(0xFF2196F3), width: 1.5),
+            ),
           ),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: Theme.of(context)
-                .colorScheme
-                .onSurface
-                .withValues(alpha: 0.1),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide:
-              const BorderSide(color: Color(0xFF667EEA), width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide:
-              const BorderSide(color: Color(0xFFFF6B6B), width: 1),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide:
-              const BorderSide(color: Color(0xFFFF6B6B), width: 2),
-        ),
-        errorStyle: const TextStyle(
-          color: Color(0xFFFF6B6B),
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 20,
-          vertical: 16,
-        ),
-      ),
-      validator: validator,
+      ],
     );
   }
 
   Widget _buildModernButton({
     required VoidCallback? onPressed,
     required bool isLoading,
+    required String title,
+    required bool isDark,
   }) {
     return Container(
       width: double.infinity,
-      height: 56,
+      height: 64,
       decoration: BoxDecoration(
-        gradient: onPressed != null
-            ? const LinearGradient(
-                colors: [Color(0xFF23B0A6), Color(0xFF1EA396)],
-              )
-            : LinearGradient(
-                colors: [
-                  Colors.grey.withValues(alpha: 0.3),
-                  Colors.grey.withValues(alpha: 0.3),
-                ],
-              ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: onPressed != null
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF23B0A6).withValues(alpha: 0.22),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ]
-            : null,
+        color: const Color(0xFF2196F3),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2196F3).withValues(alpha: 0.35),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            alignment: Alignment.center,
+          borderRadius: BorderRadius.circular(20),
+          child: Center(
             child: isLoading
                 ? const SizedBox(
                     width: 24,
                     height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                   )
-                : const Text(
-                    '登录',
-                    style: TextStyle(
+                : Text(
+                    title,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
           ),

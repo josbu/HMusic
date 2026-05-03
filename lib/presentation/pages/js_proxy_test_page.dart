@@ -204,14 +204,15 @@ class _JSProxyTestPageState extends ConsumerState<JSProxyTestPage> {
       final jsProxy = ref.read(jsProxyProvider.notifier);
 
       // 🎯 使用完整的歌曲信息，与真实播放时一致
-      final musicInfo = _currentMusicInfo.isNotEmpty
-          ? _currentMusicInfo
-          : {
-              'title': '测试歌曲',
-              'artist': '测试歌手',
-              'songmid': _songIdController.text,
-              'hash': _songIdController.text,
-            };
+      final musicInfo =
+          _currentMusicInfo.isNotEmpty
+              ? _currentMusicInfo
+              : {
+                'title': '测试歌曲',
+                'artist': '测试歌手',
+                'songmid': _songIdController.text,
+                'hash': _songIdController.text,
+              };
 
       final url = await jsProxy.getMusicUrl(
         source: _sourceController.text,
@@ -239,10 +240,7 @@ class _JSProxyTestPageState extends ConsumerState<JSProxyTestPage> {
     final jsProxyState = ref.watch(jsProxyProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('JS代理执行器测试'),
-        backgroundColor: Colors.blue,
-      ),
+      appBar: AppBar(title: const Text('JS代理执行器测试')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -270,7 +268,7 @@ class _JSProxyTestPageState extends ConsumerState<JSProxyTestPage> {
                     if (jsProxyState.error != null)
                       Text(
                         '错误: ${jsProxyState.error}',
-                        style: const TextStyle(color: Colors.red),
+                        style: const TextStyle(color: const Color(0xFFEF4444)),
                       ),
                   ],
                 ),
@@ -452,9 +450,7 @@ class _JSProxyTestPageState extends ConsumerState<JSProxyTestPage> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(12.0),
                       decoration: BoxDecoration(
-                        color: Colors.grey[100],
                         borderRadius: BorderRadius.circular(8.0),
-                        border: Border.all(color: Colors.grey[300]!),
                       ),
                       child: Text(
                         _testResult.isEmpty ? '等待测试结果...' : _testResult,
@@ -462,10 +458,10 @@ class _JSProxyTestPageState extends ConsumerState<JSProxyTestPage> {
                           fontFamily: 'monospace',
                           color:
                               _testResult.startsWith('✅')
-                                  ? Colors.green
+                                  ? const Color(0xFF10B981)
                                   : _testResult.startsWith('❌')
-                                  ? Colors.red
-                                  : Colors.black,
+                                  ? const Color(0xFFEF4444)
+                                  : Colors.white,
                         ),
                       ),
                     ),

@@ -72,7 +72,6 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(

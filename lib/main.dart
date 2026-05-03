@@ -14,6 +14,7 @@ import 'package:uuid/uuid.dart';
 import 'app_router.dart';
 import 'presentation/providers/js_proxy_provider.dart';
 import 'presentation/providers/usage_stats_provider.dart';
+import 'presentation/providers/theme_provider.dart';
 import 'presentation/providers/audio_proxy_provider.dart';
 import 'data/services/audio_proxy_server.dart';
 import 'core/utils/app_logger.dart';
@@ -49,7 +50,7 @@ void main() {
       debugRepaintRainbowEnabled = false;
       debugPaintLayerBordersEnabled = false;
 
-      // 配置系统UI样式，适配小米澎湃OS 2.0
+      // 配置系统UI样式。导航栏保持透明，由 Flutter 根背景铺到底部手势区。
       SystemChrome.setSystemUIOverlayStyle(
         const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
@@ -60,12 +61,7 @@ void main() {
           systemNavigationBarDividerColor: Colors.transparent,
         ),
       );
-
-      // 启用边缘到边缘显示，沉浸顶部与底部小白条
-      SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.edgeToEdge,
-        overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
-      );
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
       // 添加全局错误处理
       FlutterError.onError = (FlutterErrorDetails details) {
@@ -119,6 +115,7 @@ void main() {
       runApp(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
             usageStatsProvider.overrideWith((ref) => UsageStatsNotifier(prefs)),
             // 🎯 提供全局代理服务器实例
             audioProxyServerProvider.overrideWithValue(_globalProxyServer),
@@ -324,19 +321,21 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final seed = const Color(0xFF21B0A5);
+    final seed = const Color(0xFF21B0A5); // HMusic Cyan
     final appBarToolbarHeight = Platform.isIOS ? 44.0 : kToolbarHeight;
+    final themeMode = ref.watch(themeModeProvider);
 
     final lightScheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.light,
       primary: seed,
-      surface: Colors.white, // 纯白背景
     );
+
     final darkScheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.dark,
       primary: seed,
+      surface: const Color(0xFF090E17), // Deep Navy Blue background
     );
 
     // 在应用构建阶段预热JS代理（读取provider以触发初始化和自动加载）
@@ -344,31 +343,29 @@ class MyApp extends ConsumerWidget {
 
     return MaterialApp.router(
       title: 'HMusic',
-      themeMode: ThemeMode.light,
+      themeMode: themeMode,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: lightScheme,
-        scaffoldBackgroundColor: Colors.white, // 使用白色背景，与启动屏一致
+        scaffoldBackgroundColor: const Color(0xFFF5F7F9),
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.transparent,
-          foregroundColor: Colors.black,
           elevation: 0,
           centerTitle: true,
           toolbarHeight: appBarToolbarHeight,
           scrolledUnderElevation: 0,
-          systemOverlayStyle: const SystemUiOverlayStyle(
+          systemOverlayStyle: SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
             statusBarIconBrightness: Brightness.dark,
             statusBarBrightness: Brightness.light,
             systemNavigationBarColor: Colors.transparent,
             systemNavigationBarIconBrightness: Brightness.dark,
+            systemNavigationBarDividerColor: Colors.transparent,
             systemNavigationBarContrastEnforced: false,
           ),
         ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
-          backgroundColor: const Color(0xFF1C1C1E),
-          contentTextStyle: const TextStyle(color: Colors.white),
           insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           elevation: 8,
           shape: RoundedRectangleBorder(
@@ -376,27 +373,29 @@ class MyApp extends ConsumerWidget {
           ),
         ),
         bottomSheetTheme: BottomSheetThemeData(
-          backgroundColor: lightScheme.surface,
           surfaceTintColor: Colors.transparent,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           showDragHandle: true,
-          dragHandleColor: lightScheme.onSurface.withOpacity(0.2),
           dragHandleSize: const Size(40, 5),
         ),
         dialogTheme: DialogThemeData(
-          backgroundColor: lightScheme.surface,
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+        popupMenuTheme: PopupMenuThemeData(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
         colorScheme: darkScheme,
-        scaffoldBackgroundColor: darkScheme.surface,
+        scaffoldBackgroundColor: const Color(0xFF090E17),
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.transparent,
           foregroundColor: Colors.white,
@@ -404,40 +403,85 @@ class MyApp extends ConsumerWidget {
           centerTitle: true,
           toolbarHeight: appBarToolbarHeight,
           scrolledUnderElevation: 0,
+          systemOverlayStyle: const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.light,
+            systemNavigationBarDividerColor: Colors.transparent,
+            systemNavigationBarContrastEnforced: false,
+          ),
         ),
         snackBarTheme: SnackBarThemeData(
           behavior: SnackBarBehavior.floating,
-          backgroundColor: const Color(0xFF1C1C1E),
+          backgroundColor: const Color(0xFF090E17),
           contentTextStyle: const TextStyle(color: Colors.white),
           insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           elevation: 8,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.white.withOpacity(0.12)),
           ),
         ),
         bottomSheetTheme: BottomSheetThemeData(
-          backgroundColor: darkScheme.surface,
+          backgroundColor: const Color(0xFF090E17),
           surfaceTintColor: Colors.transparent,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            side: BorderSide(color: Colors.white.withOpacity(0.12)),
           ),
           showDragHandle: true,
-          dragHandleColor: darkScheme.onSurface.withOpacity(0.2),
+          dragHandleColor: Colors.white.withOpacity(0.2),
           dragHandleSize: const Size(40, 5),
         ),
         dialogTheme: DialogThemeData(
-          backgroundColor: darkScheme.surface,
+          backgroundColor: const Color(0xFF090E17),
           surfaceTintColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.white.withOpacity(0.12)),
+          ),
+        ),
+        popupMenuTheme: PopupMenuThemeData(
+          color: const Color(0xFF090E17),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.white.withOpacity(0.12)),
           ),
         ),
       ),
       routerConfig: ref.read(appRouterProvider),
       debugShowCheckedModeBanner: false,
       builder: (context, child) {
-        // 确保在Material应用级别也禁用调试边框
-        return MediaQuery(data: MediaQuery.of(context), child: child!);
+        final theme = Theme.of(context);
+        final isDarkMode = theme.brightness == Brightness.dark;
+        final overlayStyle = SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness:
+              isDarkMode ? Brightness.light : Brightness.dark,
+          statusBarBrightness: isDarkMode ? Brightness.dark : Brightness.light,
+          systemStatusBarContrastEnforced: false,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarIconBrightness:
+              isDarkMode ? Brightness.light : Brightness.dark,
+          systemNavigationBarDividerColor: Colors.transparent,
+          systemNavigationBarContrastEnforced: false,
+        );
+
+        // 根背景必须铺满整个 FlutterView；透明系统导航栏才不会露出黑底。
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: overlayStyle,
+          child: ColoredBox(
+            color: theme.scaffoldBackgroundColor,
+            child: SizedBox.expand(
+              child: MediaQuery(
+                data: MediaQuery.of(context),
+                child: child ?? const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        );
       },
     );
   }

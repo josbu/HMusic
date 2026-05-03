@@ -12,8 +12,9 @@ class LoginPage extends ConsumerStatefulWidget {
   ConsumerState<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends ConsumerState<LoginPage> {
+class _LoginPageState extends ConsumerState<LoginPage> with TickerProviderStateMixin {
   late final GlobalKey<FormState> _formKey;
+  late AnimationController _animationController;
   final _serverUrlController = TextEditingController(
     text: AppConstants.defaultServerUrl,
   );
@@ -25,6 +26,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   void initState() {
     super.initState();
     _formKey = GlobalKey<FormState>();
+    _animationController = AnimationController(
+      duration: const Duration(seconds: 4),
+      vsync: this,
+    )..repeat(reverse: true);
+
     void listener() { if (mounted) setState(() {}); }
     _serverUrlController.addListener(listener);
     _usernameController.addListener(listener);
@@ -36,6 +42,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     _serverUrlController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -52,259 +59,220 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
-    final screenHeight = MediaQuery.of(context).size.height;
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isLoading = authState is AuthLoading;
 
     return PopScope(
       canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (!isLoading) {
+          ref.read(playbackModeProvider.notifier).clearMode();
+        }
+      },
       child: Scaffold(
-        body: SafeArea(
-        child: Stack(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Stack(
           children: [
-            // 主内容
-            SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.only(
-                left: 24.0,
-                right: 24.0,
-                bottom: keyboardHeight > 0 ? keyboardHeight + 20 : 20.0,
-              ),
+
+            SafeArea(
               child: Column(
                 children: [
-                  SizedBox(height: screenHeight * 0.13),
-
-                  // Logo和标题区域
-                  Column(
-                    children: [
-                      SvgPicture.asset(
-                        'assets/hmusic-logo.svg',
-                        width: 120,
-                        colorFilter: ColorFilter.mode(
-                          isLight
-                              ? const Color(0xFF21B0A5)
-                              : const Color(0xFF21B0A5).withValues(alpha: 0.9),
-                          BlendMode.srcIn,
+                   // 🏠 自定义导航栏
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: isDark ? Colors.white : const Color(0xFF151E32),
+                            size: 20,
+                          ),
+                          onPressed: isLoading
+                              ? null
+                              : () => ref.read(playbackModeProvider.notifier).clearMode(),
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'xiaomusic 模式',
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: isLight
-                              ? const Color(0xFF2D3748)
-                              : Colors.white,
-                          letterSpacing: 1.2,
+                        const Spacer(),
+                        SizedBox(
+                          height: 24, 
+                          child: AspectRatio(
+                            aspectRatio: 572 / 210,
+                            child: SvgPicture.asset(
+                              'assets/hmusic-logo.svg',
+                              fit: BoxFit.contain,
+                              colorFilter: ColorFilter.mode(
+                                isDark ? Colors.white.withValues(alpha: 0.9) : const Color(0xFF21B0A5),
+                                BlendMode.srcIn,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '连接 xiaomusic 服务端，播放 NAS 音乐',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: isLight
-                              ? const Color(0xFF4A5568)
-                              : Colors.white.withValues(alpha: 0.7),
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                    ],
+                        const SizedBox(width: 40), // 视觉平衡
+                        const Spacer(),
+                      ],
+                    ),
                   ),
 
-                  const SizedBox(height: 60),
-
-                  // 登录表单卡片
-                  Container(
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      color:
-                          isLight
-                              ? Colors.white
-                              : Colors.white.withOpacity(0.06),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color:
-                            isLight
-                                ? Colors.black.withOpacity(0.06)
-                                : Colors.white.withOpacity(0.1),
-                        width: 1,
-                      ),
-                      boxShadow:
-                          isLight
-                              ? [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.04),
-                                  blurRadius: 24,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ]
-                              : [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 40,
-                                  offset: const Offset(0, 16),
-                                ),
-                              ],
-                    ),
-                    child: Form(
-                      key: _formKey,
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // 服务器地址输入框
-                          _buildModernTextField(
-                            controller: _serverUrlController,
-                            labelText: '服务器地址',
-                            hintText: AppConstants.defaultServerUrl,
-                            prefixIcon: Icons.dns_rounded,
-                            textInputAction: TextInputAction.next,
-                            enableClear: true,
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return '请输入服务器地址';
-                              }
-                              return null;
-                            },
+                          const SizedBox(height: 32),
+                          
+                          // 🏷️ 标题区域
+                          Text(
+                            'xiaomusic',
+                            style: TextStyle(
+                              fontSize: 34,
+                              fontWeight: FontWeight.w900,
+                              color: isDark ? Colors.white : const Color(0xFF151E32),
+                              letterSpacing: -0.8,
+                            ),
                           ),
-
-                          const SizedBox(height: 20),
-
-                          // 用户名输入框
-                          _buildModernTextField(
-                            controller: _usernameController,
-                            labelText: '用户名（选填）',
-                            hintText: '未设置可留空',
-                            prefixIcon: Icons.person_rounded,
-                            textInputAction: TextInputAction.next,
-                            enableClear: true,
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          // 密码输入框
-                          _buildModernTextField(
-                            controller: _passwordController,
-                            labelText: '密码（选填）',
-                            hintText: '未设置可留空',
-                            prefixIcon: Icons.lock_rounded,
-                            obscureText: _obscurePassword,
-                            textInputAction: TextInputAction.done,
-                            onSubmitted: (_) => _handleLogin(),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_rounded
-                                    : Icons.visibility_off_rounded,
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                size: 22,
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  _obscurePassword = !_obscurePassword;
-                                });
-                              },
+                          const SizedBox(height: 10),
+                          Text(
+                            '连接到你的个人音乐服务端',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.55)
+                                  : Colors.black54,
+                              height: 1.5,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
 
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 48),
 
-                          // 错误提示 / 登录提示（互斥）
-                          if (authState is AuthError)
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 20),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFF6B6B).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(
-                                    0xFFFF6B6B,
-                                  ).withOpacity(0.3),
+                          // 📝 登录表单
+                          Form(
+                            key: _formKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // 服务器地址
+                                _buildModernTextField(
+                                  controller: _serverUrlController,
+                                  labelText: '服务器地址',
+                                  hintText: 'http://192.168.1.100:8090',
+                                  prefixIcon: Icons.dns_rounded,
+                                  isDark: isDark,
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return '请输入服务器地址';
+                                    }
+                                    return null;
+                                  },
                                 ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.error_outline_rounded,
-                                    color: const Color(0xFFFF6B6B),
-                                    size: 22,
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 4, top: 8, bottom: 20),
+                                  child: Text(
+                                    '🎯 正在探测局域网服务器...',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: const Color(0xFF2196F3).withValues(alpha: 0.8),
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      authState.message,
-                                      style: const TextStyle(
-                                        color: Color(0xFFFF6B6B),
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
+                                ),
+
+                                // 用户名
+                                _buildModernTextField(
+                                  controller: _usernameController,
+                                  labelText: '账号 (可选)',
+                                  hintText: '未设置可留空',
+                                  prefixIcon: Icons.person_rounded,
+                                  isDark: isDark,
+                                ),
+
+                                const SizedBox(height: 24),
+
+                                // 密码
+                                _buildModernTextField(
+                                  controller: _passwordController,
+                                  labelText: '密码',
+                                  hintText: '••••••••',
+                                  prefixIcon: Icons.lock_rounded,
+                                  isDark: isDark,
+                                  obscureText: _obscurePassword,
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _obscurePassword
+                                          ? Icons.visibility_rounded
+                                          : Icons.visibility_off_rounded,
+                                      color: isDark ? Colors.white38 : Colors.black26,
+                                      size: 20,
+                                    ),
+                                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                                  ),
+                                ),
+
+                                const SizedBox(height: 40),
+
+                                // 登录按钮
+                                _buildModernButton(
+                                  onPressed: isLoading ? null : _handleLogin,
+                                  isLoading: isLoading,
+                                  title: '连接服务器',
+                                  isDark: isDark,
+                                ),
+
+                                const SizedBox(height: 32),
+
+                                // 辅助链接
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      '查看设置指南',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDark ? const Color(0xFF2196F3) : Colors.blue,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          else
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 20),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.info_outline_rounded,
-                                    size: 16,
-                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '后台未设置账号密码？直接点击登录',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                                    const SizedBox(width: 24),
+                                    Text(
+                                      '帮助中心',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: isDark ? const Color(0xFF2196F3) : Colors.blue,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          
+                          const SizedBox(height: 40),
+
+                          if (authState is AuthError)
+                             Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
+                              ),
+                              child: Text(
+                                authState.message,
+                                style: const TextStyle(color: Colors.redAccent, fontSize: 13),
                               ),
                             ),
-
-                          // 登录按钮
-                          _buildModernButton(
-                            onPressed:
-                                authState is AuthLoading ? null : _handleLogin,
-                            isLoading: authState is AuthLoading,
-                          ),
-
                         ],
                       ),
                     ),
                   ),
-
-                    const SizedBox(height: 40),
-                  ],
-                ),
+                ],
               ),
-              // 返回按钮
-              Positioned(
-                top: 4,
-                left: 0,
-                child: IconButton(
-                  icon: Icon(
-                    Icons.arrow_back,
-                    color: isLight ? const Color(0xFF2D3748) : Colors.white,
-                  ),
-                  onPressed: isLoading
-                      ? null
-                      : () => ref.read(playbackModeProvider.notifier).clearMode(),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -315,159 +283,96 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     required String labelText,
     required String hintText,
     required IconData prefixIcon,
+    required bool isDark,
     bool obscureText = false,
     Widget? suffixIcon,
     String? Function(String?)? validator,
-    TextInputAction? textInputAction,
-    void Function(String)? onSubmitted,
-    bool enableClear = false,
   }) {
-    return TextFormField(
-      controller: controller,
-      obscureText: obscureText,
-      style: TextStyle(
-        color: Theme.of(context).colorScheme.onSurface,
-        fontSize: 16,
-        fontWeight: FontWeight.w500,
-      ),
-      textInputAction: textInputAction,
-      onFieldSubmitted: onSubmitted,
-      decoration: InputDecoration(
-        labelText: labelText,
-        hintText: hintText,
-        prefixIcon: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Icon(
-            prefixIcon,
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-            size: 26,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            labelText,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white.withValues(alpha: 0.5) : Colors.black54,
+            ),
           ),
         ),
-        prefixIconConstraints: const BoxConstraints(
-          minWidth: 48,
-          minHeight: 48,
-        ),
-        suffixIcon: suffixIcon ?? (
-          enableClear && controller.text.isNotEmpty
-              ? IconButton(
-                  icon: Icon(
-                    Icons.clear_rounded,
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                    size: 22,
-                  ),
-                  onPressed: () => controller.clear(),
-                )
-              : null
-        ),
-        labelStyle: TextStyle(
-          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
-        hintStyle: TextStyle(
-          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
-          fontSize: 14,
-        ),
-        filled: true,
-        fillColor:
-            Theme.of(context).brightness == Brightness.light
-                ? Colors.black.withOpacity(0.03)
-                : Colors.white.withOpacity(0.05),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
+        TextFormField(
+          controller: controller,
+          obscureText: obscureText,
+          validator: validator,
+          style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87),
+          decoration: InputDecoration(
+            hintText: hintText,
+            hintStyle: TextStyle(color: isDark ? Colors.white.withValues(alpha: 0.2) : Colors.black38),
+            prefixIcon: Icon(prefixIcon, color: isDark ? Colors.white38 : Colors.black26, size: 22),
+            suffixIcon: suffixIcon,
+            filled: true,
+            fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.withValues(alpha: 0.1),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05), width: 0.5),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05), width: 0.5),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: const BorderSide(color: Color(0xFFFF4081), width: 1.5),
+            ),
           ),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFF667EEA), width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFFFF6B6B), width: 1),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFFFF6B6B), width: 2),
-        ),
-        errorStyle: const TextStyle(
-          color: Color(0xFFFF6B6B),
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 20,
-          vertical: 16,
-        ),
-      ),
-      validator: validator,
+      ],
     );
   }
 
   Widget _buildModernButton({
     required VoidCallback? onPressed,
     required bool isLoading,
+    required String title,
+    required bool isDark,
   }) {
     return Container(
       width: double.infinity,
-      height: 56,
+      height: 64,
       decoration: BoxDecoration(
-        gradient:
-            onPressed != null
-                ? const LinearGradient(
-                  colors: [Color(0xFF23B0A6), Color(0xFF1EA396)],
-                )
-                : LinearGradient(
-                  colors: [
-                    Colors.grey.withOpacity(0.3),
-                    Colors.grey.withOpacity(0.3),
-                  ],
-                ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow:
-            onPressed != null
-                ? [
-                  BoxShadow(
-                    color: const Color(0xFF23B0A6).withOpacity(0.22),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ]
-                : null,
+        color: const Color(0xFFFF4081),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFFF4081).withValues(alpha: 0.35),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            alignment: Alignment.center,
-            child:
-                isLoading
-                    ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                    : const Text(
-                      '登录',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.5,
-                      ),
+          borderRadius: BorderRadius.circular(20),
+          child: Center(
+            child: isLoading
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
+                : Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
                     ),
+                  ),
           ),
         ),
       ),

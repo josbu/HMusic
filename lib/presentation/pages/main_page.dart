@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'dart:ui';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,7 +20,8 @@ import '../providers/ssh_settings_provider.dart';
 import '../providers/playlist_provider.dart';
 import '../providers/playback_provider.dart';
 import '../providers/usage_stats_provider.dart';
-import '../providers/direct_mode_provider.dart'; // 🎯 新增：播放模式
+import '../providers/direct_mode_provider.dart';
+import '../providers/device_provider.dart'; // 🎯 新增：播放模式
 import '../providers/local_playlist_provider.dart'; // 🎯 新增：直连模式歌单
 import '../providers/navigation_provider.dart'; // 🎯 新增：Tab 索引管理
 import '../widgets/sponsor_prompt_dialog.dart';
@@ -205,56 +208,69 @@ class _MainPageState extends ConsumerState<MainPage>
 
     // 背景渐变已移除，统一使用 surface 颜色，避免滚动影响顶部底色
 
-    // 状态栏样式已在全局 theme 设置，此处不再单独指定
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final scaffoldBackgroundColor = theme.scaffoldBackgroundColor;
+
+    // 系统栏样式需要在页面级完整声明，避免部分 MIUI/HyperOS 机型
+    // 只继承状态栏配置而让底部 navigationBarBackground 回退为黑色。
 
     return Scaffold(
       key: const ValueKey('main_scaffold'),
       // Keep bottom navigation fixed when keyboard shows
       resizeToAvoidBottomInset: false,
       // 统一背景色为 surface，移除页面级渐变，避免顶部随滚动色彩变化
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      extendBody: false,
+      backgroundColor: scaffoldBackgroundColor,
+      extendBody: true, // 内容延伸到导航栏区域，避免旧设备底部黑块
       extendBodyBehindAppBar: false,
-      body: Stack(
-        children: [
-          // Content column
-          SafeArea(
-            top: true,
-            bottom: false,
-            child: Column(
-              children: [
-                // Part 1: Header (Title, Refresh, User Info)
-                Material(
-                  color: Theme.of(context).colorScheme.surface,
-                  child: _buildHeader(context),
-                ),
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness:
+              isDarkMode ? Brightness.light : Brightness.dark,
+          statusBarBrightness: isDarkMode ? Brightness.dark : Brightness.light,
+          systemStatusBarContrastEnforced: false,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarIconBrightness:
+              isDarkMode ? Brightness.light : Brightness.dark,
+          systemNavigationBarDividerColor: Colors.transparent,
+          systemNavigationBarContrastEnforced: false,
+        ),
+        child: Stack(
+          children: [
+            // Content column
+            SafeArea(
+              top: true,
+              bottom: false,
+              child: Column(
+                children: [
+                  // Part 1: Header (Title, Refresh, User Info)
+                  _buildHeader(context),
 
-                // Part 2: Device Selector or Search Bar
-                Material(
-                  color: Theme.of(context).colorScheme.surface,
-                  child: _buildSecondarySection(),
-                ),
+                  // Part 2: Device Selector or Search Bar
+                  _buildSecondarySection(),
 
-                // Part 3: Main Content (Player, Lists)
-                Expanded(
-                  child: IndexedStack(
-                    key: const ValueKey('main_indexed_stack'),
-                    index: _selectedIndex,
-                    children: _pages,
+                  // Part 3: Main Content (Player, Lists)
+                  Expanded(
+                    child: IndexedStack(
+                      key: const ValueKey('main_indexed_stack'),
+                      index: _selectedIndex,
+                      children: _pages,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
-          // Floating blurred bottom navigation overlay
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: RepaintBoundary(child: _buildModernBottomNav()),
-          ),
-        ],
+            // Floating blurred bottom navigation overlay
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: RepaintBoundary(child: _buildModernBottomNav()),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -263,77 +279,289 @@ class _MainPageState extends ConsumerState<MainPage>
     final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
       child: SizedBox(
-        height: 56.0, // Standard AppBar height
+        height: 44.0,
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Transform.translate(
-              offset: const Offset(0, 8),
-              child: SvgPicture.asset(
-                'assets/hmusic-logo.svg',
-                width: 120,
-                fit: BoxFit.fitWidth,
+            SizedBox(
+              height: 28,
+              child: AspectRatio(
+                aspectRatio: 572 / 210, // 强制保持原始比例
+                child: SvgPicture.asset(
+                  'assets/hmusic-logo.svg',
+                  fit: BoxFit.contain,
+                ),
               ),
             ),
             const Spacer(),
             // Upload button - only show on music library tab (index 3) in xiaomusic mode
             if (_selectedIndex == 3 &&
                 ref.watch(playbackModeProvider) == PlaybackMode.xiaomusic)
-              Container(
-                margin: const EdgeInsets.only(right: 8),
-                child: IconButton(
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: onSurface.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.upload_rounded,
-                      color: onSurface,
-                      size: 20,
-                    ),
-                  ),
-                  onPressed: _showUploadDialog,
-                  tooltip: '上传音乐文件',
-                ),
+              _buildHeaderIcon(
+                icon: Icons.upload_rounded,
+                onPressed: _showUploadDialog,
+                tooltip: '上传音乐文件',
+                onSurface: onSurface,
               ),
             // Sponsor button
-            Container(
-              margin: const EdgeInsets.only(right: 8),
-              child: ScaleTransition(
-                scale: _heartbeatAnimation,
-                child: IconButton(
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: onSurface.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.favorite_rounded,
-                      color: Colors.pink.shade400,
-                      size: 20,
-                    ),
-                  ),
-                  onPressed: () => context.push('/settings/sponsor'),
-                  tooltip: '赞赏支持',
-                ),
-              ),
+            _buildHeaderIcon(
+              icon: CupertinoIcons.heart,
+              onPressed: () => context.push('/settings/sponsor'),
+              tooltip: '赞赏支持',
+              onSurface: onSurface,
+              iconColor: const Color(
+                0xFFFF4D8D,
+              ).withValues(alpha: 0.9), // 优雅的粉红色
             ),
-            IconButton(
+            // Device Selection button
+            _buildHeaderIcon(
+              icon: CupertinoIcons.hifispeaker,
+              onPressed: () => _showDeviceSelectionDialog(context),
+              tooltip: '选择播放设备',
+              onSurface: onSurface,
+            ),
+            _buildHeaderIcon(
+              icon: CupertinoIcons.settings,
               onPressed: () => context.push('/settings'),
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: onSurface.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(Icons.settings_rounded, color: onSurface, size: 20),
-              ),
+              tooltip: '设置',
+              onSurface: onSurface,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderIcon({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required String tooltip,
+    required Color onSurface,
+    Color? iconColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 12),
+      child: IconButton(
+        onPressed: onPressed,
+        tooltip: tooltip,
+        constraints: const BoxConstraints(),
+        padding: EdgeInsets.zero,
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        icon: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            shape: BoxShape.circle, // 改为圆形，视觉更简洁
+          ),
+          child: Icon(
+            icon,
+            color: iconColor ?? onSurface.withValues(alpha: 0.8),
+            size: 19, // 稍微缩小一点，更精致
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDeviceSelectionDialog(BuildContext context) async {
+    final playbackMode = ref.read(playbackModeProvider);
+    List<dynamic> devices = [];
+    String? currentDeviceId;
+
+    if (playbackMode == PlaybackMode.miIoTDirect) {
+      final directState = ref.read(directModeProvider);
+      if (directState is DirectModeAuthenticated) {
+        devices = directState.devices;
+        currentDeviceId = directState.playbackDeviceType;
+      }
+    } else {
+      final deviceState = ref.read(deviceProvider);
+      devices = deviceState.devices;
+      currentDeviceId = deviceState.selectedDeviceId;
+    }
+
+    if (playbackMode != PlaybackMode.miIoTDirect && devices.isEmpty) {
+      AppSnackBar.showInfo(context, '没有可用的播放设备');
+      return;
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final onSurface = colorScheme.onSurface;
+    final selectedDeviceId = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 460),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '选择播放设备',
+                    style: TextStyle(
+                      color: onSurface,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        if (playbackMode == PlaybackMode.miIoTDirect)
+                          _buildDeviceSheetItem(
+                            context: sheetContext,
+                            icon: Icons.smartphone_rounded,
+                            title: '本机播放',
+                            subtitle: '在当前设备上播放',
+                            value: 'local',
+                            currentDeviceId: currentDeviceId,
+                            activeColor: colorScheme.primary,
+                            defaultColor: onSurface,
+                          ),
+                        if (playbackMode == PlaybackMode.miIoTDirect &&
+                            devices.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),
+                            child: Text(
+                              '音箱设备',
+                              style: TextStyle(
+                                color: onSurface.withValues(alpha: 0.55),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ...devices.map((device) {
+                          final isMiDevice =
+                              playbackMode == PlaybackMode.miIoTDirect;
+                          final id = isMiDevice ? device.deviceId : device.id;
+                          final name = device.name;
+                          final isOnline =
+                              isMiDevice ? true : (device.isOnline ?? false);
+
+                          return _buildDeviceSheetItem(
+                            context: sheetContext,
+                            icon:
+                                isMiDevice
+                                    ? Icons.speaker_rounded
+                                    : Icons.speaker_group_rounded,
+                            title: name,
+                            subtitle: isOnline ? '在线' : '离线',
+                            value: id,
+                            currentDeviceId: currentDeviceId,
+                            activeColor: colorScheme.primary,
+                            defaultColor: onSurface,
+                            enabledColor: isOnline ? Colors.green : null,
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (selectedDeviceId != null && selectedDeviceId != currentDeviceId) {
+      if (playbackMode == PlaybackMode.miIoTDirect) {
+        await ref
+            .read(directModeProvider.notifier)
+            .selectPlaybackDevice(selectedDeviceId);
+      } else {
+        ref.read(deviceProvider.notifier).selectDevice(selectedDeviceId);
+      }
+    }
+  }
+
+  Widget _buildDeviceSheetItem({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String value,
+    required String? currentDeviceId,
+    required Color activeColor,
+    required Color defaultColor,
+    Color? enabledColor,
+  }) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final isSelected = value == currentDeviceId;
+    final leadingColor =
+        isSelected
+            ? activeColor
+            : (enabledColor ?? defaultColor.withValues(alpha: 0.76));
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () => Navigator.of(context).pop(value),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            decoration: BoxDecoration(
+              color:
+                  isSelected
+                      ? activeColor.withValues(alpha: 0.12)
+                      : onSurface.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color:
+                    isSelected
+                        ? activeColor.withValues(alpha: 0.8)
+                        : onSurface.withValues(alpha: 0.08),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: leadingColor),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: isSelected ? activeColor : defaultColor,
+                          fontWeight:
+                              isSelected ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: defaultColor.withValues(alpha: 0.6),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isSelected)
+                  Icon(Icons.check_circle_rounded, color: activeColor),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -360,17 +588,17 @@ class _MainPageState extends ConsumerState<MainPage>
             style: TextStyle(color: onSurface),
             decoration: InputDecoration(
               hintText: '在线搜索歌曲...',
-              hintStyle: TextStyle(color: onSurface.withOpacity(0.5)),
+              hintStyle: TextStyle(color: onSurface.withValues(alpha: 0.5)),
               prefixIcon: Icon(
                 Icons.search_rounded,
-                color: onSurface.withOpacity(0.6),
+                color: onSurface.withValues(alpha: 0.6),
               ),
               suffixIcon:
                   value.text.isNotEmpty
                       ? IconButton(
                         icon: Icon(
                           Icons.clear_rounded,
-                          color: onSurface.withOpacity(0.6),
+                          color: onSurface.withValues(alpha: 0.6),
                         ),
                         onPressed: () {
                           _searchController.clear();
@@ -379,7 +607,7 @@ class _MainPageState extends ConsumerState<MainPage>
                       )
                       : null,
               filled: true,
-              fillColor: onSurface.withOpacity(0.05),
+              fillColor: onSurface.withValues(alpha: 0.05),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16.0),
                 borderSide: BorderSide.none,
@@ -397,36 +625,39 @@ class _MainPageState extends ConsumerState<MainPage>
 
   Widget _buildModernBottomNav() {
     final bottomMargin = AppLayout.bottomOverlayBottomMargin(context);
+    final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return Container(
       margin: EdgeInsets.only(
-        left: 20,
-        right: 20,
+        left: 24,
+        right: 24,
         bottom: bottomMargin,
         top: 10,
       ),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(30),
         border: Border.all(
-          color: Colors.black.withValues(alpha: 0.06),
-          width: 1,
-        ), // 更淡的边框
+          color: onSurface.withValues(alpha: 0.08),
+          width: 0.8,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04), // 更淡的阴影
-            blurRadius: 24,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 32,
+            offset: const Offset(0, 12),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(30),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24), // 增强模糊
+          filter: ImageFilter.blur(sigmaX: 45, sigmaY: 45),
           child: Container(
-            height: 68,
+            height: 72,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.20), // 更透明
+              color: Theme.of(
+                context,
+              ).scaffoldBackgroundColor.withValues(alpha: 0.65),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -528,6 +759,10 @@ class _MainPageState extends ConsumerState<MainPage>
         allowMultiple: true,
         withData: false, // We only need paths for uploads
       );
+
+      if (!mounted) {
+        return;
+      }
 
       if (result != null && result.files.isNotEmpty) {
         // Show upload confirmation dialog

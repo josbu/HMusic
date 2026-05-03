@@ -574,6 +574,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           apiService: apiService,
           audioProxyServer: ref.read(audioProxyServerProvider),
         );
+        // 🎯 设置回调：当策略内部播放列表为空时（搜索播放），委托给 PlaybackProvider 的 APP 队列
+        localStrategy.onNext = () {
+          debugPrint('🎵 [PlaybackProvider] 本地策略委托 next → APP队列');
+          next();
+        };
+        localStrategy.onPrevious = () {
+          debugPrint('🎵 [PlaybackProvider] 本地策略委托 previous → APP队列');
+          previous();
+        };
         _currentStrategy = localStrategy;
         _currentDeviceId = 'local';
 
@@ -586,8 +595,23 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         // 🎵 监听本地播放器状态流
         localStrategy.statusStream.listen((status) async {
           debugPrint('🎵 [PlaybackProvider] 收到本地播放状态更新');
+          // 🎯 用真实队列名替换策略返回的硬编码 '本地播放'
+          final realQueueName = _getCurrentQueueName(
+            fallback: status.curPlaylist,
+          );
+          var effectiveStatus = status;
+          if (realQueueName != status.curPlaylist) {
+            effectiveStatus = PlayingMusic(
+              ret: status.ret,
+              curMusic: status.curMusic,
+              curPlaylist: realQueueName,
+              isPlaying: status.isPlaying,
+              offset: status.offset,
+              duration: status.duration,
+            );
+          }
           state = state.copyWith(
-            currentMusic: status,
+            currentMusic: effectiveStatus,
             hasLoaded: true,
             isLoading: false,
             isLocalMode: true, // 🎵 本地播放模式
@@ -933,6 +957,15 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
           apiService: apiService,
           audioProxyServer: ref.read(audioProxyServerProvider),
         );
+        // 🎯 设置回调：当策略内部播放列表为空时（搜索播放），委托给 PlaybackProvider 的 APP 队列
+        localStrategy.onNext = () {
+          debugPrint('🎵 [PlaybackProvider] 本地策略委托 next → APP队列');
+          next();
+        };
+        localStrategy.onPrevious = () {
+          debugPrint('🎵 [PlaybackProvider] 本地策略委托 previous → APP队列');
+          previous();
+        };
         _currentStrategy = localStrategy;
 
         try {
@@ -944,8 +977,23 @@ class PlaybackNotifier extends StateNotifier<PlaybackState> {
         // 🎵 监听本地播放器状态流
         localStrategy.statusStream.listen((status) async {
           debugPrint('🎵 [PlaybackProvider] 收到本地播放状态更新');
+          // 🎯 用真实队列名替换策略返回的硬编码 '本地播放'
+          final realQueueName = _getCurrentQueueName(
+            fallback: status.curPlaylist,
+          );
+          var effectiveStatus = status;
+          if (realQueueName != status.curPlaylist) {
+            effectiveStatus = PlayingMusic(
+              ret: status.ret,
+              curMusic: status.curMusic,
+              curPlaylist: realQueueName,
+              isPlaying: status.isPlaying,
+              offset: status.offset,
+              duration: status.duration,
+            );
+          }
           state = state.copyWith(
-            currentMusic: status,
+            currentMusic: effectiveStatus,
             hasLoaded: true,
             isLoading: false,
             isLocalMode: true, // 🎵 本地播放模式

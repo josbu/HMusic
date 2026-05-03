@@ -17,39 +17,44 @@ class SponsorPromptDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       child: Container(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
         decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1C1F26) : Colors.white,
           borderRadius: BorderRadius.circular(20),
-          gradient: LinearGradient(
-            colors: [
-              colorScheme.primaryContainer.withOpacity(0.3),
-              colorScheme.secondaryContainer.withOpacity(0.3),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withOpacity(0.08)
+                : Colors.black.withOpacity(0.06),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.4 : 0.08),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             // 图标
             Container(
-              width: 80,
-              height: 80,
+              width: 64,
+              height: 64,
               decoration: BoxDecoration(
-                color: Colors.pink.shade50,
+                color: const Color(0xFFFF4D8D).withOpacity(isDark ? 0.15 : 0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
+              child: const Icon(
                 Icons.favorite_rounded,
-                size: 40,
-                color: Colors.pink.shade400,
+                size: 30,
+                color: Color(0xFFFF4D8D),
               ),
             ),
 
@@ -58,22 +63,24 @@ class SponsorPromptDialog extends StatelessWidget {
             // 标题
             Text(
               title,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurface,
-                  ),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurface,
+              ),
               textAlign: TextAlign.center,
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
 
             // 消息
             Text(
               message,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withOpacity(0.8),
-                    height: 1.5,
-                  ),
+              style: TextStyle(
+                fontSize: 14,
+                color: colorScheme.onSurface.withOpacity(0.6),
+                height: 1.6,
+              ),
               textAlign: TextAlign.center,
             ),
 
@@ -81,21 +88,28 @@ class SponsorPromptDialog extends StatelessWidget {
 
             // 按钮
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // 稍后按钮
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                  ),
-                  child: Text(
-                    '稍后',
-                    style: TextStyle(
-                      color: colorScheme.onSurface.withOpacity(0.6),
+                Expanded(
+                  child: SizedBox(
+                    height: 44,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      style: TextButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: colorScheme.onSurface.withOpacity(0.1),
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        '稍后',
+                        style: TextStyle(
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                          fontSize: 15,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -103,38 +117,43 @@ class SponsorPromptDialog extends StatelessWidget {
                 const SizedBox(width: 12),
 
                 // 赞赏按钮
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).pop(true);
-                    context.push('/settings/sponsor');
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.pink.shade400,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                Expanded(
+                  child: SizedBox(
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop(true);
+                        context.push('/settings/sponsor');
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF4D8D),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: const Icon(Icons.favorite_rounded, size: 16),
+                      label: const Text('赞赏支持', style: TextStyle(fontSize: 15)),
                     ),
                   ),
-                  icon: const Icon(Icons.favorite_rounded, size: 18),
-                  label: const Text('赞赏支持'),
                 ),
               ],
             ),
 
             // "不再提醒"选项
             if (showNeverAskAgain) ...[
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop('never'),
-                child: Text(
-                  '不再提醒',
-                  style: TextStyle(
-                    color: colorScheme.onSurface.withOpacity(0.4),
-                    fontSize: 12,
+              const SizedBox(height: 12),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop('never'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    '不再提醒',
+                    style: TextStyle(
+                      color: colorScheme.onSurface.withOpacity(0.35),
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ),
@@ -150,8 +169,8 @@ class SponsorPromptDialog extends StatelessWidget {
     return showDialog(
       context: context,
       builder: (context) => const SponsorPromptDialog(
-        title: '🎉 恭喜解锁成就！',
-        message: '您已经用 HMusic 播放了 50 首歌曲！\n如果这个应用对您有帮助，\n欢迎赞赏支持开发者继续改进',
+        title: '恭喜解锁成就',
+        message: '您已经用 HMusic 播放了 50 首歌曲\n如果这个应用对您有帮助\n欢迎赞赏支持开发者继续改进',
         showNeverAskAgain: false,
       ),
     );
@@ -162,8 +181,8 @@ class SponsorPromptDialog extends StatelessWidget {
     return showDialog(
       context: context,
       builder: (context) => const SponsorPromptDialog(
-        title: '✨ 歌词大师！',
-        message: '已为您自动获取了 20 条歌词！\n喜欢这个功能吗？\n您的支持是开发者最大的动力',
+        title: '歌词大师',
+        message: '已为您自动获取了 20 条歌词\n喜欢这个功能吗\n您的支持是开发者最大的动力',
         showNeverAskAgain: false,
       ),
     );
@@ -174,8 +193,8 @@ class SponsorPromptDialog extends StatelessWidget {
     return showDialog(
       context: context,
       builder: (context) => const SponsorPromptDialog(
-        title: '❤️ 感谢陪伴！',
-        message: '您已经使用 HMusic 一周啦！\n感谢您的信任和支持\n如果觉得应用不错，欢迎赞赏',
+        title: '感谢陪伴',
+        message: '您已经使用 HMusic 一周啦\n感谢您的信任和支持\n如果觉得应用不错，欢迎赞赏',
         showNeverAskAgain: false,
       ),
     );
@@ -186,7 +205,7 @@ class SponsorPromptDialog extends StatelessWidget {
     return showDialog(
       context: context,
       builder: (context) => const SponsorPromptDialog(
-        title: '💝 继续支持开发',
+        title: '继续支持开发',
         message: 'HMusic 一直在为您提供更好的体验\n如果您觉得应用有帮助\n欢迎赞赏支持开发者',
         showNeverAskAgain: true,
       ),

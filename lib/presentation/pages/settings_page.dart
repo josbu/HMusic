@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -12,6 +12,7 @@ import '../providers/playlist_provider.dart';
 import '../providers/source_settings_provider.dart';
 import '../widgets/app_snackbar.dart';
 import '../providers/direct_mode_provider.dart';
+import '../providers/theme_provider.dart';
 import '../../core/utils/app_logger.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -71,7 +72,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 subtitle: '支持开发者继续维护',
                 onTap: () => context.push('/settings/sponsor'),
                 onSurface: onSurface,
-                iconColor: Colors.red.withOpacity(0.8),
+                iconColor: const Color(0xFFEF4444).withOpacity(0.8),
               ),
               _buildSettingsItem(
                 context: context,
@@ -86,16 +87,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
           const SizedBox(height: 24),
 
-          // 音源设置分组
+          // 外观与播放分组
           _buildSettingsGroup(
             context,
-            title: '音源设置',
+            title: '外观与播放',
             children: [
+              _buildThemeModeItem(context, onSurface),
               _buildSettingsItem(
                 context: context,
-                icon: Icons.audio_file_rounded,
-                title: '音源设置',
-                subtitle: '配置音乐源和搜索策略',
+                icon: Icons.source_rounded,
+                title: '音源与搜索设置',
+                subtitle: '配置音乐搜索和播放源优先级',
                 onTap: () => context.push('/settings/source'),
                 onSurface: onSurface,
               ),
@@ -214,7 +216,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 subtitle: '注销当前账户',
                 onTap: () => _showLogoutDialog(context, ref),
                 onSurface: onSurface,
-                iconColor: Colors.red.withOpacity(0.8),
+                iconColor: const Color(0xFFEF4444).withOpacity(0.8),
               ),
               _buildSettingsItem(
                 context: context,
@@ -223,7 +225,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 subtitle: '切换到其他播放模式',
                 onTap: () => _showSwitchModeDialog(context, ref),
                 onSurface: onSurface,
-                iconColor: Colors.orange.withOpacity(0.8),
+                iconColor: const Color(0xFFF59E0B).withOpacity(0.8),
               ),
             ],
           ),
@@ -237,16 +239,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   /// 应用信息展示
   Widget _buildAppInfo(BuildContext context, Color onSurface) {
     return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: onSurface.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
+      leading: Padding(
+        padding: const EdgeInsets.only(top: 4.0),
         child: Icon(
           Icons.info_outline_rounded,
-          color: onSurface.withOpacity(0.8),
-          size: 20,
+          color: onSurface.withOpacity(0.7),
+          size: 24,
         ),
       ),
       title: Text(
@@ -267,16 +265,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   /// 开发者信息展示
   Widget _buildDeveloperInfo(BuildContext context, Color onSurface) {
     return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: onSurface.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
+      leading: Padding(
+        padding: const EdgeInsets.only(top: 4.0),
         child: Icon(
           Icons.person_rounded,
-          color: onSurface.withOpacity(0.8),
-          size: 20,
+          color: onSurface.withOpacity(0.7),
+          size: 24,
         ),
       ),
       title: Text(
@@ -341,16 +335,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     Color? iconColor,
   }) {
     return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: (iconColor ?? onSurface).withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
+      leading: Padding(
+        padding: const EdgeInsets.only(top: 4.0),
         child: Icon(
           icon,
-          color: iconColor ?? onSurface.withOpacity(0.8),
-          size: 20,
+          color: iconColor ?? onSurface.withOpacity(0.7),
+          size: 24,
         ),
       ),
       title: Text(
@@ -376,6 +366,73 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   /// 播放模式切换项
+  Widget _buildThemeModeItem(BuildContext context, Color onSurface) {
+    final themeMode = ref.watch(themeModeProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return _buildSettingsItem(
+      context: context,
+      icon: isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+      title: '应用主题',
+      subtitle: themeMode == ThemeMode.system
+          ? '跟随系统'
+          : (themeMode == ThemeMode.dark ? '深色模式' : '浅色模式'),
+      onSurface: onSurface,
+      onTap: () {
+        showModalBottomSheet(
+          context: context,
+          builder: (context) {
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16.0),
+                    child: Text(
+                      '选择应用主题',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  RadioListTile<ThemeMode>(
+                    title: const Text('跟随系统'),
+                    value: ThemeMode.system,
+                    groupValue: themeMode,
+                    onChanged: (mode) {
+                      ref.read(themeModeProvider.notifier).setThemeMode(mode!);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  RadioListTile<ThemeMode>(
+                    title: const Text('浅色模式'),
+                    value: ThemeMode.light,
+                    groupValue: themeMode,
+                    onChanged: (mode) {
+                      ref.read(themeModeProvider.notifier).setThemeMode(mode!);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  RadioListTile<ThemeMode>(
+                    title: const Text('深色模式'),
+                    value: ThemeMode.dark,
+                    groupValue: themeMode,
+                    onChanged: (mode) {
+                      ref.read(themeModeProvider.notifier).setThemeMode(mode!);
+                      Navigator.pop(context);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildPlaybackModeItem(BuildContext context, Color onSurface) {
     final playbackMode = ref.watch(playbackModeProvider);
     final directModeState = ref.watch(directModeProvider);
@@ -395,22 +452,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       modeText = '直连模式';
       if (directModeState is DirectModeAuthenticated) {
         statusText = '已登录 · ${directModeState.devices.length} 个设备';
-        iconColor = const Color(0xFF007AFF);
+        iconColor = const Color(0xFF21B0A5);
       } else {
         statusText = '未登录';
-        iconColor = Colors.grey;
+        iconColor = Colors.white54;
       }
       modeIcon = Icons.phone_android;
     }
 
     return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: iconColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
+      leading: Padding(
+        padding: const EdgeInsets.only(top: 4.0),
+        child: Icon(
+          modeIcon,
+          color: iconColor,
+          size: 24,
         ),
-        child: Icon(modeIcon, color: iconColor.withOpacity(0.8), size: 20),
       ),
       title: Text(
         modeText,
@@ -462,7 +519,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   title: '直连模式',
                   subtitle: '直接控制，无需服务器',
                   icon: Icons.phone_android,
-                  color: const Color(0xFF007AFF),
+                  color: const Color(0xFF21B0A5),
                   isSelected: playbackMode == PlaybackMode.miIoTDirect,
                 ),
               ],
@@ -533,7 +590,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           border: Border.all(
-            color: isSelected ? color : Colors.grey.withOpacity(0.3),
+            color: isSelected ? color : Colors.white54.withOpacity(0.3),
             width: isSelected ? 2 : 1,
           ),
           borderRadius: BorderRadius.circular(12),
@@ -564,7 +621,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 12, color: Colors.white54),
                   ),
                 ],
               ),
@@ -751,7 +808,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   if (context.mounted) context.go('/');
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
+                  backgroundColor: const Color(0xFFEF4444),
                   foregroundColor: Colors.white,
                 ),
                 child: const Text('退出'),
@@ -800,7 +857,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   if (context.mounted) context.go('/');
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
+                  backgroundColor: const Color(0xFFF59E0B),
                   foregroundColor: Colors.white,
                 ),
                 child: const Text('切换'),
@@ -927,22 +984,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   ) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: onSurface.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(8),
-        ),
+      leading: Padding(
+        padding: const EdgeInsets.only(top: 4.0),
         child: Icon(
           Icons.graphic_eq_rounded,
-          color: onSurface.withOpacity(0.8),
-          size: 20,
+          color: onSurface.withOpacity(0.7),
+          size: 24,
         ),
       ),
       title: const Text('默认下载音质', maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: Padding(
         padding: const EdgeInsets.only(right: 2),
         child: DropdownButton<String>(
+          dropdownColor: Theme.of(context).scaffoldBackgroundColor,
           value: settings.defaultDownloadQuality,
           underline: const SizedBox.shrink(),
           isDense: true,
@@ -985,16 +1039,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       builder: (context, snapshot) {
         final path = snapshot.data ?? '加载中...';
         return ListTile(
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: onSurface.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
+          leading: Padding(
+            padding: const EdgeInsets.only(top: 4.0),
             child: Icon(
               Icons.folder_open_rounded,
-              color: onSurface.withOpacity(0.8),
-              size: 20,
+              color: onSurface.withOpacity(0.7),
+              size: 24,
             ),
           ),
           title: const Text('本地下载路径'),

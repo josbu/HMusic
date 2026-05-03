@@ -73,7 +73,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
     return Scaffold(
       key: const ValueKey('playlist_scaffold'),
       resizeToAvoidBottomInset: false,
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         bottom: false, // 底部由 AppLayout 处理
         child: _buildContent(
@@ -93,7 +93,7 @@ class _PlaylistPageState extends ConsumerState<PlaylistPage> {
           onPressed: () => _showPlaylistActionSheet(),
           tooltip: '新建歌单',
           backgroundColor: Theme.of(context).colorScheme.primary,
-          foregroundColor: Colors.white,
+          foregroundColor: Theme.of(context).colorScheme.onPrimary,
           child: const Icon(Icons.add_rounded),
         ),
       ),

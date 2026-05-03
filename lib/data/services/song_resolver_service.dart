@@ -66,6 +66,15 @@ class SongResolverService {
 
   void resetCircuitBreaker() {
     _breaker.reset();
+    debugPrint('🔄 [SongResolver] 熔断器已重置');
+  }
+
+  /// 🎯 外部播放成功时通知熔断器（如搜索页直接播放）
+  /// 这样搜索页用 QQ 成功播放后，队列自动下一曲就不会误判 QQ 不可用
+  void notifyExternalPlaySuccess(String platform) {
+    final key = PlatformId.normalize(platform);
+    _breaker.recordSuccess(key);
+    debugPrint('✅ [SongResolver] 外部播放成功，重置熔断: $key');
   }
 
   Future<SongResolveResult?> resolveSong(SongResolveRequest request) async {
@@ -99,7 +108,8 @@ class SongResolverService {
       );
     }
 
-    debugPrint('🔧 [SongResolver] 解析计划: strategy=$strategy, plan=$plan');
+    debugPrint('🔧 [SongResolver] 解析计划: strategy=$strategy, plan=$plan'
+        ' (设置项: ${_ref.read(sourceSettingsProvider).playlistResolveStrategy})');
 
     for (final platform in plan) {
       try {
@@ -335,12 +345,13 @@ class SongResolverService {
 
       final guid = uri.queryParameters['guid'] ?? '';
       final vkey = uri.queryParameters['vkey'] ?? '';
-      if (vkey.isEmpty) {
-        debugPrint('⚠️ [SongResolver] QQ URL 缺少 vkey，判定无效');
+      if (vkey.isEmpty || vkey.length < 32) {
+        debugPrint('⚠️ [SongResolver] QQ URL vkey 缺失或过短(${vkey.length}字符)，判定无效');
         return true;
       }
-      if (guid.isEmpty || !RegExp(r'^\d+$').hasMatch(guid)) {
-        debugPrint('⚠️ [SongResolver] QQ URL guid 异常("$guid")，判定无效');
+      // guid 只要非空即可，LX Music 脚本会使用 "Tingyun"/"Geography" 等字符串作为 guid
+      if (guid.isEmpty) {
+        debugPrint('⚠️ [SongResolver] QQ URL guid 为空，判定无效');
         return true;
       }
     }

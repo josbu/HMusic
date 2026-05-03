@@ -101,7 +101,9 @@ flutter:
   assets:
     - assets/images/
     - assets/hmusic-logo.svg
+    - assets/hmusic-logo-square.svg
     - assets/lx/
+    - xiaoai_music_box_icon.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -133,11 +135,25 @@ flutter:
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: true
-  image_path: "assets/hmusic-logo.svg"
+  image_path: "xiaoai_music_box_icon_padded.png"
+  image_path_ios: "xiaoai_music_box_icon_ios.png"
   # 自适应图标配置 (Android 8.0+)
-  adaptive_icon_background: "#007AFF"
-  adaptive_icon_foreground: "assets/hmusic-logo.svg"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "xiaoai_music_box_icon_padded.png"
+  adaptive_icon_foreground_inset: 11
   # iOS配置
   remove_alpha_ios: true
   # 生成所有尺寸
   min_sdk_android: 21
+  windows:
+    generate: true
+    image_path: "xiaoai_music_box_icon_padded.png"
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: "xiaoai_music_box_icon_padded.png"
+  web:
+    generate: true
+    image_path: "xiaoai_music_box_icon_padded.png"
+    background_color: "#FFFFFF"
+    theme_color: "#FFFFFF"

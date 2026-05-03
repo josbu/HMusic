@@ -732,6 +732,8 @@ class PlaylistImportService {
       final playlist =
           data['playlist'] is Map
               ? Map<String, dynamic>.from(data['playlist'] as Map)
+              : data['result'] is Map
+              ? Map<String, dynamic>.from(data['result'] as Map)
               : <String, dynamic>{};
       if (playlist.isEmpty) {
         throw const ImportException(ImportError.playlistNotFound);
@@ -1417,46 +1419,50 @@ class PlaylistImportService {
         cancelToken: cancelToken,
       );
       final data = _decodeData(resp.data);
+      // 老接口顶层是 result，v3+ 是 playlist
       final playlist =
           data['playlist'] is Map
               ? Map<String, dynamic>.from(data['playlist'] as Map)
+              : data['result'] is Map
+              ? Map<String, dynamic>.from(data['result'] as Map)
               : <String, dynamic>{};
+      if (playlist.isEmpty) {
+        throw const ImportException(ImportError.playlistNotFound);
+      }
+
       final tracks = (playlist['tracks'] as List?) ?? const [];
+      final trackIds = (playlist['trackIds'] as List?) ?? const [];
+      final playlistName = (playlist['name'] ?? '网易云歌单').toString();
+
+      // tracks 字段只返回前10首，需要通过 trackIds 批量获取完整列表
+      if (trackIds.length > tracks.length) {
+        final allIds = trackIds
+            .map((e) {
+              if (e is Map) return e['id']?.toString();
+              return e?.toString();
+            })
+            .whereType<String>()
+            .where((s) => s.isNotEmpty)
+            .take(_maxImportSongs)
+            .toList();
+        final songs = await _fetchNeteaseSongDetails(allIds, options, cancelToken);
+        if (songs.isNotEmpty) {
+          return ImportedPlaylist(
+            name: playlistName,
+            platform: PlatformId.wy,
+            playlistId: id,
+            totalCount: trackIds.length,
+            songs: songs,
+          );
+        }
+      }
+
       if (tracks.isEmpty) {
         throw const ImportException(ImportError.playlistNotFound);
       }
-      final songs =
-          tracks.map((e) => Map<String, dynamic>.from(e as Map)).map((song) {
-            final artists =
-                (song['ar'] as List?) ?? (song['artists'] as List?) ?? const [];
-            final artist = artists
-                .whereType<Map>()
-                .map((e) => e['name']?.toString() ?? '')
-                .where((e) => e.isNotEmpty)
-                .join('/');
-            final album =
-                song['al'] is Map
-                    ? Map<String, dynamic>.from(song['al'] as Map)
-                    : <String, dynamic>{};
-            final dt = song['dt'] ?? song['duration'];
-            int? duration;
-            if (dt is int) {
-              duration = (dt / 1000).round();
-            } else {
-              duration = int.tryParse('${dt ?? ''}');
-            }
-            return LocalPlaylistSong.fromOnlineMusic(
-              title: (song['name'] ?? '').toString(),
-              artist: artist,
-              platform: PlatformId.wy,
-              songId: (song['id'] ?? '').toString(),
-              coverUrl: album['picUrl']?.toString(),
-              duration: duration,
-            );
-          }).toList();
-
+      final songs = _parseNeteaseTracks(tracks);
       return ImportedPlaylist(
-        name: (playlist['name'] ?? '网易云歌单').toString(),
+        name: playlistName,
         platform: PlatformId.wy,
         playlistId: id,
         totalCount: songs.length,
@@ -1490,42 +1496,42 @@ class PlaylistImportService {
           data['playlist'] is Map
               ? Map<String, dynamic>.from(data['playlist'] as Map)
               : <String, dynamic>{};
+      if (playlist.isEmpty) {
+        throw const ImportException(ImportError.playlistNotFound);
+      }
+
       final tracks = (playlist['tracks'] as List?) ?? const [];
+      final trackIds = (playlist['trackIds'] as List?) ?? const [];
+      final playlistName = (playlist['name'] ?? '网易云歌单').toString();
+
+      if (trackIds.length > tracks.length) {
+        final allIds = trackIds
+            .map((e) {
+              if (e is Map) return e['id']?.toString();
+              return e?.toString();
+            })
+            .whereType<String>()
+            .where((s) => s.isNotEmpty)
+            .take(_maxImportSongs)
+            .toList();
+        final songs = await _fetchNeteaseSongDetails(allIds, options, cancelToken);
+        if (songs.isNotEmpty) {
+          return ImportedPlaylist(
+            name: playlistName,
+            platform: PlatformId.wy,
+            playlistId: id,
+            totalCount: trackIds.length,
+            songs: songs,
+          );
+        }
+      }
+
       if (tracks.isEmpty) {
         throw const ImportException(ImportError.playlistNotFound);
       }
-      final songs =
-          tracks.map((e) => Map<String, dynamic>.from(e as Map)).map((song) {
-            final artists =
-                (song['ar'] as List?) ?? (song['artists'] as List?) ?? const [];
-            final artist = artists
-                .whereType<Map>()
-                .map((e) => e['name']?.toString() ?? '')
-                .where((e) => e.isNotEmpty)
-                .join('/');
-            final album =
-                song['al'] is Map
-                    ? Map<String, dynamic>.from(song['al'] as Map)
-                    : <String, dynamic>{};
-            final dt = song['dt'] ?? song['duration'];
-            int? duration;
-            if (dt is int) {
-              duration = (dt / 1000).round();
-            } else {
-              duration = int.tryParse('${dt ?? ''}');
-            }
-            return LocalPlaylistSong.fromOnlineMusic(
-              title: (song['name'] ?? '').toString(),
-              artist: artist,
-              platform: PlatformId.wy,
-              songId: (song['id'] ?? '').toString(),
-              coverUrl: album['picUrl']?.toString(),
-              duration: duration,
-            );
-          }).toList();
-
+      final songs = _parseNeteaseTracks(tracks);
       return ImportedPlaylist(
-        name: (playlist['name'] ?? '网易云歌单').toString(),
+        name: playlistName,
         platform: PlatformId.wy,
         playlistId: id,
         totalCount: songs.length,
@@ -1538,6 +1544,70 @@ class PlaylistImportService {
         operation: '网易云歌单备用接口获取失败',
       );
     }
+  }
+
+  List<LocalPlaylistSong> _parseNeteaseTracks(List tracks) {
+    return tracks.map((e) => Map<String, dynamic>.from(e as Map)).map((song) {
+      final artists =
+          (song['ar'] as List?) ?? (song['artists'] as List?) ?? const [];
+      final artist = artists
+          .whereType<Map>()
+          .map((e) => e['name']?.toString() ?? '')
+          .where((e) => e.isNotEmpty)
+          .join('/');
+      final album =
+          song['al'] is Map
+              ? Map<String, dynamic>.from(song['al'] as Map)
+              : <String, dynamic>{};
+      final dt = song['dt'] ?? song['duration'];
+      int? duration;
+      if (dt is int) {
+        duration = (dt / 1000).round();
+      } else {
+        duration = int.tryParse('${dt ?? ''}');
+      }
+      return LocalPlaylistSong.fromOnlineMusic(
+        title: (song['name'] ?? '').toString(),
+        artist: artist,
+        platform: PlatformId.wy,
+        songId: (song['id'] ?? '').toString(),
+        coverUrl: album['picUrl']?.toString(),
+        duration: duration,
+      );
+    }).toList();
+  }
+
+  /// 通过歌曲 ID 列表批量获取网易云歌曲详情（每次最多 1000 个）
+  Future<List<LocalPlaylistSong>> _fetchNeteaseSongDetails(
+    List<String> ids,
+    Options options,
+    CancelToken? cancelToken,
+  ) async {
+    const batchSize = 1000;
+    final result = <LocalPlaylistSong>[];
+    for (int i = 0; i < ids.length; i += batchSize) {
+      final batch = ids.skip(i).take(batchSize).toList();
+      final idsParam = batch.map((id) => '{"id":$id}').join(',');
+      try {
+        final resp = await _dio.post(
+          'https://music.163.com/api/song/detail',
+          data: 'c=[${Uri.encodeComponent(idsParam)}]',
+          options: Options(
+            headers: {
+              ...?options.headers,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+          ),
+          cancelToken: cancelToken,
+        );
+        final data = _decodeData(resp.data);
+        final songs = (data['songs'] as List?) ?? const [];
+        result.addAll(_parseNeteaseTracks(songs));
+      } catch (e) {
+        debugPrint('⚠️ [Import] 网易云批量歌曲详情获取失败 (batch $i): $e');
+      }
+    }
+    return result;
   }
 
   CleanResult _cleanImportedSongs(List<LocalPlaylistSong> raw) {

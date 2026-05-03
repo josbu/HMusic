@@ -13,6 +13,10 @@ import '../widgets/app_snackbar.dart';
 import '../widgets/app_bottom_sheet.dart';
 import 'lyrics_page.dart';
 import '../providers/direct_mode_provider.dart';
+import '../providers/playback_queue_provider.dart';
+import '../../data/models/playlist_queue.dart';
+
+import 'package:flutter_svg/flutter_svg.dart';
 
 class ControlPanelPage extends ConsumerStatefulWidget {
   final bool showAppBar;
@@ -27,6 +31,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     with TickerProviderStateMixin {
   AnimationController? _albumAnimationController;
   AnimationController? _buttonAnimationController;
+  AnimationController? _bgAnimationController; // 🔧 背景动效控制器
   Color? _dominantColor; // 封面主色调
   String? _lastCoverUrl; // 上一次的封面 URL
   String? _colorExtractedUrl; // 🔧 已提取颜色的封面 URL（防止重复提取）
@@ -45,6 +50,11 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
       duration: const Duration(milliseconds: 200),
       vsync: this,
     );
+
+    _bgAnimationController = AnimationController(
+      duration: const Duration(seconds: 4),
+      vsync: this,
+    )..repeat(reverse: true);
 
     // 🎯 优化：立即开始加载，避免延迟造成的割裂感
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -76,18 +86,20 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
       // 直连模式：从 DirectModeProvider 获取设备列表
       if (directState is DirectModeAuthenticated) {
         // 将 MiDevice 转换为 Device 格式
-        final miDevices = directState.devices.map((miDevice) {
-          return Device(
-            id: miDevice.deviceId,
-            name: miDevice.name,
-            isOnline: true, // 假设直连设备都是在线的
-            type: miDevice.hardware, // 将 hardware 映射到 type 字段
-          );
-        }).toList();
+        final miDevices =
+            directState.devices.map((miDevice) {
+              return Device(
+                id: miDevice.deviceId,
+                name: miDevice.name,
+                isOnline: true, // 假设直连设备都是在线的
+                type: miDevice.hardware, // 将 hardware 映射到 type 字段
+              );
+            }).toList();
 
         return DeviceState(
           devices: miDevices,
-          selectedDeviceId: directState.playbackDeviceType, // 🔧 修复：使用 playbackDeviceType
+          selectedDeviceId:
+              directState.playbackDeviceType, // 🔧 修复：使用 playbackDeviceType
           isLoading: false,
         );
       } else {
@@ -108,6 +120,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
   void dispose() {
     _albumAnimationController?.dispose();
     _buttonAnimationController?.dispose();
+    _bgAnimationController?.dispose();
     super.dispose();
   }
 
@@ -119,22 +132,19 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     final directModeState = ref.watch(directModeProvider); // 直连模式的状态
     final playbackMode = ref.watch(playbackModeProvider); // 当前播放模式
 
-    // 🎯 根据当前模式选择正确的设备列表
     final deviceState = _getDeviceStateByMode(
       playbackMode,
       xiaoMusicDeviceState,
       directModeState,
     );
 
-    // 🎨 检测封面 URL 变化并清除旧颜色 (颜色提取由 CachedNetworkImage.imageBuilder 处理)
     final coverUrl = playbackState.albumCoverUrl;
     if (coverUrl != _lastCoverUrl) {
       _lastCoverUrl = coverUrl;
-      _dominantColor = null; // 清除旧颜色,等待新图片加载后提取
-      _colorExtractedUrl = null; // 🔧 重置提取标记，允许新封面提取颜色
+      _dominantColor = null;
+      _colorExtractedUrl = null;
     }
 
-    // 延迟动画控制以避免在build中修改状态
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _albumAnimationController != null) {
         if (playbackState.currentMusic?.isPlaying ?? false) {
@@ -150,35 +160,40 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     });
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor, // 适配主题背景
       appBar: widget.showAppBar ? _buildAppBar(context) : null,
-      body: SafeArea(
-        bottom: true,
-        child: CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-              sliver: SliverList.list(
-                children: [
-                  if (widget.showAppBar) const SizedBox(height: 0),
-                  _buildIntegratedPlayerCard(
-                    playbackState,
-                    deviceState,
-                    authState,
-                    playbackMode,
+      body: Stack(
+        children: [
+          SafeArea(
+            bottom: true,
+            child: CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                  sliver: SliverList.list(
+                    children: [
+                      if (widget.showAppBar) const SizedBox(height: 0),
+                      _buildIntegratedPlayerCard(
+                        playbackState,
+                        deviceState,
+                        authState,
+                        playbackMode,
+                      ),
+                      if (playbackState.error != null)
+                        _buildErrorMessage(playbackState),
+                    ],
                   ),
-                  if (playbackState.error != null)
-                    _buildErrorMessage(playbackState),
-                ],
-              ),
+                ),
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: SizedBox(
+                    height: AppLayout.bottomOverlayHeight(context) + 8,
+                  ),
+                ),
+              ],
             ),
-            // Fill remaining space so initial view does not leave a large blank
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: SizedBox(height: AppLayout.bottomOverlayHeight(context) + 8),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -233,53 +248,67 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     AuthState authState,
     PlaybackMode playbackMode,
   ) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
     final currentMusic = playbackState.currentMusic;
-    final double fixedCardHeight = _stableCardFixedHeight(context);
+    final isPlaying = currentMusic?.isPlaying ?? false;
+    final contentWidth =
+        (MediaQuery.of(context).size.width - 48).clamp(240.0, 360.0).toDouble();
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      constraints: BoxConstraints(minHeight: fixedCardHeight),
-      decoration: BoxDecoration(
-        color:
-            isLight
-                ? Colors.white.withOpacity(0.6)
-                : Colors.black.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
+    // 获取屏幕高度以决定是否需要自适应间距
+    final screenHeight = MediaQuery.of(context).size.height;
+    // Smooth proportional scaling
+    final double scale = (screenHeight / 700.0).clamp(0.9, 1.3);
+
+    final double topGap = 6.0 * scale;
+    final double coverInfoGap = 20.0 * scale;
+
+    // Balance the gaps above and below the progress bar
+    // Decrease the top gap and increase the bottom gap to achieve visual symmetry.
+    final double infoProgressGap = 16.0 * scale;
+    final double progressControlsGap = 40.0 * scale;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
         children: [
-          // 🎯 始终显示设备区域，避免布局跳动
-          _buildDeviceArea(deviceState, playbackMode),
-          const SizedBox(height: 12),
-          _buildAlbumArtwork(currentMusic, currentMusic?.isPlaying ?? false),
-          const SizedBox(height: 12),
-          _buildSongInfo(currentMusic, playbackState.hasLoaded),
-          const SizedBox(height: 8),
-          if (currentMusic != null)
-            _buildProgressBar(currentMusic)
-          else
-            _buildInitialProgressBar(),
-          const SizedBox(height: 8),
-          _buildPlaybackControls(playbackState),
-          const SizedBox(height: 12),
-          _buildQuickActions(playbackState),
-          const SizedBox(height: 8),
-          _buildVolumeControl(playbackState),
+          SizedBox(height: topGap),
+          // 1. 顶部大封面
+          _buildAlbumArtwork(currentMusic, isPlaying, contentWidth),
+
+          SizedBox(height: coverInfoGap),
+
+          // 2. 歌曲信息 (音量和收藏整合在这里)
+          SizedBox(
+            width: contentWidth,
+            child: _buildSongInfo(
+              playbackState,
+              authState is AuthAuthenticated,
+            ),
+          ),
+
+          SizedBox(height: infoProgressGap),
+
+          // 3. 进度条
+          SizedBox(
+            width: contentWidth,
+            child:
+                currentMusic == null
+                    ? _buildInitialProgressBar()
+                    : _buildProgressBar(currentMusic),
+          ),
+
+          SizedBox(height: progressControlsGap),
+
+          // 4. 播放控制 (包含模式和定时)
+          SizedBox(
+            width: contentWidth,
+            child: _buildPlaybackControls(playbackState),
+          ),
         ],
       ),
     );
   }
 
-  /// 🎯 设备区域：始终显示固定高度，避免布局跳动
   Widget _buildDeviceArea(DeviceState deviceState, PlaybackMode playbackMode) {
     if (deviceState.isLoading && deviceState.devices.isEmpty) {
       // 加载中且没有设备：显示加载占位符
@@ -384,11 +413,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
 
         if (playbackDeviceType == 'local') {
           // 本地播放
-          selectedDevice = Device(
-            id: 'local',
-            name: '本地播放',
-            isOnline: true,
-          );
+          selectedDevice = Device(id: 'local', name: '本地播放', isOnline: true);
           isOnline = true;
         } else {
           // 小爱音箱
@@ -515,7 +540,7 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                 // ignore
               }
             },
-            padding: EdgeInsets.zero,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             constraints: const BoxConstraints(),
           ),
         ],
@@ -579,30 +604,35 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
 
                       // 🎯 设备列表
                       ...state.devices.map((device) {
-                        final isSelected = playbackMode == PlaybackMode.miIoTDirect
-                            ? _isDeviceSelectedInDirectMode(device.id)
-                            : state.selectedDeviceId == device.id;
+                        final isSelected =
+                            playbackMode == PlaybackMode.miIoTDirect
+                                ? _isDeviceSelectedInDirectMode(device.id)
+                                : state.selectedDeviceId == device.id;
 
                         return ListTile(
                           leading: Icon(
                             // 🎯 根据设备类型显示不同图标
                             device.isLocalDevice
-                                ? Icons.phone_android_rounded // 本机设备
+                                ? Icons
+                                    .phone_android_rounded // 本机设备
                                 : Icons.speaker_group_rounded, // 播放设备
-                            color: (device.isOnline ?? false)
-                                ? Colors.greenAccent
-                                : onSurfaceColor.withOpacity(0.4),
+                            color:
+                                (device.isOnline ?? false)
+                                    ? Colors.greenAccent
+                                    : onSurfaceColor.withOpacity(0.4),
                           ),
                           title: Text(
                             device.name,
                             style: TextStyle(color: onSurfaceColor),
                           ),
-                          trailing: isSelected
-                              ? Icon(
-                                  Icons.check_circle_rounded,
-                                  color: Theme.of(context).colorScheme.primary,
-                                )
-                              : null,
+                          trailing:
+                              isSelected
+                                  ? Icon(
+                                    Icons.check_circle_rounded,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                  )
+                                  : null,
                           onTap: () {
                             // 🎯 根据播放模式选择对应的Provider
                             if (playbackMode == PlaybackMode.miIoTDirect) {
@@ -636,15 +666,17 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     final directState = ref.watch(directModeProvider);
 
     // 检查本地播放是否被选中
-    final isSelected = directState is DirectModeAuthenticated &&
-                       directState.playbackDeviceType == 'local';
+    final isSelected =
+        directState is DirectModeAuthenticated &&
+        directState.playbackDeviceType == 'local';
 
     return ListTile(
       leading: Icon(
         Icons.smartphone_rounded,
-        color: isSelected
-            ? Theme.of(context).colorScheme.primary
-            : onSurfaceColor.withOpacity(0.8),
+        color:
+            isSelected
+                ? Theme.of(context).colorScheme.primary
+                : onSurfaceColor.withOpacity(0.8),
       ),
       title: Text(
         '本地播放',
@@ -655,17 +687,15 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
       ),
       subtitle: Text(
         '在手机上播放音乐',
-        style: TextStyle(
-          color: onSurfaceColor.withOpacity(0.6),
-          fontSize: 12,
-        ),
+        style: TextStyle(color: onSurfaceColor.withOpacity(0.6), fontSize: 12),
       ),
-      trailing: isSelected
-          ? Icon(
-              Icons.check_circle_rounded,
-              color: Theme.of(context).colorScheme.primary,
-            )
-          : null,
+      trailing:
+          isSelected
+              ? Icon(
+                Icons.check_circle_rounded,
+                color: Theme.of(context).colorScheme.primary,
+              )
+              : null,
       onTap: () {
         // 设置播放设备为本地播放
         ref.read(directModeProvider.notifier).selectPlaybackDevice('local');
@@ -686,272 +716,515 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     return false;
   }
 
-  Widget _buildAlbumArtwork(dynamic currentMusic, bool isPlaying) {
+  void _openLyricsPage() {
+    final current = ref.read(playbackProvider).currentMusic;
+    if (current == null || current.curMusic.isEmpty) {
+      AppSnackBar.showWarning(context, '当前没有播放歌曲');
+      return;
+    }
+    ref.read(lyricProvider.notifier).loadLyrics(current.curMusic);
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const LyricsPage()));
+  }
+
+  Widget _buildAlbumArtwork(
+    dynamic currentMusic,
+    bool isPlaying,
+    double contentWidth,
+  ) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final artworkSize = screenWidth * 0.46;
+
+    // Use the exact contentWidth logic to perfectly align with the song info below.
+    final coverSize = contentWidth * 0.65;
+    // The record disc peeks out from the right.
+    final recordSize = coverSize * 0.95;
+    final coverTop = 2.0;
+    final recordTop = coverTop + (coverSize - recordSize) / 2;
 
     // ✨ 获取封面图 URL
     final playbackState = ref.watch(playbackProvider);
     final coverUrl = playbackState.albumCoverUrl;
-
-    // 🎨 使用提取的主色调或默认主题色
-    final glowColor = _dominantColor ?? Theme.of(context).colorScheme.primary;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Center(
       child: GestureDetector(
         onTap: () {
-          debugPrint('🎤 [点击封面] 触发点击事件');
           _openLyricsPage();
         },
-        behavior: HitTestBehavior.opaque, // 🔧 确保整个区域都可点击
-        child: RotationTransition(
-          turns: _albumAnimationController ?? kAlwaysCompleteAnimation,
-          child: Container(
-            width: artworkSize,
-            height: artworkSize,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: onSurface.withOpacity(0.05),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(isPlaying ? 0.35 : 0.2),
-                  blurRadius: 30,
-                  spreadRadius: 5,
-                ),
-                if (isPlaying)
-                  BoxShadow(
-                    color: glowColor.withOpacity(0.4),
-                    blurRadius: 50,
-                    spreadRadius: 10,
+        behavior: HitTestBehavior.opaque,
+        child: SizedBox(
+          width: contentWidth,
+          height: coverSize + 14,
+          child: Stack(
+            children: [
+              Positioned(
+                right: 0,
+                top: recordTop,
+                child: RotationTransition(
+                  turns: _albumAnimationController ?? kAlwaysCompleteAnimation,
+                  child: Container(
+                    width: recordSize,
+                    height: recordSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isDark ? const Color(0xFF222222) : Colors.transparent,
+                      border: Border.all(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.06)
+                            : const Color(0xFF2C2C2C).withValues(alpha: 0.12),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.1),
+                          blurRadius: isDark ? 30 : 16,
+                          offset: Offset(0, isDark ? 15 : 6),
+                        ),
+                        // 🎯 梦幻补光：外围微弱光晕
+                        BoxShadow(
+                          color:
+                              (_dominantColor ?? Colors.black).withValues(
+                                alpha: 0.08,
+                              ),
+                          blurRadius: 50,
+                          spreadRadius: 10,
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        for (final factor in [0.88, 0.74, 0.60])
+                          Container(
+                            width: recordSize * factor,
+                            height: recordSize * factor,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.06)
+                                    : const Color(0xFF2C2C2C).withValues(alpha: 0.08),
+                                width: 0.8,
+                              ),
+                            ),
+                          ),
+                        Container(
+                          width: recordSize * 0.34,
+                          height: recordSize * 0.34,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isDark
+                                ? onSurface.withValues(alpha: 0.08)
+                                : const Color(0xFF2C2C2C).withValues(alpha: 0.05),
+                            border: Border.all(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.06)
+                                  : const Color(0xFF2C2C2C).withValues(alpha: 0.1),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: ClipOval(
+                            child:
+                                coverUrl != null && coverUrl.isNotEmpty
+                                    ? CachedNetworkImage(
+                                      imageUrl: coverUrl,
+                                      fit: BoxFit.cover,
+                                      placeholder:
+                                          (context, url) => Container(
+                                            color: onSurface.withValues(
+                                              alpha: 0.08,
+                                            ),
+                                          ),
+                                      errorWidget:
+                                          (context, url, error) =>
+                                              _buildDefaultArtwork(context, 
+                                                recordSize,
+                                                onSurface,
+                                              ),
+                                    )
+                                    : _buildDefaultArtwork(context, 
+                                      recordSize,
+                                      onSurface,
+                                    ),
+                          ),
+                        ),
+                        Container(
+                          width: recordSize * 0.06,
+                          height: recordSize * 0.06,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isDark ? Colors.black : const Color(0xFF2C2C2C).withValues(alpha: 0.6),
+                            border: Border.all(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.2)
+                                  : const Color(0xFF2C2C2C).withValues(alpha: 0.15),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-              ],
-            ),
-            child: ClipOval(
-              child:
-                  coverUrl != null && coverUrl.isNotEmpty
-                      ? CachedNetworkImage(
-                        imageUrl: coverUrl,
-                        fit: BoxFit.cover,
-                        width: artworkSize,
-                        height: artworkSize,
-                        // 🎨 图片加载完成后,延迟提取颜色(确保图片已缓存)
-                        imageBuilder: (context, imageProvider) {
-                          // 🔧 只有当这个 URL 还没有提取过颜色时，才提取
-                          if (_colorExtractedUrl != coverUrl) {
-                            _colorExtractedUrl = coverUrl; // 立即标记，防止重复
-                            // 延迟提取颜色,避免与首次加载冲突
-                            Future.delayed(const Duration(milliseconds: 300), () {
-                              if (mounted && coverUrl == playbackState.albumCoverUrl) {
-                                _extractDominantColorFromProvider(imageProvider);
-                              }
-                            });
-                          }
-                          return Image(image: imageProvider, fit: BoxFit.cover);
-                        },
-                        placeholder: (context, url) => _buildDefaultArtwork(artworkSize, onSurface),
-                        errorWidget: (context, url, error) => _buildDefaultArtwork(artworkSize, onSurface),
-                      )
-                      : _buildDefaultArtwork(artworkSize, onSurface),
-            ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                top: coverTop,
+                child: Container(
+                  width: coverSize,
+                  height: coverSize,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: onSurface.withValues(alpha: 0.1),
+                    boxShadow: [
+                      // 主要投影：稍微变淡，保持柔和
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
+                        blurRadius: 24,
+                        offset: const Offset(8, 8),
+                      ),
+                      // 辅助投影：轻微晕染
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.04),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 0),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child:
+                        coverUrl != null && coverUrl.isNotEmpty
+                            ? CachedNetworkImage(
+                              imageUrl: coverUrl,
+                              fit: BoxFit.cover,
+                              width: coverSize,
+                              height: coverSize,
+                              imageBuilder: (context, imageProvider) {
+                                if (_colorExtractedUrl != coverUrl) {
+                                  _colorExtractedUrl = coverUrl;
+                                  Future.delayed(
+                                    const Duration(milliseconds: 300),
+                                    () {
+                                      if (mounted &&
+                                          coverUrl ==
+                                              playbackState.albumCoverUrl) {
+                                        _extractDominantColorFromProvider(
+                                          imageProvider,
+                                        );
+                                      }
+                                    },
+                                  );
+                                }
+                                return Image(
+                                  image: imageProvider,
+                                  fit: BoxFit.cover,
+                                );
+                              },
+                              placeholder:
+                                  (context, url) => _buildDefaultArtwork(context, 
+                                    coverSize,
+                                    onSurface,
+                                  ),
+                              errorWidget:
+                                  (context, url, error) => _buildDefaultArtwork(context, 
+                                    coverSize,
+                                    onSurface,
+                                  ),
+                            )
+                            : _buildDefaultArtwork(context, coverSize, onSurface),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  /// 打开歌词页面
-  void _openLyricsPage() {
-    final current = ref.read(playbackProvider).currentMusic;
+  Widget _buildDefaultArtwork(BuildContext context, double artworkSize, Color onSurface) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      width: artworkSize,
+      height: artworkSize,
+      color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF0F0F0),
+      child: Center(
+        child: SvgPicture.asset(
+          'assets/hmusic-logo-square.svg',
+          width: artworkSize * 0.5,
+          height: artworkSize * 0.5,
+        ),
+      ),
+    );
+  }
 
-    debugPrint('🎤 [打开歌词] 开始执行');
-    debugPrint('🎤 [打开歌词] 当前播放状态: ${current != null}');
-    debugPrint('🎤 [打开歌词] 歌曲名: ${current?.curMusic}');
-
-    if (current == null || current.curMusic.isEmpty) {
-      debugPrint('⚠️ [打开歌词] 当前没有播放歌曲,不打开歌词页面');
-      // 显示提示
-      AppSnackBar.showWarning(
-        context,
-        '当前没有播放歌曲',
-      );
-      return;
+  ({String title, String artist}) _splitSongDisplayName(String? rawName) {
+    final displayName = rawName?.trim() ?? '';
+    if (displayName.isEmpty) {
+      return (title: '暂无播放', artist: '');
     }
 
-    debugPrint('🎤 [打开歌词] 准备打开歌词页面: ${current.curMusic}');
+    final separatorIndex = displayName.lastIndexOf(' - ');
+    if (separatorIndex <= 0 || separatorIndex >= displayName.length - 3) {
+      return (title: displayName, artist: '');
+    }
 
-    // 加载歌词
-    ref.read(lyricProvider.notifier).loadLyrics(current.curMusic);
+    final title = displayName.substring(0, separatorIndex).trim();
+    final artist = displayName.substring(separatorIndex + 3).trim();
+    if (title.isEmpty || artist.isEmpty) {
+      return (title: displayName, artist: '');
+    }
 
-    // 导航到歌词页面
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const LyricsPage(),
-      ),
-    );
-
-    debugPrint('✅ [打开歌词] 页面跳转完成');
+    return (title: title, artist: artist);
   }
 
-  /// 默认的专辑封面（音乐图标）
-  Widget _buildDefaultArtwork(double artworkSize, Color onSurface) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [onSurface.withOpacity(0.02), onSurface.withOpacity(0.1)],
-        ),
-      ),
-      child: Icon(
-        Icons.music_note_rounded,
-        size: artworkSize * 0.32,
-        color: onSurface.withOpacity(0.8),
-      ),
-    );
-  }
-
-  Widget _buildSongInfo(dynamic currentMusic, bool hasLoaded) {
+  Widget _buildSongInfo(PlaybackState state, bool hasLoaded) {
+    final currentMusic = state.currentMusic;
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    // Fix the vertical space so the card height won't change when
-    // title goes from one line (加载中...) to two-line actual song name.
-    const double titleFontSize = 24;
-    const double titleLineHeight = 1.3;
-    const int titleMaxLines = 2;
-    final double fixedTitleHeight =
-        titleFontSize * titleLineHeight * titleMaxLines;
 
-    const double subtitleFontSize = 16;
-    const double subtitleLineHeight = 1.25; // close to Material default
-    final double fixedSubtitleHeight =
-        subtitleFontSize * subtitleLineHeight; // single line
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        children: [
-          SizedBox(
-            height: fixedTitleHeight,
-            child: Center(
-              child: Text(
-                currentMusic != null ? currentMusic.curMusic : '暂无播放',
-                style: const TextStyle(
-                  fontSize: titleFontSize,
-                  fontWeight: FontWeight.bold,
-                  height: titleLineHeight,
-                ).copyWith(color: onSurface),
-                textAlign: TextAlign.center,
-                maxLines: titleMaxLines,
+    final playbackMode = ref.read(playbackModeProvider);
+    final bool hasSelectedDevice;
+    if (playbackMode == PlaybackMode.miIoTDirect) {
+      final directState = ref.read(directModeProvider);
+      hasSelectedDevice =
+          directState is DirectModeAuthenticated &&
+          directState.playbackDeviceType.isNotEmpty;
+    } else {
+      hasSelectedDevice = ref.read(deviceProvider).selectedDeviceId != null;
+    }
+    final enabled = hasSelectedDevice;
+    final favoriteEnabled = enabled && currentMusic != null;
+    // Determine source text logic. Check queue source type directly.
+    String sourceText;
+    if (currentMusic != null) {
+      // 🎯 优先通过队列的 source 类型判断是否为搜索播放
+      final queueState = ref.read(playbackQueueProvider);
+      final isSearchSource = queueState.queue?.source == PlaylistSource.searchResult;
+      if (isSearchSource) {
+        sourceText = '🔍 搜索播放';
+      } else if (currentMusic.curPlaylist.isNotEmpty) {
+        sourceText = currentMusic.curPlaylist;
+      } else {
+        sourceText = '本地播放';
+      }
+    } else {
+      sourceText = hasLoaded ? '本地播放' : '正在同步';
+    }
+
+    final mediaQuery = MediaQuery.of(context);
+    final isCompactWidth = mediaQuery.size.width < 380;
+    final isTightHeight = mediaQuery.size.height < 760;
+    final useThreeLineLayout = !isCompactWidth && !isTightHeight;
+    final songInfo = _splitSongDisplayName(currentMusic?.curMusic);
+    final titleText = songInfo.title;
+    final artistText = songInfo.artist;
+    final compactSecondLine =
+        artistText.isNotEmpty ? '$artistText · $sourceText' : sourceText;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                titleText,
+                style: TextStyle(
+                  fontSize: useThreeLineLayout ? 24 : 20,
+                  fontWeight: FontWeight.w800,
+                  color: onSurface.withValues(alpha: 0.94),
+                  height: 1.15,
+                  letterSpacing: 0.4, // 微笑增加字距，提升高级感
+                ),
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          // Subtitle: make loading text style identical to playlist subtitle,
-          // so spacing/visual weight stays consistent.
-          SizedBox(
-            height: fixedSubtitleHeight,
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (currentMusic != null && currentMusic.curPlaylist != null)
+              if (useThreeLineLayout) ...[
+                const SizedBox(height: 6),
+                Text(
+                  artistText,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: onSurface.withValues(alpha: 0.82),
+                    height: 1.0,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 7),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
                     Flexible(
                       child: Text(
-                        currentMusic.curPlaylist,
+                        sourceText,
                         style: TextStyle(
-                          fontSize: subtitleFontSize,
-                          fontWeight: FontWeight.w500,
-                          color: onSurface.withValues(alpha: 0.7),
-                          height: subtitleLineHeight,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: onSurface.withValues(alpha: 0.4), // 降低不重要信息的亮度
+                          height: 1.0,
+                          letterSpacing: 0.5,
                         ),
-                        textAlign: TextAlign.center,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  if (currentMusic != null && currentMusic.curPlaylist != null)
                     const SizedBox(width: 6),
-                  const _PlaybackModeBadge(),
-                ],
-              ),
-            ),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 1),
+                      child: _PlaybackModeBadge(),
+                    ),
+                  ],
+                ),
+              ] else ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        compactSecondLine,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: onSurface.withValues(alpha: 0.52),
+                          height: 1.1,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const _PlaybackModeBadge(),
+                  ],
+                ),
+              ],
+            ],
           ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 10),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+              icon: const Icon(Icons.volume_up_rounded),
+              iconSize: 24,
+              color: onSurface.withValues(alpha: 0.62),
+              onPressed:
+                  enabled ? () => _showVolumeBottomSheet(context, state) : null,
+            ),
+            const SizedBox(width: 2),
+            IconButton(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+              icon: Icon(
+                state.isFavorite
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+              ),
+              iconSize: 28,
+              color:
+                  favoriteEnabled
+                      ? (state.isFavorite
+                          ? Colors.pinkAccent
+                          : Theme.of(context).colorScheme.primary)
+                      : onSurface.withValues(alpha: 0.3),
+              onPressed:
+                  favoriteEnabled
+                      ? () =>
+                          ref.read(playbackProvider.notifier).toggleFavorites()
+                      : null,
+            ),
+          ],
+        ),
+      ],
     );
   }
 
   Widget _buildProgressBar(dynamic currentMusic) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
+    final accentColor = Theme.of(context).colorScheme.primary;
     final currentTime = currentMusic.offset ?? 0;
     final totalTime = currentMusic.duration ?? 0;
 
-    // 🔧 使用拖动值或实际进度值
-    final displayTime = _draggingValue != null
-        ? (_draggingValue! * totalTime).round()
-        : currentTime;
+    final displayTime =
+        _draggingValue != null
+            ? (_draggingValue! * totalTime).round()
+            : currentTime;
 
     final progress =
         (totalTime > 0) ? (displayTime / totalTime).clamp(0.0, 1.0) : 0.0;
 
-    // 🎯 Bug3 fix: 根据设备能力决定是否允许 seek（OH2P 不支持）
     final seekEnabled = ref.watch(playbackProvider).seekEnabled;
     final canSeek = totalTime > 0 && seekEnabled;
-
-    debugPrint('🎯 [ControlPanel-ProgressBar] canSeek=$canSeek, progress=$progress, currentTime=$currentTime, totalTime=$totalTime, dragging=${_draggingValue != null}');
+    debugPrint(
+      '🎯 [ControlPanel-ProgressBar] canSeek=$canSeek, progress=$progress, currentTime=$currentTime, totalTime=$totalTime, dragging=${_draggingValue != null}',
+    );
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
-            trackHeight: 4.0,
-            trackShape: const RoundedRectSliderTrackShape(),
-            activeTrackColor: Theme.of(context).colorScheme.primary,
-            inactiveTrackColor: onSurface.withOpacity(0.1),
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
-            thumbColor: Theme.of(context).colorScheme.primary,
-            overlayColor: Theme.of(
-              context,
-            ).colorScheme.primary.withOpacity(0.2),
+            trackHeight: 3.5,
+            activeTrackColor: accentColor,
+            inactiveTrackColor: onSurface.withValues(alpha: 0.14),
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5.5),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+            thumbColor: onSurface,
+            overlayColor: accentColor.withValues(alpha: 0.16),
+            trackShape: const _CustomTrackShape(),
           ),
           child: Slider(
             value: progress,
-            onChanged: canSeek ? (value) {
-              // 🔧 拖动时更新临时值,实时显示进度
-              debugPrint('🎯 [ControlPanel-ProgressBar] onChanged: $value');
-              setState(() {
-                _draggingValue = value;
-              });
-            } : null, // 🎵 远程播放模式禁用拖动
+            onChanged:
+                canSeek
+                    ? (value) {
+                      debugPrint(
+                        '🎯 [ControlPanel-ProgressBar] onChanged: $value',
+                      );
+                      setState(() {
+                        _draggingValue = value;
+                      });
+                    }
+                    : null,
             onChangeEnd:
                 canSeek
                     ? (value) {
-                      // 🔧 拖动结束,清除临时值并执行 seek
                       final newPos = (value * totalTime).round();
-                      debugPrint('🎯 [ControlPanel-ProgressBar] onChangeEnd: $value, seekTo: $newPos seconds');
+                      debugPrint(
+                        '🎯 [ControlPanel-ProgressBar] onChangeEnd: $value, seekTo: $newPos seconds',
+                      );
                       setState(() {
                         _draggingValue = null;
                       });
                       ref.read(playbackProvider.notifier).seekTo(newPos);
                     }
-                    : null, // 🎵 远程播放模式禁用拖动
+                    : null,
           ),
         ),
         const SizedBox(height: 4),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              totalTime > 0 ? _formatDuration(displayTime) : '--:--',
-              style: TextStyle(color: onSurface.withOpacity(0.7)),
-            ),
-            Text(
-              totalTime > 0 ? _formatDuration(totalTime) : '--:--',
-              style: TextStyle(color: onSurface.withOpacity(0.7)),
-            ),
-          ],
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildProgressTimeText(
+                totalTime > 0 ? _formatDuration(displayTime) : '--:--',
+                onSurface,
+              ),
+              _buildProgressTimeText(
+                totalTime > 0 ? _formatDuration(totalTime) : '--:--',
+                onSurface,
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -962,28 +1235,44 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
   Widget _buildInitialProgressBar() {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        // Seek bar placeholder (disabled look)
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
-            trackHeight: 4.0,
-            inactiveTrackColor: onSurface.withOpacity(0.1),
-            activeTrackColor: onSurface.withOpacity(0.1),
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
-            thumbColor: onSurface.withOpacity(0.3),
+            trackHeight: 3.5,
+            inactiveTrackColor: onSurface.withValues(alpha: 0.14),
+            activeTrackColor: onSurface.withValues(alpha: 0.14),
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5.5),
+            thumbColor: onSurface.withValues(alpha: 0.28),
             overlayColor: Colors.transparent,
+            trackShape: const _CustomTrackShape(),
           ),
           child: Slider(value: 0, min: 0, max: 1, onChanged: null),
         ),
         const SizedBox(height: 4),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('0:00', style: TextStyle(color: onSurface.withOpacity(0.7))),
-            Text('0:00', style: TextStyle(color: onSurface.withOpacity(0.7))),
-          ],
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildProgressTimeText('0:00', onSurface),
+              _buildProgressTimeText('0:00', onSurface),
+            ],
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildProgressTimeText(String text, Color onSurface) {
+    return Text(
+      text,
+      style: TextStyle(
+        color: onSurface.withValues(alpha: 0.58),
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+        height: 1,
+      ),
     );
   }
 
@@ -992,42 +1281,143 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     final duration = Duration(seconds: seconds);
     final minutes = duration.inMinutes.remainder(60);
     final secs = duration.inSeconds.remainder(60);
-    return '${minutes}:${secs.toString().padLeft(2, '0')}';
+    return '$minutes:${secs.toString().padLeft(2, '0')}';
   }
 
   Widget _buildPlaybackControls(PlaybackState state) {
-    // 🎯 根据播放模式检查对应的设备选择状态
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     final playbackMode = ref.read(playbackModeProvider);
     final bool hasSelectedDevice;
+
     if (playbackMode == PlaybackMode.miIoTDirect) {
       final directState = ref.read(directModeProvider);
-      hasSelectedDevice = directState is DirectModeAuthenticated &&
-          directState.playbackDeviceType.isNotEmpty; // 🔧 修复：检查 playbackDeviceType
+      hasSelectedDevice =
+          directState is DirectModeAuthenticated &&
+          directState.playbackDeviceType.isNotEmpty;
     } else {
       hasSelectedDevice = ref.read(deviceProvider).selectedDeviceId != null;
     }
+
     final enabled = hasSelectedDevice && !state.isLoading;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        _buildControlButton(
-          icon: Icons.skip_previous_rounded,
-          size: 32,
-          enabled: enabled,
-          onPressed: () => ref.read(playbackProvider.notifier).previous(),
-        ),
-        _buildMainPlayButton(
-          state,
-          enabled,
-          state.currentMusic?.isPlaying ?? false,
-        ),
-        _buildControlButton(
-          icon: Icons.skip_next_rounded,
-          size: 32,
-          enabled: enabled,
-          onPressed: () => ref.read(playbackProvider.notifier).next(),
-        ),
-      ],
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 0.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Transform.translate(
+            offset: const Offset(-11, 0),
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                icon: Icon(state.playMode.icon),
+                iconSize: 22,
+                color:
+                    enabled
+                        ? onSurface.withValues(alpha: 0.62)
+                        : onSurface.withValues(alpha: 0.3),
+                onPressed:
+                    enabled
+                        ? () {
+                          final currentMode = state.playMode;
+                          final nextMode =
+                              PlayMode.values[(currentMode.index + 1) %
+                                  PlayMode.values.length];
+                          ref
+                              .read(playbackProvider.notifier)
+                              .switchPlayMode(nextMode);
+                        }
+                        : null,
+                tooltip: state.playMode.displayName,
+              ),
+            ),
+          ),
+          _buildControlButton(
+            icon: Icons.skip_previous_rounded,
+            size: 32,
+            enabled: enabled,
+            color: onSurface,
+            onPressed: () => ref.read(playbackProvider.notifier).previous(),
+          ),
+          _buildMainPlayButton(
+            state,
+            enabled,
+            state.currentMusic?.isPlaying ?? false,
+          ),
+          _buildControlButton(
+            icon: Icons.skip_next_rounded,
+            size: 32,
+            enabled: enabled,
+            color: onSurface,
+            onPressed: () => ref.read(playbackProvider.notifier).next(),
+          ),
+          Transform.translate(
+            offset: const Offset(11, 0),
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: GestureDetector(
+                onLongPress:
+                    enabled && state.timerMinutes > 0
+                        ? () {
+                          ref.read(playbackProvider.notifier).cancelTimer();
+                        }
+                        : null,
+                child: Stack(
+                  alignment: Alignment.center,
+                  clipBehavior: Clip.none,
+                  children: [
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.timer_outlined),
+                      iconSize: 22,
+                      color:
+                          enabled
+                              ? (state.timerMinutes > 0
+                                  ? Colors.orangeAccent
+                                  : onSurface.withValues(alpha: 0.62))
+                              : onSurface.withValues(alpha: 0.3),
+                      onPressed:
+                          enabled
+                              ? () => _showTimerBottomSheet(context, state)
+                              : null,
+                    ),
+                    if (state.timerMinutes > 0)
+                      Positioned(
+                        top: -1,
+                        right: -2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.orangeAccent,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.surface,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Text(
+                            '$state.timerMinutes',
+                            style: TextStyle(
+                              color: onSurface,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1035,14 +1425,20 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     required IconData icon,
     required double size,
     required bool enabled,
+    required Color color,
     required VoidCallback onPressed,
   }) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
-    return IconButton(
-      icon: Icon(icon),
-      iconSize: size,
-      color: enabled ? onSurface : onSurface.withOpacity(0.4),
-      onPressed: enabled ? onPressed : null,
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        icon: Icon(icon),
+        iconSize: size,
+        color: enabled ? color : onSurface.withValues(alpha: 0.35),
+        onPressed: enabled ? onPressed : null,
+      ),
     );
   }
 
@@ -1051,7 +1447,6 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     bool enabled,
     bool isPlaying,
   ) {
-    // 延迟动画控制以避免在build中修改状态
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _buttonAnimationController != null) {
         if (isPlaying) {
@@ -1061,6 +1456,9 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
         }
       }
     });
+
+    final accentColor = Theme.of(context).colorScheme.primary;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
 
     return GestureDetector(
       onTap:
@@ -1075,15 +1473,26 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
               : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        width: 56,
-        height: 56,
+        width:
+            MediaQuery.of(context).size.width * 0.18 > 72
+                ? 72
+                : (MediaQuery.of(context).size.width * 0.18 < 60
+                    ? 60
+                    : MediaQuery.of(context).size.width * 0.18),
+        height:
+            MediaQuery.of(context).size.width * 0.18 > 72
+                ? 72
+                : (MediaQuery.of(context).size.width * 0.18 < 60
+                    ? 60
+                    : MediaQuery.of(context).size.width * 0.18),
         decoration: BoxDecoration(
           gradient:
               enabled
                   ? LinearGradient(
                     colors: [
-                      Theme.of(context).colorScheme.primary,
-                      Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                      accentColor.withValues(alpha: 0.9),
+                      Color.lerp(accentColor, Colors.orangeAccent, 0.25)!
+                          .withValues(alpha: 0.8),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -1091,18 +1500,25 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                   : null,
           color:
               !enabled
-                  ? Theme.of(context).colorScheme.onSurface.withOpacity(0.1)
+                  ? Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.1)
                   : null,
           shape: BoxShape.circle,
           boxShadow:
               enabled
                   ? [
                     BoxShadow(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primary.withOpacity(0.4),
-                      blurRadius: 20,
-                      offset: const Offset(0, 5),
+                      color: accentColor.withValues(alpha: 0.35),
+                      blurRadius: 32,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 4),
+                    ),
+                    BoxShadow(
+                      color: accentColor.withValues(alpha: 0.15),
+                      blurRadius: 12,
+                      spreadRadius: -2,
+                      offset: const Offset(0, 0),
                     ),
                   ]
                   : [],
@@ -1118,48 +1534,13 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
                       strokeWidth: 2.0,
                     ),
                   )
-                  : AnimatedIcon(
-                    icon: AnimatedIcons.play_pause,
-                    progress:
-                        _buttonAnimationController ?? kAlwaysCompleteAnimation,
-                    size: 28,
+                  : Icon(
+                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    size: isPlaying ? 32 : 36,
                     color: Colors.white,
                   ),
         ),
       ),
-    );
-  }
-
-  Widget _buildVolumeControl(PlaybackState state) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    return Row(
-      children: [
-        Icon(
-          Icons.volume_mute_rounded,
-          color: onSurface.withOpacity(0.6),
-          size: 16,
-        ),
-        Expanded(
-          child: Slider(
-            value: state.volume.toDouble(),
-            min: 0,
-            max: 100,
-            onChanged: (value) {
-              // 先本地更新，避免频繁打到后端引起设备多次响
-              ref.read(playbackProvider.notifier).setVolumeLocal(value.round());
-            },
-            onChangeEnd: (value) {
-              // 松手时再提交后端
-              ref.read(playbackProvider.notifier).setVolume(value.round());
-            },
-          ),
-        ),
-        Icon(
-          Icons.volume_up_rounded,
-          color: onSurface.withOpacity(0.6),
-          size: 16,
-        ),
-      ],
     );
   }
 
@@ -1193,126 +1574,6 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
   }
 
   /// 🎵 快捷操作按钮（播放模式切换 + 定时关机 + 加入收藏）
-  Widget _buildQuickActions(PlaybackState state) {
-    final onSurface = Theme.of(context).colorScheme.onSurface;
-    // 🎯 根据播放模式检查对应的设备选择状态
-    final playbackMode = ref.read(playbackModeProvider);
-    final bool hasSelectedDevice;
-    if (playbackMode == PlaybackMode.miIoTDirect) {
-      final directState = ref.read(directModeProvider);
-      hasSelectedDevice = directState is DirectModeAuthenticated &&
-          directState.playbackDeviceType.isNotEmpty; // 🔧 修复：检查 playbackDeviceType
-    } else {
-      hasSelectedDevice = ref.read(deviceProvider).selectedDeviceId != null;
-    }
-    final enabled = hasSelectedDevice;
-    final favoriteEnabled = enabled && state.currentMusic != null;
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // 播放模式切换按钮
-        IconButton(
-          icon: Icon(state.playMode.icon),
-          iconSize: 28,
-          color:
-              enabled
-                  ? Theme.of(context).colorScheme.primary
-                  : onSurface.withOpacity(0.4),
-          onPressed:
-              enabled
-                  ? () {
-                    // 循环切换到下一个播放模式
-                    final currentMode = state.playMode;
-                    final nextMode =
-                        PlayMode.values[(currentMode.index + 1) %
-                            PlayMode.values.length];
-                    ref
-                        .read(playbackProvider.notifier)
-                        .switchPlayMode(nextMode);
-                  }
-                  : null,
-          tooltip: state.playMode.displayName,
-        ),
-        const SizedBox(width: 32),
-        // 定时关机按钮（点击弹出选择器，长按快速取消定时）
-        GestureDetector(
-          onLongPress:
-              enabled && state.timerMinutes > 0
-                  ? () {
-                    // 长按快速关闭定时
-                    ref.read(playbackProvider.notifier).cancelTimer();
-                  }
-                  : null,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.timer_outlined),
-                iconSize: 28,
-                color:
-                    enabled
-                        ? (state.timerMinutes > 0
-                            ? Colors.orangeAccent
-                            : onSurface)
-                        : onSurface.withOpacity(0.4),
-                onPressed:
-                    enabled
-                        ? () => _showTimerBottomSheet(context, state) // 🎯 修改：弹出选择器
-                        : null,
-                tooltip:
-                    state.timerMinutes > 0
-                        ? '${state.timerMinutes}分钟后关机\n长按取消定时'
-                        : '定时关机',
-              ),
-              if (state.timerMinutes > 0)
-                Positioned(
-                  bottom: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.orangeAccent,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '${state.timerMinutes}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 32),
-        // 收藏/取消收藏按钮
-        IconButton(
-          icon: Icon(
-            state.isFavorite
-                ? Icons.favorite_rounded
-                : Icons.favorite_border_rounded,
-          ),
-          iconSize: 28,
-          color:
-              favoriteEnabled
-                  ? (state.isFavorite ? Colors.redAccent : Colors.pinkAccent)
-                  : onSurface.withOpacity(0.4),
-          onPressed:
-              favoriteEnabled
-                  ? () => ref.read(playbackProvider.notifier).toggleFavorites()
-                  : null,
-          tooltip: state.isFavorite ? '取消收藏' : '加入收藏',
-        ),
-      ],
-    );
-  }
-
   /// 🎨 从封面图提取主色调 (已废弃,改用 _extractDominantColorFromProvider)
   Future<void> _extractDominantColor(String imageUrl) async {
     try {
@@ -1323,7 +1584,8 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
         maximumColorCount: 10,
       );
 
-      final extractedColor = paletteGenerator.dominantColor?.color ??
+      final extractedColor =
+          paletteGenerator.dominantColor?.color ??
           paletteGenerator.vibrantColor?.color;
 
       debugPrint('🎨 [ControlPanel] 提取到的颜色: $extractedColor');
@@ -1340,7 +1602,9 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
   }
 
   /// 🎨 从已加载的 ImageProvider 提取主色调 (避免重复加载图片)
-  Future<void> _extractDominantColorFromProvider(ImageProvider imageProvider) async {
+  Future<void> _extractDominantColorFromProvider(
+    ImageProvider imageProvider,
+  ) async {
     try {
       debugPrint('🎨 [ControlPanel] 从已加载的图片提取主色调');
       final paletteGenerator = await PaletteGenerator.fromImageProvider(
@@ -1348,7 +1612,8 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
         maximumColorCount: 10,
       );
 
-      final extractedColor = paletteGenerator.dominantColor?.color ??
+      final extractedColor =
+          paletteGenerator.dominantColor?.color ??
           paletteGenerator.vibrantColor?.color;
 
       debugPrint('🎨 [ControlPanel] 提取到的颜色: $extractedColor');
@@ -1364,6 +1629,88 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     }
   }
 
+  void _showVolumeBottomSheet(BuildContext context, PlaybackState state) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '音量调节',
+                style: TextStyle(
+                  color: onSurface,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Consumer(
+                builder: (context, ref, _) {
+                  final playbackState = ref.watch(playbackProvider);
+                  return Row(
+                    children: [
+                      Icon(
+                        Icons.volume_mute_rounded,
+                        color: onSurface.withValues(alpha: 0.5),
+                        size: 24,
+                      ),
+                      Expanded(
+                        child: SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 4.0,
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 8.0,
+                            ),
+                            activeTrackColor: onSurface.withValues(alpha: 0.8),
+                            inactiveTrackColor: onSurface.withValues(
+                              alpha: 0.1,
+                            ),
+                            thumbColor: onSurface,
+                            overlayColor: Colors.transparent,
+                          ),
+                          child: Slider(
+                            value: playbackState.volume.toDouble(),
+                            min: 0,
+                            max: 100,
+                            onChanged: (value) {
+                              ref
+                                  .read(playbackProvider.notifier)
+                                  .setVolumeLocal(value.round());
+                            },
+                            onChangeEnd: (value) {
+                              ref
+                                  .read(playbackProvider.notifier)
+                                  .setVolume(value.round());
+                            },
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.volume_up_rounded,
+                        color: onSurface.withValues(alpha: 0.5),
+                        size: 24,
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// ⏰ 显示定时器底部弹窗选择器
   void _showTimerBottomSheet(BuildContext context, PlaybackState state) {
     final onSurfaceColor = Theme.of(context).colorScheme.onSurface;
@@ -1372,128 +1719,145 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
     showAppBottomSheet(
       context: context,
       isScrollControlled: true, // 允许自定义高度
-      builder: (context) => AppBottomSheet(
-        title: '定时关机',
-        trailing: state.timerMinutes > 0
-            ? TextButton.icon(
-                onPressed: () {
-                  ref.read(playbackProvider.notifier).cancelTimer();
-                  Navigator.pop(context);
-                },
-                icon: const Icon(Icons.close_rounded, size: 18),
-                label: const Text('取消定时'),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.orangeAccent,
-                ),
-              )
-            : null,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 当前定时状态提示
-            if (state.timerMinutes > 0)
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orangeAccent.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.orangeAccent.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.timer_outlined,
-                      color: Colors.orangeAccent,
-                      size: 20,
+      builder:
+          (context) => AppBottomSheet(
+            title: '定时关机',
+            trailing:
+                state.timerMinutes > 0
+                    ? TextButton.icon(
+                      onPressed: () {
+                        ref.read(playbackProvider.notifier).cancelTimer();
+                        Navigator.pop(context);
+                      },
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      label: const Text('取消定时'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.orangeAccent,
+                      ),
+                    )
+                    : null,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 当前定时状态提示
+                if (state.timerMinutes > 0)
+                  Container(
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '已设置 ${state.timerMinutes} 分钟后关机',
-                        style: TextStyle(
-                          color: onSurfaceColor,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orangeAccent.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.orangeAccent.withOpacity(0.3),
+                        width: 1,
                       ),
                     ),
-                  ],
-                ),
-              ),
-
-            // 快捷时间选项（横向滚动）
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: SizedBox(
-                height: 110,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  children: [
-                    _buildTimerOption(context, state, 15, '15分钟'),
-                    _buildTimerOption(context, state, 30, '30分钟'),
-                    _buildTimerOption(context, state, 45, '45分钟'),
-                    _buildTimerOption(context, state, 60, '1小时'),
-                    _buildTimerOption(context, state, 90, '1.5小时'),
-                    _buildTimerOption(context, state, 120, '2小时'),
-                  ],
-                ),
-              ),
-            ),
-
-            // 自定义输入
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: TextField(
-                decoration: InputDecoration(
-                  labelText: '自定义时间（分钟）',
-                  labelStyle: TextStyle(color: onSurfaceColor.withOpacity(0.7)),
-                  hintText: '输入1-999分钟',
-                  hintStyle: TextStyle(color: onSurfaceColor.withOpacity(0.4)),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.timer_outlined,
+                          color: Colors.orangeAccent,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '已设置 ${state.timerMinutes} 分钟后关机',
+                            style: TextStyle(
+                              color: onSurfaceColor,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: primaryColor, width: 2),
+
+                // 快捷时间选项（横向滚动）
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: SizedBox(
+                    height: 110,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      children: [
+                        _buildTimerOption(context, state, 15, '15分钟'),
+                        _buildTimerOption(context, state, 30, '30分钟'),
+                        _buildTimerOption(context, state, 45, '45分钟'),
+                        _buildTimerOption(context, state, 60, '1小时'),
+                        _buildTimerOption(context, state, 90, '1.5小时'),
+                        _buildTimerOption(context, state, 120, '2小时'),
+                      ],
+                    ),
                   ),
-                  prefixIcon: Icon(Icons.edit_rounded, color: primaryColor),
-                  suffixIcon: IconButton(
-                    icon: Icon(Icons.check_circle_rounded, color: primaryColor),
-                    onPressed: () {
-                      // 这个按钮只是装饰，实际提交由 onSubmitted 处理
+                ),
+
+                // 自定义输入
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  child: TextField(
+                    decoration: InputDecoration(
+                      labelText: '自定义时间（分钟）',
+                      labelStyle: TextStyle(
+                        color: onSurfaceColor.withOpacity(0.7),
+                      ),
+                      hintText: '输入1-999分钟',
+                      hintStyle: TextStyle(
+                        color: onSurfaceColor.withOpacity(0.4),
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: primaryColor, width: 2),
+                      ),
+                      prefixIcon: Icon(Icons.edit_rounded, color: primaryColor),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          Icons.check_circle_rounded,
+                          color: primaryColor,
+                        ),
+                        onPressed: () {
+                          // 这个按钮只是装饰，实际提交由 onSubmitted 处理
+                        },
+                      ),
+                    ),
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(color: onSurfaceColor, fontSize: 16),
+                    onSubmitted: (value) {
+                      final minutes = int.tryParse(value);
+                      if (minutes != null && minutes > 0 && minutes <= 999) {
+                        ref
+                            .read(playbackProvider.notifier)
+                            .setTimerMinutes(minutes);
+                        Navigator.pop(context);
+                      } else {
+                        // 显示错误提示
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('请输入有效的分钟数（1-999）'),
+                            backgroundColor: Colors.redAccent,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
                     },
                   ),
                 ),
-                keyboardType: TextInputType.number,
-                style: TextStyle(color: onSurfaceColor, fontSize: 16),
-                onSubmitted: (value) {
-                  final minutes = int.tryParse(value);
-                  if (minutes != null && minutes > 0 && minutes <= 999) {
-                    ref.read(playbackProvider.notifier).setTimerMinutes(minutes);
-                    Navigator.pop(context);
-                  } else {
-                    // 显示错误提示
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('请输入有效的分钟数（1-999）'),
-                        backgroundColor: Colors.redAccent,
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  }
-                },
-              ),
-            ),
 
-            SizedBox(height: 16),
-          ],
-        ),
-      ),
+                SizedBox(height: 16),
+              ],
+            ),
+          ),
     );
   }
 
@@ -1517,23 +1881,25 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
         width: 100,
         margin: const EdgeInsets.only(right: 12),
         decoration: BoxDecoration(
-          color: isSelected
-              ? primaryColor.withOpacity(0.15)
-              : onSurfaceColor.withOpacity(0.05),
+          color:
+              isSelected
+                  ? primaryColor.withOpacity(0.15)
+                  : onSurfaceColor.withOpacity(0.05),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected ? primaryColor : onSurfaceColor.withOpacity(0.2),
             width: 2,
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: primaryColor.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : [],
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: primaryColor.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                  : [],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1541,7 +1907,8 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
             Icon(
               Icons.timer_outlined,
               size: 36,
-              color: isSelected ? primaryColor : onSurfaceColor.withOpacity(0.6),
+              color:
+                  isSelected ? primaryColor : onSurfaceColor.withOpacity(0.6),
             ),
             const SizedBox(height: 8),
             Text(
@@ -1549,7 +1916,8 @@ class _ControlPanelPageState extends ConsumerState<ControlPanelPage>
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? primaryColor : onSurfaceColor.withOpacity(0.8),
+                color:
+                    isSelected ? primaryColor : onSurfaceColor.withOpacity(0.8),
               ),
             ),
           ],
@@ -1574,22 +1942,26 @@ class _PlaybackModeBadge extends ConsumerWidget {
     final String label;
 
     if (isXiaomusic) {
-      bgColor = Colors.blue.withValues(alpha: 0.15);
+      bgColor = Colors.blue.withValues(alpha: 0.08);
       fgColor = Colors.blue;
       icon = Icons.dns_rounded;
       label = 'xiaomusic';
     } else {
-      bgColor = Colors.orange.withValues(alpha: 0.15);
+      bgColor = Colors.orange.withValues(alpha: 0.08);
       fgColor = Colors.orange;
       icon = Icons.wifi_tethering_rounded;
       label = '直连';
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: fgColor.withValues(alpha: 0.15),
+          width: 0.5,
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1602,11 +1974,30 @@ class _PlaybackModeBadge extends ConsumerWidget {
               fontSize: 10,
               fontWeight: FontWeight.w600,
               color: fgColor,
-              height: 1.2,
+              height: 1.0,
             ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _CustomTrackShape extends RoundedRectSliderTrackShape {
+  const _CustomTrackShape();
+
+  @override
+  Rect getPreferredRect({
+    required RenderBox parentBox,
+    Offset offset = Offset.zero,
+    required SliderThemeData sliderTheme,
+    bool isEnabled = false,
+    bool isDiscrete = false,
+  }) {
+    final double trackHeight = sliderTheme.trackHeight ?? 2.0;
+    // Removed default horizontal padding (offset.dx)
+    final double trackTop =
+        offset.dy + (parentBox.size.height - trackHeight) / 2;
+    return Rect.fromLTWH(0.0, trackTop, parentBox.size.width, trackHeight);
   }
 }

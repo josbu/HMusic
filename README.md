@@ -4,6 +4,10 @@
 
 [![Release](https://img.shields.io/github/v/release/hpcll/HMusic?label=版本)](https://github.com/hpcll/HMusic/releases)
 
+<p align="center">
+  <img src="docs/hmusic.jpg" alt="HMusic 应用截图" width="360" />
+</p>
+
 ## 🚀 v2.3.1 重点更新
 
 - 修复 L06A 直连暂停可能无效的问题，播放控制参数与官方 App 对齐。
@@ -65,18 +69,6 @@
 感谢 [xiaomusic](https://github.com/hanxi/xiaomusic) 项目及其开发者 [@hanxi](https://github.com/hanxi)，HMusic 的 xiaomusic 模式基于该项目实现，直连模式的小米 IoT API 也参考了相关实现。
 
 ---
-
-## 💬 交流群
-
-欢迎加入 HMusic 用户交流群，一起讨论使用问题和功能建议～
-
-<p align="center">
-  <img src="docs/donate/群聊.JPG" alt="微信群二维码" width="250" />
-</p>
-
-<p align="center">
-  <sub>⚠️ 群二维码为动态有效期，失效请提 <a href="https://github.com/hpcll/HMusic/issues">Issue</a></sub>
-</p>
 
 ---
 

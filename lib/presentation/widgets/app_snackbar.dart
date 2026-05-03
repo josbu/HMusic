@@ -23,28 +23,57 @@ class AppSnackBar {
   }
 
   /// Show a SnackBar ensuring it appears above the bottom navigation.
-  static void show(BuildContext context, SnackBar base) {
+  static void show(BuildContext context, SnackBar base, {IconData? icon}) {
     final messenger = ScaffoldMessenger.maybeOf(context);
     if (messenger == null) return;
 
     final margin = EdgeInsets.fromLTRB(
-      16,
+      24,
       0,
-      16,
+      24,
       _computeBottomMargin(context),
     );
 
-    // Rebuild a SnackBar that forces floating behavior and safe bottom margin.
+    final colorScheme = Theme.of(context).colorScheme;
+    final backgroundColor = base.backgroundColor ?? colorScheme.surface;
+    final onBackgroundColor = backgroundColor.computeLuminance() > 0.5 
+        ? Colors.black87 
+        : Colors.white;
+
+    // Rebuild a SnackBar with modern styling
     final snackBar = SnackBar(
-      content: base.content,
+      content: Row(
+        children: [
+          if (icon != null) ...[
+            Icon(icon, color: onBackgroundColor, size: 20),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: DefaultTextStyle(
+              style: TextStyle(
+                color: onBackgroundColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+              child: base.content,
+            ),
+          ),
+        ],
+      ),
       action: base.action,
-      backgroundColor: base.backgroundColor,
+      backgroundColor: backgroundColor,
       duration: base.duration,
-      elevation: base.elevation,
-      shape: base.shape,
-      padding: base.padding,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: onBackgroundColor.withValues(alpha: 0.08),
+          width: 0.5,
+        ),
+      ),
       behavior: SnackBarBehavior.floating,
       margin: margin,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     );
 
     messenger.hideCurrentSnackBar();
@@ -57,6 +86,7 @@ class AppSnackBar {
     String message, {
     Color? backgroundColor,
     Duration duration = const Duration(seconds: 2),
+    IconData? icon,
   }) {
     show(
       context,
@@ -65,6 +95,7 @@ class AppSnackBar {
         backgroundColor: backgroundColor,
         duration: duration,
       ),
+      icon: icon,
     );
   }
 
@@ -79,10 +110,11 @@ class AppSnackBar {
       context,
       SnackBar(
         content: Text(message),
-        backgroundColor: Colors.green,
+        backgroundColor: const Color(0xFF4CAF50),
         duration: duration,
         action: action,
       ),
+      icon: Icons.check_circle_rounded,
     );
   }
 
@@ -97,10 +129,11 @@ class AppSnackBar {
       context,
       SnackBar(
         content: Text(message),
-        backgroundColor: Colors.red,
+        backgroundColor: const Color(0xFFE53935),
         duration: duration,
         action: action,
       ),
+      icon: Icons.error_rounded,
     );
   }
 
@@ -115,10 +148,11 @@ class AppSnackBar {
       context,
       SnackBar(
         content: Text(message),
-        backgroundColor: Colors.orange,
+        backgroundColor: const Color(0xFFFFA000),
         duration: duration,
         action: action,
       ),
+      icon: Icons.warning_rounded,
     );
   }
 
@@ -133,10 +167,11 @@ class AppSnackBar {
       context,
       SnackBar(
         content: Text(message),
-        backgroundColor: Colors.blue,
+        backgroundColor: const Color(0xFF2196F3),
         duration: duration,
         action: action,
       ),
+      icon: Icons.info_rounded,
     );
   }
 }

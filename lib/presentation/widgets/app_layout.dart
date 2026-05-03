@@ -14,6 +14,16 @@ class AppLayout {
     final mediaQuery = MediaQuery.of(context);
     final bottomInset = mediaQuery.viewPadding.bottom;
     final gestureInset = mediaQuery.systemGestureInsets.bottom;
+    final platform = Theme.of(context).platform;
+
+    // Android 手势条本身仍占用底部系统区域。dock 需要贴近但不能压到手势条上。
+    // 小米 10 Pro 上 viewPadding.bottom 约 16dp，正好对应导航栏上沿。
+    if (platform == TargetPlatform.android && gestureInset > 0) {
+      final gestureBarMargin =
+          bottomInset > 0 ? bottomInset + 2.0 : gestureInset * 0.7;
+      return gestureBarMargin.clamp(14.0, 18.0);
+    }
+
     final effectiveInset =
         bottomInset > gestureInset ? bottomInset : gestureInset;
     if (effectiveInset <= 0) {

@@ -30,6 +30,7 @@ import '../providers/local_playlist_provider.dart'; // 🎯 本地播放列表Pr
 import '../../data/models/local_playlist.dart'; // 🎯 本地播放列表模型
 import '../../data/utils/lx_music_info_builder.dart';
 import '../../core/utils/platform_id.dart';
+import '../../data/services/song_resolver_service.dart'; // 🎯 熔断器通知
 
 class MusicSearchPage extends ConsumerStatefulWidget {
   const MusicSearchPage({super.key});
@@ -123,7 +124,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
     return Scaffold(
       key: const ValueKey('music_search_scaffold'),
       resizeToAvoidBottomInset: false,
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: Colors.transparent,
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Stack(
@@ -919,7 +920,14 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
             quality: quality,
             musicInfo: musicInfo,
           );
-          if (url != null && url.isNotEmpty) return url;
+          if (url != null && url.isNotEmpty) {
+            // 🎯 通知熔断器：该平台解析成功，清除历史失败记录
+            // 避免队列自动下一曲时因历史失败而误降级
+            try {
+              ref.read(songResolverServiceProvider).notifyExternalPlaySuccess(mapped);
+            } catch (_) {}
+            return url;
+          }
         }
       } catch (_) {}
 
@@ -1030,7 +1038,6 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -1093,7 +1100,12 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
   /// 📋 添加到本地歌单（元音乐）
   Future<void> _addToPlaylist(OnlineMusicResult item) async {
     try {
-      final playlists = ref.read(localPlaylistProvider).playlists;
+      final playbackMode = ref.read(playbackModeProvider);
+      final modeScope =
+          playbackMode == PlaybackMode.miIoTDirect ? 'direct' : 'xiaomusic';
+      final playlists = ref
+          .read(localPlaylistProvider.notifier)
+          .getVisiblePlaylists(playbackMode);
 
       if (playlists.isEmpty) {
         // 没有歌单，直接在这里创建并添加歌曲
@@ -1106,7 +1118,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
 
             await ref
                 .read(localPlaylistProvider.notifier)
-                .createPlaylist(newPlaylistName);
+                .createPlaylist(newPlaylistName, modeScope: modeScope);
 
             final song = LocalPlaylistSong.fromOnlineMusic(
               title: item.title,
@@ -1526,7 +1538,7 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
               duration: const Duration(seconds: 5),
               action: SnackBarAction(
                 label: '去导入',
-                textColor: Colors.white,
+                textColor: Theme.of(context).colorScheme.onSurface,
                 onPressed: () {
                   context.push('/settings/source');
                 },
@@ -1542,7 +1554,6 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
               duration: const Duration(seconds: 5),
               action: SnackBarAction(
                 label: '去选择',
-                textColor: Colors.white,
                 onPressed: () {
                   context.push('/settings/source');
                 },
@@ -1627,7 +1638,6 @@ class _MusicSearchPageState extends ConsumerState<MusicSearchPage> {
       context: context,
       builder:
           (context) => AlertDialog(
-            backgroundColor: Theme.of(context).colorScheme.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
@@ -1704,7 +1714,6 @@ class _PlaylistSelectionDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Text(
         '选择歌单',

@@ -180,9 +180,12 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
       // 状态变化时立即更新UI
       _emitCurrentStatus();
 
-      // 自动播放下一首
-      if (state.processingState == ProcessingState.completed) {
-        debugPrint('🎵 [LocalPlayback] 当前歌曲播放完成，尝试播放下一首');
+      // 🎯 自动播放下一首（仅在 AudioHandler 未连接时生效）
+      // 当 AudioHandler 已连接时，由 AudioHandler._processingStateSubscription
+      // 通过 skipToNext() → onNext 回调触发下一首，此处不再重复触发。
+      // 如果两边都触发，会导致「双重触发」：同时解析两首歌，快速累加熔断器。
+      if (state.processingState == ProcessingState.completed && _audioHandler == null) {
+        debugPrint('🎵 [LocalPlayback] 歌曲播放完成（无AudioHandler），本地触发下一首');
         next();
       }
     });
@@ -265,7 +268,13 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
   Future<void> next() async {
     debugPrint('🎵 [LocalPlayback] 播放下一首');
     if (_playlist.isEmpty) {
-      debugPrint('⚠️ [LocalPlayback] 播放列表为空');
+      // 🎯 内部播放列表为空时，委托给外部回调（PlaybackProvider 的 APP 队列）
+      if (onNext != null) {
+        debugPrint('🎵 [LocalPlayback] 内部列表为空，委托给 onNext 回调（APP队列）');
+        onNext!();
+        return;
+      }
+      debugPrint('⚠️ [LocalPlayback] 播放列表为空且无回调');
       return;
     }
 
@@ -278,7 +287,13 @@ class LocalPlaybackStrategy implements PlaybackStrategy {
   Future<void> previous() async {
     debugPrint('🎵 [LocalPlayback] 播放上一首');
     if (_playlist.isEmpty) {
-      debugPrint('⚠️ [LocalPlayback] 播放列表为空');
+      // 🎯 内部播放列表为空时，委托给外部回调（PlaybackProvider 的 APP 队列）
+      if (onPrevious != null) {
+        debugPrint('🎵 [LocalPlayback] 内部列表为空，委托给 onPrevious 回调（APP队列）');
+        onPrevious!();
+        return;
+      }
+      debugPrint('⚠️ [LocalPlayback] 播放列表为空且无回调');
       return;
     }
 
