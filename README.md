@@ -4,19 +4,30 @@
 
 [![Release](https://img.shields.io/github/v/release/hpcll/HMusic?label=版本)](https://github.com/hpcll/HMusic/releases)
 
+## 💬 交流群
+
+欢迎加入 HMusic 用户交流群，一起讨论使用问题和功能建议～
+
 <p align="center">
-  <img src="docs/hmusic.jpg" alt="HMusic 应用截图" width="360" />
+  <img src="docs/hmusic.jpg" alt="HMusic 微信群二维码" width="360" />
 </p>
 
-## 🚀 v2.3.1 重点更新
+<p align="center">
+  <sub>⚠️ 群二维码为动态有效期，失效请提 <a href="https://github.com/hpcll/HMusic/issues">Issue</a></sub>
+</p>
 
-- 修复 L06A 直连暂停可能无效的问题，播放控制参数与官方 App 对齐。
-- 修复直连模式暂停状态误判，避免“App 显示暂停但音箱仍播放”。
-- 增加暂停确认与兜底策略，提升暂停操作可靠性。
-- 优化 MiIoT 状态查询与 ubus 域名兼容性，弱网和机型差异场景更稳。
+## 🚀 v3.0.0 大版本更新
+
+- 全新极简青绿色视觉风格，统一首页、播放页、登录页、设置页等核心界面。
+- 新增外观模式设置，支持跟随系统、浅色模式和深色模式。
+- 重做启动页与多平台应用图标，统一 Android、iOS、macOS、Web、Windows 图标安全边距。
+- 修复 Android 边缘沉浸式体验，改善小米 10 Pro 等设备底部黑边、手势条和 dock 区域重叠问题。
+- 优化播放页、曲库页、搜索页、底部导航栏和赞赏弹窗的交互与视觉细节。
+- 修复直连模式曲库播放、歌单作用域、播放设备选项、熔断器和自动下一曲平台选择等问题。
+- 发布 Android 通用包、Android 分架构包和 iOS unsigned IPA，并提供 SHA-256 校验文件。
 
 > ⚠️ **重要建议（xiaomusic 用户）**  
-> 为保证 HMusic v2.3.1 功能完整与稳定，建议将 xiaomusic 服务端升级到 **v0.4.23 或更高版本**。
+> 为保证 HMusic v3.0.0 功能完整与稳定，建议将 xiaomusic 服务端升级到 **v0.4.23 或更高版本**。
 
 ## 📱 下载安装
 
@@ -24,10 +35,14 @@
 
 | 平台 | 文件 | 说明 |
 |------|------|------|
-| 🤖 Android 通用版 | `HMusic-v2.3.1-android-universal.apk` | 推荐，兼容所有设备 |
-| 🤖 Android arm64 | `HMusic-v2.3.1-android-arm64-v8a.apk` | 现代手机，体积更小 |
-| 🤖 Android arm32 | `HMusic-v2.3.1-android-armeabi-v7a.apk` | 老旧设备 |
-| 🍎 iOS | `HMusic-v2.3.1-ios-unsigned.ipa` | 需自签名安装 |
+| 🤖 Android 通用版 | `HMusic-v3.0.0-android-universal.apk` | 推荐，兼容大多数设备 |
+| 🤖 Android arm64 | `HMusic-v3.0.0-android-arm64-v8a.apk` | 现代手机，体积更小 |
+| 🤖 Android arm32 | `HMusic-v3.0.0-android-armeabi-v7a.apk` | 老旧设备 |
+| 🤖 Android x86_64 | `HMusic-v3.0.0-android-x86_64.apk` | 模拟器或 x86_64 设备 |
+| 🍎 iOS | `HMusic-v3.0.0-ios-unsigned.ipa` | 未签名 IPA，需自签名安装 |
+| 🔐 校验和 | `checksums.txt` | SHA-256 校验文件 |
+
+> 老版本用户通常可以直接覆盖安装升级；如遇签名冲突，请先卸载旧版本后重新安装。
 
 ## 🎯 两种模式
 
@@ -50,7 +65,7 @@
 ### xiaomusic 模式
 
 1. 先部署 [xiaomusic 服务端](https://github.com/hanxi/xiaomusic)
-2. 建议升级到 **v0.4.23+**（与 HMusic v2.3.1 联动更完整）
+2. 建议升级到 **v0.4.23+**（与 HMusic v3.0.0 联动更完整）
 3. 可参考官方文档站：[https://xdocs.hanxi.cc/](https://xdocs.hanxi.cc/)
 4. 打开应用 → 选择 **xiaomusic 模式**
 5. 输入服务器地址和认证信息
