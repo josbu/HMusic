@@ -50,7 +50,7 @@ void main() {
       debugRepaintRainbowEnabled = false;
       debugPaintLayerBordersEnabled = false;
 
-      // 配置系统UI样式，适配小米澎湃OS 2.0
+      // 配置系统UI样式。导航栏保持透明，由 Flutter 根背景铺到底部手势区。
       SystemChrome.setSystemUIOverlayStyle(
         const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
@@ -61,12 +61,7 @@ void main() {
           systemNavigationBarDividerColor: Colors.transparent,
         ),
       );
-
-      // 启用边缘到边缘显示，沉浸顶部与底部小白条
-      SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.edgeToEdge,
-        overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
-      );
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
       // 添加全局错误处理
       FlutterError.onError = (FlutterErrorDetails details) {
@@ -365,6 +360,7 @@ class MyApp extends ConsumerWidget {
             statusBarBrightness: Brightness.light,
             systemNavigationBarColor: Colors.transparent,
             systemNavigationBarIconBrightness: Brightness.dark,
+            systemNavigationBarDividerColor: Colors.transparent,
             systemNavigationBarContrastEnforced: false,
           ),
         ),
@@ -413,6 +409,7 @@ class MyApp extends ConsumerWidget {
             statusBarBrightness: Brightness.dark,
             systemNavigationBarColor: Colors.transparent,
             systemNavigationBarIconBrightness: Brightness.light,
+            systemNavigationBarDividerColor: Colors.transparent,
             systemNavigationBarContrastEnforced: false,
           ),
         ),
@@ -457,8 +454,34 @@ class MyApp extends ConsumerWidget {
       routerConfig: ref.read(appRouterProvider),
       debugShowCheckedModeBanner: false,
       builder: (context, child) {
-        // 确保在Material应用级别也禁用调试边框
-        return MediaQuery(data: MediaQuery.of(context), child: child!);
+        final theme = Theme.of(context);
+        final isDarkMode = theme.brightness == Brightness.dark;
+        final overlayStyle = SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness:
+              isDarkMode ? Brightness.light : Brightness.dark,
+          statusBarBrightness: isDarkMode ? Brightness.dark : Brightness.light,
+          systemStatusBarContrastEnforced: false,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarIconBrightness:
+              isDarkMode ? Brightness.light : Brightness.dark,
+          systemNavigationBarDividerColor: Colors.transparent,
+          systemNavigationBarContrastEnforced: false,
+        );
+
+        // 根背景必须铺满整个 FlutterView；透明系统导航栏才不会露出黑底。
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: overlayStyle,
+          child: ColoredBox(
+            color: theme.scaffoldBackgroundColor,
+            child: SizedBox.expand(
+              child: MediaQuery(
+                data: MediaQuery.of(context),
+                child: child ?? const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        );
       },
     );
   }

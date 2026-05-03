@@ -208,66 +208,72 @@ class _MainPageState extends ConsumerState<MainPage>
 
     // 背景渐变已移除，统一使用 surface 颜色，避免滚动影响顶部底色
 
-    // 状态栏样式已在全局 theme 设置，此处不再单独指定
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+    final scaffoldBackgroundColor = theme.scaffoldBackgroundColor;
+
+    // 系统栏样式需要在页面级完整声明，避免部分 MIUI/HyperOS 机型
+    // 只继承状态栏配置而让底部 navigationBarBackground 回退为黑色。
 
     return Scaffold(
       key: const ValueKey('main_scaffold'),
       // Keep bottom navigation fixed when keyboard shows
       resizeToAvoidBottomInset: false,
       // 统一背景色为 surface，移除页面级渐变，避免顶部随滚动色彩变化
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      extendBody: false,
+      backgroundColor: scaffoldBackgroundColor,
+      extendBody: true, // 内容延伸到导航栏区域，避免旧设备底部黑块
       extendBodyBehindAppBar: false,
       body: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness:
-              Theme.of(context).brightness == Brightness.dark
-                  ? Brightness.light
-                  : Brightness.dark,
-          statusBarBrightness:
-              Theme.of(context).brightness == Brightness.dark
-                  ? Brightness.dark
-                  : Brightness.light,
+              isDarkMode ? Brightness.light : Brightness.dark,
+          statusBarBrightness: isDarkMode ? Brightness.dark : Brightness.light,
+          systemStatusBarContrastEnforced: false,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarIconBrightness:
+              isDarkMode ? Brightness.light : Brightness.dark,
+          systemNavigationBarDividerColor: Colors.transparent,
+          systemNavigationBarContrastEnforced: false,
         ),
         child: Stack(
           children: [
-          // Content column
-          SafeArea(
-            top: true,
-            bottom: false,
-            child: Column(
-              children: [
-                // Part 1: Header (Title, Refresh, User Info)
-                _buildHeader(context),
+            // Content column
+            SafeArea(
+              top: true,
+              bottom: false,
+              child: Column(
+                children: [
+                  // Part 1: Header (Title, Refresh, User Info)
+                  _buildHeader(context),
 
-                // Part 2: Device Selector or Search Bar
-                _buildSecondarySection(),
+                  // Part 2: Device Selector or Search Bar
+                  _buildSecondarySection(),
 
-                // Part 3: Main Content (Player, Lists)
-                Expanded(
-                  child: IndexedStack(
-                    key: const ValueKey('main_indexed_stack'),
-                    index: _selectedIndex,
-                    children: _pages,
+                  // Part 3: Main Content (Player, Lists)
+                  Expanded(
+                    child: IndexedStack(
+                      key: const ValueKey('main_indexed_stack'),
+                      index: _selectedIndex,
+                      children: _pages,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
-          // Floating blurred bottom navigation overlay
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: RepaintBoundary(child: _buildModernBottomNav()),
-          ),
-        ],
+            // Floating blurred bottom navigation overlay
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: RepaintBoundary(child: _buildModernBottomNav()),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildHeader(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
@@ -275,12 +281,12 @@ class _MainPageState extends ConsumerState<MainPage>
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
       child: SizedBox(
-        height: 44.0, 
+        height: 44.0,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             SizedBox(
-              height: 28, 
+              height: 28,
               child: AspectRatio(
                 aspectRatio: 572 / 210, // 强制保持原始比例
                 child: SvgPicture.asset(
@@ -305,7 +311,9 @@ class _MainPageState extends ConsumerState<MainPage>
               onPressed: () => context.push('/settings/sponsor'),
               tooltip: '赞赏支持',
               onSurface: onSurface,
-              iconColor: const Color(0xFFFF4D8D).withValues(alpha: 0.9), // 优雅的粉红色
+              iconColor: const Color(
+                0xFFFF4D8D,
+              ).withValues(alpha: 0.9), // 优雅的粉红色
             ),
             // Device Selection button
             _buildHeaderIcon(
@@ -647,7 +655,9 @@ class _MainPageState extends ConsumerState<MainPage>
           child: Container(
             height: 72,
             decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.65),
+              color: Theme.of(
+                context,
+              ).scaffoldBackgroundColor.withValues(alpha: 0.65),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,

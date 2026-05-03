@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../pages/login_page.dart';
@@ -24,7 +25,6 @@ class AuthWrapper extends ConsumerStatefulWidget {
 
 class _AuthWrapperState extends ConsumerState<AuthWrapper> {
   bool _jsPreloadAttempted = false;
-  bool _isFirstFrame = true;
   bool _updateChecked = false;
   bool _initTriggered = false;
   @override
@@ -47,7 +47,6 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
 
     // 使用postFrameCallback确保在第一帧渲染后执行
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _isFirstFrame = false;
       _triggerPostUpdateInit();
     });
   }
@@ -95,7 +94,10 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
   Future<void> _writeLeanCloudConfig() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('lc_base_url', 'https://nu0cttse.lc-cn-n1-shared.com');
+      await prefs.setString(
+        'lc_base_url',
+        'https://nu0cttse.lc-cn-n1-shared.com',
+      );
       await prefs.setString('lc_app_id', 'nu0CtTsesxoThR70g4Vn9Ypk-gzGzoHsz');
       await prefs.setString('lc_app_key', 'WNNq0Z9pluoS8CRnrqu822xl');
       print('[AuthWrapper] ✅ LeanCloud配置已写入');
@@ -201,6 +203,37 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
     }
   }
 
+  Widget _buildLoadingPage(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness:
+            isDarkMode ? Brightness.light : Brightness.dark,
+        statusBarBrightness: isDarkMode ? Brightness.dark : Brightness.light,
+        systemStatusBarContrastEnforced: false,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness:
+            isDarkMode ? Brightness.light : Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
+        systemNavigationBarContrastEnforced: false,
+      ),
+      child: ColoredBox(
+        color: theme.scaffoldBackgroundColor,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          extendBody: true,
+          resizeToAvoidBottomInset: false,
+          body: const SizedBox.expand(
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
@@ -210,20 +243,21 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
     final directModeState = ref.watch(directModeProvider);
     final initState = ref.watch(initializationProvider); // 🎯 监听初始化状态
 
-    print('[AuthWrapper] 🎨 build - _updateChecked: $_updateChecked, needsUpdate: ${updState.needsUpdate}');
-    print('[AuthWrapper] 🎯 当前模式: $playbackMode, authState: ${authState.runtimeType}, directState: ${directModeState.runtimeType}');
-    print('[AuthWrapper] 🎯 初始化状态: progress=${initState.progress}, completed=${initState.isCompleted}');
+    print(
+      '[AuthWrapper] 🎨 build - _updateChecked: $_updateChecked, needsUpdate: ${updState.needsUpdate}',
+    );
+    print(
+      '[AuthWrapper] 🎯 当前模式: $playbackMode, authState: ${authState.runtimeType}, directState: ${directModeState.runtimeType}',
+    );
+    print(
+      '[AuthWrapper] 🎯 初始化状态: progress=${initState.progress}, completed=${initState.isCompleted}',
+    );
 
     // 等待更新检查完成后再决定显示什么
     // 如果还在检查中，显示空白页面或加载指示器
     if (!_updateChecked) {
       print('[AuthWrapper] ⏳ 显示加载指示器（等待更新检查）');
-      return Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return _buildLoadingPage(context);
     }
 
     if (updState.needsUpdate) {
@@ -245,12 +279,7 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
           if (mounted) _triggerPostUpdateInit();
         });
       }
-      return Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return _buildLoadingPage(context);
     }
 
     // 监听登录状态变化，成功登录后重置预加载标记
@@ -269,10 +298,12 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
     });
 
     // 🎯 优先检查登录状态：已登录直接进入主页（支持自动登录场景）
-    if (playbackMode == PlaybackMode.xiaomusic && authState is AuthAuthenticated) {
+    if (playbackMode == PlaybackMode.xiaomusic &&
+        authState is AuthAuthenticated) {
       return const MainPage();
     }
-    if (playbackMode == PlaybackMode.miIoTDirect && directModeState is DirectModeAuthenticated) {
+    if (playbackMode == PlaybackMode.miIoTDirect &&
+        directModeState is DirectModeAuthenticated) {
       return const MainPage();
     }
 
